@@ -1,0 +1,98 @@
+{
+  "auth/__init__.py": {
+    "mtime": 1789643166.478358,
+    "seen": 1789726715.8784158,
+    "ast_hash": "f081fc358bd1cf83cbf22ee9d6f786d8",
+    "semantic_hash": ""
+  },
+  "auth/oauth.py": {
+    "mtime": 1789750869.3878896,
+    "seen": 1789750921.409471,
+    "ast_hash": "99b51d8937ecf58056013986c2cbc1a9",
+    "semantic_hash": ""
+  },
+  "cleo_agent.py": {
+    "mtime": 1789752826.699414,
+    "seen": 1789752872.341407,
+    "ast_hash": "9c020340de0ecd79d041c4c8a698f9e2",
+    "semantic_hash": ""
+  },
+  "cleo_gui.py": {
+    "mtime": 1789649584.620741,
+    "seen": 1789726715.8784199,
+    "ast_hash": "438b83c69c1c5fde4619bd150d8a2d9a",
+    "semantic_hash": ""
+  },
+  "cleo_logger.py": {
+    "mtime": 1789750813.8047976,
+    "seen": 1789750921.4094741,
+    "ast_hash": "fa1e3b38146a7cbcffda0d3add878f57",
+    "semantic_hash": ""
+  },
+  "cleo_server.py": {
+    "mtime": 1789752676.4147613,
+    "seen": 1789752872.3414102,
+    "ast_hash": "a7144afb3170996753190ba1255cb82d",
+    "semantic_hash": ""
+  },
+  "workflows/cleo-v1.json": {
+    "mtime": 1789116959.2564054,
+    "seen": 1789726715.878422,
+    "ast_hash": "d97afa8d4e8c81437ed0fe97dd841858",
+    "semantic_hash": ""
+  },
+  "workflows/cleo-v2.json": {
+    "mtime": 1789123855.807782,
+    "seen": 1789726715.878422,
+    "ast_hash": "b14572deb84c6150f048defda649666c",
+    "semantic_hash": ""
+  },
+  ".agents/rules/graphify.md": {
+    "mtime": 1789724290.551734,
+    "seen": 1789726715.878423,
+    "ast_hash": "f1e53ecc9194573d3c28fc116c743a2e",
+    "semantic_hash": ""
+  },
+  ".agents/workflows/graphify.md": {
+    "mtime": 1789724290.5519001,
+    "seen": 1789726715.8784242,
+    "ast_hash": "6d73634a678cf1e1c71930adf80bd1f0",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1789458729.7250204,
+    "seen": 1789726715.878426,
+    "ast_hash": "d68f67ffdc89859b2e45761db1ced326",
+    "semantic_hash": ""
+  },
+  "docker-compose.yml": {
+    "mtime": 1789459421.023,
+    "seen": 1789726715.8784268,
+    "ast_hash": "7de3860a7f6a07d6c78d2cdcd0e36b33",
+    "semantic_hash": ""
+  },
+  "docs/flexreport_sql_guide.md": {
+    "mtime": 1789128029.9900649,
+    "seen": 1789726715.8784268,
+    "ast_hash": "d68e31c88e640b3faa2648593bd8385d",
+    "semantic_hash": ""
+  },
+  "docs/graphql_api_guide.md": {
+    "mtime": 1789128096.5753567,
+    "seen": 1789726715.878428,
+    "ast_hash": "fb22f4318efa741ae05125899bf2c1ea",
+    "semantic_hash": ""
+  },
+  "docs/rest_api_v4_guide.md": {
+    "mtime": 1789128096.5732026,
+    "seen": 1789726715.878428,
+    "ast_hash": "d1a65c910e07c750ca974bc12224cbd8",
+    "semantic_hash": ""
+  },
+  "requirements.txt": {
+    "mtime": 1789647716.73592,
+    "seen": 1789726715.878429,
+    "ast_hash": "1b9a4d969020c20b768fb4103ff8b1fb",
+    "semantic_hash": ""
+  }
+}

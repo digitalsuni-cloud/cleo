@@ -1,0 +1,1116 @@
+#!/usr/bin/env python3
+"""
+cleo_server.py — High-Performance GUI & HTTP API Server for Cleo FinOps Agent
+================================================================================
+Provides a complete, modern Web UI and REST API for Cleo, with native
+OAuth 2.0 PKCE handshake support for CloudHealth MCP, detailed verbose logging,
+and live diagnostic inspection.
+"""
+
+import sys, os
+
+# Auto-switch to project .venv if available and not currently active
+_venv_python = os.path.abspath(os.path.join(os.path.dirname(__file__), ".venv", "bin", "python3"))
+if os.path.exists(_venv_python) and os.path.abspath(sys.executable) != _venv_python:
+    if sys.argv and sys.argv[0] != "-c":
+        os.execv(_venv_python, [_venv_python] + sys.argv)
+
+import json, uuid, time, argparse, urllib.parse, base64, hashlib
+from datetime import datetime, timezone
+from typing import Optional
+
+def _ensure(packages: list[str]):
+    import subprocess
+    for pkg in packages:
+        mod = pkg.split("[")[0].replace("-", "_")
+        try:
+            __import__(mod)
+        except ImportError:
+            try:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", pkg, "-q"])
+            except Exception:
+                try:
+                    subprocess.check_call([sys.executable, "-m", "pip", "install", pkg, "--break-system-packages", "-q"])
+                except Exception:
+                    pass
+
+_ensure(["fastapi", "uvicorn[standard]"])
+
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from pydantic import BaseModel
+import uvicorn
+
+from cleo_logger import get_logger, get_recent_logs
+logger = get_logger("server")
+import threading
+
+from cleo_agent import (
+    MCPClient, AIClient, build_system_prompt, run_agent_turn,
+    get_access_token, _load_config, _save_config, AI_ENGINES, auth_helper,
+    STANDARD_CH_TOOLS, LOCAL_CLIENT_ID, LOCAL_REDIRECT_URI,
+    LOCAL_MODELS, PUBLIC_ENGINES, get_installed_ollama_models, OLLAMA_BASE_URL,
+    MLX_MODELS, get_installed_mlx_models, call_mlx_generate, estimate_token_count
+)
+
+# Ensure workspace virtualenv site-packages are accessible
+_cleo_root = os.path.dirname(os.path.abspath(__file__))
+_venv_lib = os.path.join(_cleo_root, ".venv", "lib")
+if os.path.isdir(_venv_lib):
+    for _d in os.listdir(_venv_lib):
+        _sp = os.path.join(_venv_lib, _d, "site-packages")
+        if os.path.isdir(_sp) and _sp not in sys.path:
+            sys.path.insert(0, _sp)
+
+app = FastAPI(
+    title="Cleo — CloudHealth FinOps AI",
+    description="Intelligent FinOps Assistant powered by CloudHealth MCP",
+    version="2.1.0",
+)
+
+# Check for local MLX models on Apple Silicon
+_init_mlx = get_installed_mlx_models()
+_has_mlx_qwen = any("Qwen2.5-7B-Instruct-4bit" in m["repo_id"] for m in _init_mlx)
+if _has_mlx_qwen:
+    _init_engine_key = "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit"
+    _init_engine_label = "Qwen2.5-7B-Instruct-4bit (MLX Default)"
+else:
+    _init_engine_key = "ollama:qwen2.5:7b"
+    _init_engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
+
+# Global runtime state
+_mcp: MCPClient | None = None
+_ai:  AIClient | None  = None
+_tools: list[dict]     = []
+
+SESSIONS_CACHE_FILE = os.path.expanduser("~/.cleo/sessions.json")
+MAX_SAVED_SESSIONS = 100
+
+def _generate_chat_title(prompt: str) -> str:
+    p = (prompt or "").strip()
+    if not p:
+        return "New Conversation"
+    prefixes = [
+        "what are the ", "what is the ", "what's the ", "what's my ", "what is my ",
+        "show our ", "show me the ", "show me ", "show ", "can you ", "please ",
+        "get the ", "get ", "list all ", "list ", "tell me about ", "tell me ",
+        "try listing the ", "try listing ", "find ", "check "
+    ]
+    p_lower = p.lower()
+    for prefix in prefixes:
+        if p_lower.startswith(prefix):
+            p = p[len(prefix):].strip()
+            p_lower = p.lower()
+            break
+    if p:
+        p = p[0].upper() + p[1:]
+    p = p.rstrip("?. ")
+    return (p[:46] + "...") if len(p) > 46 else (p or "New Conversation")
+
+def _get_active_session_id() -> Optional[str]:
+    if not _sessions:
+        return None
+    sorted_sids = sorted(
+        _sessions.keys(),
+        key=lambda sid: _sessions[sid].get("updated_at", "") if isinstance(_sessions[sid], dict) else "",
+        reverse=True
+    )
+    return sorted_sids[0] if sorted_sids else None
+
+def _normalize_session(sid: str, sdata: any) -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    if isinstance(sdata, list):
+        title = "New Conversation"
+        for m in sdata:
+            if m.get("role") == "user" and m.get("content"):
+                title = _generate_chat_title(m["content"])
+                break
+        return {
+            "id": sid,
+            "title": title,
+            "created_at": now,
+            "updated_at": now,
+            "messages": sdata
+        }
+    elif isinstance(sdata, dict):
+        if "messages" not in sdata or not isinstance(sdata["messages"], list):
+            sdata["messages"] = []
+        if "id" not in sdata:
+            sdata["id"] = sid
+        if "created_at" not in sdata:
+            sdata["created_at"] = now
+        if "updated_at" not in sdata:
+            sdata["updated_at"] = sdata.get("created_at", now)
+        if "title" not in sdata or not sdata["title"]:
+            title = "New Conversation"
+            for m in sdata.get("messages", []):
+                if m.get("role") == "user" and m.get("content"):
+                    title = _generate_chat_title(m["content"])
+                    break
+            sdata["title"] = title
+        if "pinned" not in sdata:
+            sdata["pinned"] = False
+        return sdata
+    return {
+        "id": sid,
+        "title": "New Conversation",
+        "created_at": now,
+        "updated_at": now,
+        "messages": [],
+        "pinned": False
+    }
+
+def _load_sessions() -> dict:
+    if os.path.exists(SESSIONS_CACHE_FILE):
+        try:
+            with open(SESSIONS_CACHE_FILE, "r") as f:
+                raw = json.load(f)
+                if isinstance(raw, dict):
+                    normalized = {}
+                    for sid, sdata in raw.items():
+                        normalized[sid] = _normalize_session(sid, sdata)
+                    # Keep sorted by updated_at descending, up to MAX_SAVED_SESSIONS
+                    sorted_items = sorted(
+                        normalized.items(),
+                        key=lambda item: item[1].get("updated_at", ""),
+                        reverse=True
+                    )
+                    return dict(sorted_items[:MAX_SAVED_SESSIONS])
+        except Exception as e:
+            logger.warning(f"Could not load sessions cache: {e}")
+    return {}
+
+def _save_sessions():
+    global _sessions
+    try:
+        os.makedirs(os.path.dirname(SESSIONS_CACHE_FILE), exist_ok=True)
+        sorted_items = sorted(
+            _sessions.items(),
+            key=lambda item: item[1].get("updated_at", "") if isinstance(item[1], dict) else "",
+            reverse=True
+        )
+        if len(sorted_items) > MAX_SAVED_SESSIONS:
+            _sessions = dict(sorted_items[:MAX_SAVED_SESSIONS])
+        with open(SESSIONS_CACHE_FILE, "w") as f:
+            json.dump(_sessions, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Could not save sessions cache: {e}")
+
+_sessions: dict        = _load_sessions()
+_server_start          = datetime.now(timezone.utc).isoformat()
+_active_engine_key     = _init_engine_key
+_engine_label          = _init_engine_label
+_model_downloads: dict = {}  # model_id -> {"status": "downloading"|"completed"|"failed", "progress": 0, "error": ""}
+_oauth_verifiers: dict = {}  # state -> {verifier, client_id, redirect_uri}
+_last_error: str       = ""
+
+VERIFIER_CACHE_FILE = os.path.expanduser("~/.cleo/pkce_verifier.json")
+
+def _bg_pull_mlx_model(repo_id: str):
+    global _model_downloads
+    _model_downloads[repo_id] = {"status": "downloading", "progress": 15, "status_detail": "Connecting to Hugging Face...", "error": ""}
+    try:
+        from huggingface_hub import snapshot_download
+        _model_downloads[repo_id] = {"status": "downloading", "progress": 40, "status_detail": "Downloading weights to local cache...", "error": ""}
+        snapshot_download(repo_id=repo_id)
+        _model_downloads[repo_id] = {"status": "completed", "progress": 100, "status_detail": "Download complete", "error": ""}
+        logger.info(f"✅ [MLX Download Complete] {repo_id}")
+    except Exception as e:
+        logger.error(f"❌ [MLX Download Failed] {repo_id}: {e}")
+        _model_downloads[repo_id] = {"status": "failed", "progress": 0, "error": str(e), "status_detail": f"Failed: {e}"}
+
+def _check_ollama_alive() -> bool:
+    try:
+        req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/tags")
+        with urllib.request.urlopen(req, timeout=1.5):
+            return True
+    except Exception:
+        return False
+
+def _bg_pull_model(model_name: str):
+    global _model_downloads
+    _model_downloads[model_name] = {"status": "downloading", "progress": 0, "status_detail": "Starting pull...", "error": ""}
+    url = f"{OLLAMA_BASE_URL}/api/pull"
+    payload = json.dumps({"name": model_name, "stream": True}).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=1800.0) as resp:
+            for line in resp:
+                if not line:
+                    continue
+                try:
+                    chunk = json.loads(line.decode("utf-8"))
+                    completed = chunk.get("completed", 0)
+                    total = chunk.get("total", 0)
+                    status_text = chunk.get("status", "")
+                    if total > 0:
+                        pct = round((completed / total) * 100, 1)
+                        _model_downloads[model_name]["progress"] = pct
+                    _model_downloads[model_name]["status_detail"] = status_text
+                    if status_text == "success":
+                        _model_downloads[model_name]["status"] = "completed"
+                        _model_downloads[model_name]["progress"] = 100
+                except Exception:
+                    pass
+        _model_downloads[model_name]["status"] = "completed"
+        _model_downloads[model_name]["progress"] = 100
+        logger.info(f"✅ [Ollama Download Complete] Model '{model_name}' successfully downloaded!")
+    except Exception as e:
+        logger.error(f"❌ [Ollama Download Failed] Model '{model_name}': {e}")
+        _model_downloads[model_name] = {"status": "failed", "progress": 0, "error": str(e)}
+
+def _save_pending_verifier(state: str, info: dict):
+    global _oauth_verifiers
+    _oauth_verifiers[state] = info
+    try:
+        with open(VERIFIER_CACHE_FILE, "w") as f:
+            json.dump(_oauth_verifiers, f)
+    except Exception:
+        pass
+
+def _load_pending_verifiers() -> dict:
+    if os.path.exists(VERIFIER_CACHE_FILE):
+        try:
+            with open(VERIFIER_CACHE_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+# ── CSRF Protection: reject cross-origin state-changing requests ──────────────
+# Cleo is a local single-user server with no auth layer; without this, any web
+# page the user visits in a browser could silently POST/DELETE to it (e.g.
+# overwrite API keys via /api/tokens) using the browser's ambient access.
+_MUTATING_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
+
+@app.middleware("http")
+async def csrf_protection(request: Request, call_next):
+    if request.method in _MUTATING_METHODS:
+        origin = request.headers.get("origin")
+        if origin:
+            origin_host = origin.split("://", 1)[-1].rstrip("/")
+            request_host = request.headers.get("host", "")
+            if origin_host != request_host:
+                logger.warning(
+                    f"[CSRF] Rejected cross-origin {request.method} {request.url.path} "
+                    f"(Origin={origin!r}, Host={request_host!r})"
+                )
+                return JSONResponse(status_code=403, content={"detail": "Cross-origin requests are not allowed."})
+    return await call_next(request)
+
+# ── HTTP Request Logging Middleware ───────────────────────────────────────────
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    path = request.url.path
+    query = request.url.query
+    full_path = f"{path}?{query}" if query else path
+    is_poll = path in ("/health", "/api/logs", "/favicon.ico")
+    if not is_poll:
+        logger.info(f"[HTTP IN]  {request.method} {full_path}")
+    try:
+        response = await call_next(request)
+        dur_ms = round((time.time() - start) * 1000, 1)
+        if not is_poll:
+            logger.info(f"[HTTP OUT] {request.method} {full_path} -> {response.status_code} ({dur_ms}ms)")
+        return response
+    except Exception as e:
+        dur_ms = round((time.time() - start) * 1000, 1)
+        logger.error(f"[HTTP ERR] {request.method} {full_path} -> {e} ({dur_ms}ms)")
+        raise
+
+def init_mcp_if_authenticated() -> bool:
+    """Attempts to connect to CloudHealth MCP with stored access token."""
+    global _mcp, _tools, _ai, _active_engine_key, _engine_label, _last_error
+    token = get_access_token(interactive=False)
+    if not token:
+        logger.debug("[MCP Init Check] No CloudHealth access token found in storage")
+        _mcp = None
+        _tools = []
+        return False
+    try:
+        logger.info("[MCP Init] Initializing CloudHealth connection with stored access token...")
+        _mcp = MCPClient(token, token_refresher=lambda: get_access_token(interactive=False))
+        info = _mcp.initialize()
+        _tools = _mcp.list_tools()
+        
+        cfg = _load_config()
+        mlx_inst = get_installed_mlx_models()
+        has_mlx = any("Qwen2.5-7B-Instruct-4bit" in m["repo_id"] for m in mlx_inst)
+        default_engine = "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit" if has_mlx else "ollama:qwen2.5:7b"
+
+        engine_key = cfg.get("AI_ENGINE") or os.environ.get("AI_ENGINE", default_engine)
+        _active_engine_key = engine_key
+        
+        if engine_key == "direct":
+            _engine_label = "Direct FinOps Router"
+        elif engine_key == "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit":
+            _engine_label = "Qwen2.5-7B-Instruct-4bit (MLX Default)"
+        elif engine_key.startswith("mlx:"):
+            _engine_label = f"{engine_key.removeprefix('mlx:').split('/')[-1]} (MLX)"
+        elif engine_key == "ollama:qwen2.5:7b":
+            _engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
+        elif engine_key.startswith("ollama:"):
+            _engine_label = f"Ollama ({engine_key.split(':', 1)[1]})"
+        else:
+            pe = next((p for p in PUBLIC_ENGINES if p["id"] == engine_key), None)
+            _engine_label = pe["name"] if pe else engine_key
+
+        _ai = AIClient(engine_key, cfg, tools=_tools)
+        _last_error = ""
+        logger.info(f"✅ [MCP Init Success] Connected to CloudHealth MCP with {len(_tools)} tools! Engine: {_engine_label}")
+        return True
+    except Exception as e:
+        _last_error = str(e)
+        _mcp = None
+        _tools = []
+        logger.error(f"❌ [MCP Init Error] {e}")
+        return False
+
+@app.on_event("startup")
+async def startup():
+    logger.info("=" * 60)
+    logger.info("  🤖  Cleo FinOps Agent Server Started (Verbose Logging Active)")
+    logger.info("=" * 60)
+    if init_mcp_if_authenticated():
+        logger.info(f"✅ CloudHealth Connection Ready ({len(_tools)} tools available)")
+    else:
+        logger.info("ℹ️ CloudHealth authentication needed (use Web GUI to connect)")
+
+@app.on_event("shutdown")
+async def shutdown():
+    if _mcp:
+        _mcp.close()
+
+# ── Authentication Endpoints ──────────────────────────────────────────────────
+
+@app.get("/auth/login")
+def auth_login():
+    """
+    Generates the PKCE authorization URL for Cleo's independent OAuth client.
+    Directly redirects to CloudHealth login and returns automatically
+    to http://127.0.0.1:8080/oauth-callback without any third-party pages.
+    """
+    cid = LOCAL_CLIENT_ID
+    ruri = LOCAL_REDIRECT_URI
+
+    auth_url, verifier, params = auth_helper.generate_auth_params(client_id=cid, redirect_uri=ruri)
+    state = params["state"]
+    
+    info = {
+        "verifier": verifier,
+        "client_id": cid,
+        "redirect_uri": ruri,
+        "timestamp": time.time()
+    }
+    _save_pending_verifier(state, info)
+    logger.info(f"[OAuth Login] Redirecting directly to CloudHealth (client: {cid[:20]}..., state: {state})")
+    return RedirectResponse(url=auth_url)
+
+class CodeSubmission(BaseModel):
+    code: str
+
+@app.post("/auth/submit-code")
+def auth_submit_code(sub: CodeSubmission):
+    """Exchanges an authorization code (or full callback URL) for access token."""
+    global _last_error
+    raw_code = sub.code.strip()
+    if not raw_code:
+        raise HTTPException(status_code=400, detail="Empty authorization code provided")
+
+    # Auto-extract code if user pasted a full redirect URL
+    code = raw_code
+    if "code=" in raw_code:
+        parsed = urllib.parse.urlparse(raw_code)
+        qs = urllib.parse.parse_qs(parsed.query or parsed.fragment)
+        if "code" in qs:
+            code = qs["code"][0].strip()
+
+    logger.info(f"[OAuth Submit Code] Processing authorization code ({code[:10]}...{code[-6:] if len(code)>16 else ''})")
+    
+    # Retrieve pending verifier from memory or disk
+    all_verifiers = dict(_oauth_verifiers)
+    all_verifiers.update(_load_pending_verifiers())
+    
+    verifier_info = None
+    if all_verifiers:
+        sorted_keys = sorted(all_verifiers.keys(), key=lambda k: all_verifiers[k].get("timestamp", 0), reverse=True)
+        verifier_info = all_verifiers[sorted_keys[0]]
+
+    verifier = verifier_info.get("verifier") if verifier_info else ""
+    client_id = verifier_info.get("client_id", LOCAL_CLIENT_ID) if verifier_info else LOCAL_CLIENT_ID
+    redirect_uri = verifier_info.get("redirect_uri", LOCAL_REDIRECT_URI) if verifier_info else LOCAL_REDIRECT_URI
+
+    mcp_data = auth_helper.exchange_code(
+        code=code, 
+        verifier=verifier, 
+        client_id=client_id, 
+        redirect_uri=redirect_uri
+    )
+    if not mcp_data:
+        err = getattr(auth_helper, "last_error", "") or "Token exchange failed."
+        _last_error = err
+        logger.error(f"[OAuth Submit Code Failed] {err}")
+        raise HTTPException(status_code=400, detail=err)
+
+    # Clean up verifiers
+    _oauth_verifiers.clear()
+    if os.path.exists(VERIFIER_CACHE_FILE):
+        try:
+            os.remove(VERIFIER_CACHE_FILE)
+        except Exception:
+            pass
+
+    # Initialize MCP
+    success = init_mcp_if_authenticated()
+    if not success:
+        err = _last_error or "CloudHealth MCP initialization failed."
+        raise HTTPException(status_code=403, detail=err)
+
+    return {
+        "success": True,
+        "mcp_connected": success,
+        "tools_count": len(_tools),
+        "tools": _tools,
+        "last_error": ""
+    }
+
+@app.post("/auth/logout")
+def auth_logout():
+    """Disconnects CloudHealth session and purges stored tokens."""
+    global _mcp, _tools, _ai, _sessions, _last_error, _oauth_verifiers
+    logger.info("[OAuth Logout] Disconnecting CloudHealth session and purging stored tokens...")
+    auth_helper.clear_tokens()
+    if os.path.exists(VERIFIER_CACHE_FILE):
+        try:
+            os.remove(VERIFIER_CACHE_FILE)
+        except Exception:
+            pass
+    _mcp = None
+    _tools = []
+    # ponytail: do NOT wipe persisted session histories on cloudhealth logout
+    _oauth_verifiers.clear()
+    _last_error = ""
+    return {"status": "logged_out", "message": "CloudHealth disconnected and tokens cleared."}
+
+@app.get("/oauth-callback")
+def oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    """Handles automatic callback from CloudHealth."""
+    global _last_error
+    if error or not code:
+        err_msg = error or "No authorization code received from CloudHealth."
+        _last_error = err_msg
+        logger.error(f"[OAuth Callback Error] {err_msg}")
+        return HTMLResponse(content=f"""
+        <html><body style="font-family:sans-serif;background:#0f1117;color:#f87171;display:flex;align-items:center;justify-content:center;height:100vh;">
+            <div style="background:#1a1d27;padding:32px;border-radius:12px;text-align:center;max-width:500px;border:1px solid #2d3148;">
+                <h2>Authentication Failed</h2>
+                <p style="color:#94a3b8;margin:16px 0;">{err_msg}</p>
+                <a href="/" style="color:#6366f1;text-decoration:none;font-weight:600;">Return to Cleo</a>
+            </div>
+        </body></html>
+        """, status_code=400)
+
+    all_verifiers = dict(_oauth_verifiers)
+    all_verifiers.update(_load_pending_verifiers())
+    verifier_info = all_verifiers.pop(state, None) if state else None
+    if not verifier_info:
+        logger.error(f"[OAuth Callback Error] Unknown or missing state parameter: {state!r}")
+        _last_error = "OAuth callback rejected: state parameter did not match a pending authorization request."
+        return HTMLResponse(content=f"""
+        <html><body style="font-family:sans-serif;background:#0f1117;color:#f87171;display:flex;align-items:center;justify-content:center;height:100vh;">
+            <div style="background:#1a1d27;padding:32px;border-radius:12px;text-align:center;max-width:500px;border:1px solid #2d3148;">
+                <h2>Authentication Failed</h2>
+                <p style="color:#94a3b8;margin:16px 0;">{_last_error}</p>
+                <a href="/" style="color:#6366f1;text-decoration:none;font-weight:600;">Return to Cleo</a>
+            </div>
+        </body></html>
+        """, status_code=400)
+
+    verifier = verifier_info.get("verifier", "") if verifier_info else ""
+    client_id = verifier_info.get("client_id", LOCAL_CLIENT_ID) if verifier_info else LOCAL_CLIENT_ID
+    redirect_uri = verifier_info.get("redirect_uri", LOCAL_REDIRECT_URI) if verifier_info else LOCAL_REDIRECT_URI
+
+    logger.info(f"[OAuth Callback] Exchanging code ({code[:10]}...{code[-6:]}) with client {client_id[:25]}...")
+    mcp_data = auth_helper.exchange_code(
+        code=code, 
+        verifier=verifier, 
+        client_id=client_id, 
+        redirect_uri=redirect_uri
+    )
+    if not mcp_data:
+        err = getattr(auth_helper, "last_error", "") or "Token exchange failed."
+        _last_error = err
+        logger.error(f"[OAuth Callback Exchange Error] {err}")
+        return HTMLResponse(content=f"""
+        <html><body style="font-family:sans-serif;background:#0f1117;color:#f87171;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+            <div style="background:#1a1d27;padding:36px;border-radius:16px;text-align:center;max-width:540px;border:1px solid #2d3148;">
+                <h2 style="color:#f87171;margin-bottom:12px;">Authentication Issue</h2>
+                <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:24px;word-break:break-all;">{err}</p>
+                <a href="/auth/login" style="background:#6366f1;color:white;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;">Retry Connection</a>
+            </div>
+        </body></html>
+        """, status_code=500)
+
+    # Initialize MCP client with new token
+    init_mcp_if_authenticated()
+
+    return HTMLResponse(content="""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Cleo Connected</title>
+      <meta http-equiv="refresh" content="1;url=/">
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0f1117; color: #f8fafc;
+               display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .box { background: #1a1d27; padding: 40px; border-radius: 16px; text-align: center; border: 1px solid #2d3148; }
+        h1 { color: #10b981; margin-bottom: 8px; font-size: 1.5rem; }
+        p { color: #94a3b8; font-size: 0.95rem; }
+      </style>
+    </head>
+    <body>
+      <div class="box">
+        <div style="font-size: 2.5rem; margin-bottom: 12px;">✅</div>
+        <h1>Successfully Connected to CloudHealth!</h1>
+        <p>Loading your CloudHealth FinOps datasets...</p>
+      </div>
+    </body>
+    </html>
+    """)
+
+# ── API Routes ────────────────────────────────────────────────────────────────
+
+@app.get("/api/logs")
+def get_logs(limit: int = 150):
+    """Returns the latest backend verbose logs for in-GUI inspection."""
+    return {"logs": get_recent_logs(limit)}
+
+@app.get("/health")
+def health():
+    global _mcp, _tools, _last_error
+    token = get_access_token(interactive=False)
+    has_token = bool(token)
+    if has_token and (not _mcp or not _tools):
+        init_mcp_if_authenticated()
+
+    is_connected = bool(_mcp and _tools and not getattr(_mcp, "_use_fallback", False))
+    
+    if is_connected:
+        mcp_status = "connected"
+    elif _last_error:
+        mcp_status = "unauthorized"
+    else:
+        mcp_status = "disconnected"
+
+    return {
+        "status": "ok" if is_connected else ("error" if _last_error else "unauthenticated"),
+        "mcp": mcp_status,
+        "has_token": has_token,
+        "tools_count": len(_tools) if is_connected else 0,
+        "tools": _tools if is_connected else [],
+        "ai_engine": _engine_label,
+        "ai_engine_key": _active_engine_key,
+        "active_sessions": len(_sessions),
+        "last_error": _last_error
+    }
+
+@app.get("/api/tools")
+def get_tools():
+    return {"tools": _tools}
+
+@app.get("/api/engines")
+def list_engines():
+    cfg = _load_config()
+    
+    # 1. Local MLX Models (Apple Silicon)
+    mlx_installed = get_installed_mlx_models()
+    installed_mlx_map = {m["repo_id"]: m for m in mlx_installed}
+    
+    mlx_list = []
+    for mm in MLX_MODELS:
+        repo_id = mm["repo_id"]
+        is_inst = repo_id in installed_mlx_map
+        inst_meta = installed_mlx_map.get(repo_id, {})
+        dl_info = _model_downloads.get(repo_id, {})
+        mlx_list.append({
+            "id": mm["id"],
+            "model_id": repo_id,
+            "name": mm["name"],
+            "size": inst_meta.get("size") or mm["size"],
+            "tier": mm["tier"],
+            "desc": mm["desc"],
+            "downloaded": is_inst,
+            "download_status": "completed" if is_inst else dl_info.get("status", ""),
+            "download_progress": 100 if is_inst else dl_info.get("progress", 0)
+        })
+
+    # Add custom installed MLX models
+    catalog_repos = {mm["repo_id"] for mm in MLX_MODELS}
+    for repo_id, meta in installed_mlx_map.items():
+        if repo_id not in catalog_repos:
+            short_name = repo_id.split("/")[-1]
+            mlx_list.append({
+                "id": f"mlx:{repo_id}",
+                "model_id": repo_id,
+                "name": f"{short_name} (MLX)",
+                "size": meta.get("size", "Local"),
+                "tier": "installed",
+                "desc": "Custom installed Apple Silicon model in cache",
+                "downloaded": True,
+                "download_status": "completed",
+                "download_progress": 100
+            })
+
+    # 2. Local Ollama Models
+    ollama_models = get_installed_ollama_models()
+    ollama_running = bool(ollama_models) or _check_ollama_alive()
+    installed_names = [m.get("name", "") for m in ollama_models]
+
+    local_list = []
+    for m in LOCAL_MODELS:
+        mid = m["id"]
+        is_downloaded = any(mid in name or name.startswith(mid) for name in installed_names)
+        dl_info = _model_downloads.get(mid, {})
+        local_list.append({
+            "id": f"ollama:{mid}",
+            "model_id": mid,
+            "name": m["name"],
+            "size": m["size"],
+            "tier": m["tier"],
+            "desc": m["desc"],
+            "downloaded": is_downloaded,
+            "download_status": dl_info.get("status", ""),
+            "download_progress": dl_info.get("progress", 0)
+        })
+
+    for om in ollama_models:
+        name = om.get("name", "")
+        if not any(lm["id"] in name for lm in LOCAL_MODELS):
+            size_gb = round(om.get("size", 0) / (1024**3), 1)
+            local_list.append({
+                "id": f"ollama:{name}",
+                "model_id": name,
+                "name": name,
+                "size": f"{size_gb} GB" if size_gb > 0 else "Local",
+                "tier": "installed",
+                "desc": "Custom installed local model",
+                "downloaded": True,
+                "download_status": "completed",
+                "download_progress": 100
+            })
+
+    # 3. Public Cloud LLMs
+    public_list = []
+    for pe in PUBLIC_ENGINES:
+        token = cfg.get(pe["env_var"]) or os.environ.get(pe["env_var"], "")
+        has_token = bool(token.strip())
+        public_list.append({
+            "id": pe["id"],
+            "name": pe["name"],
+            "model": pe.get("default_model", ""),
+            "env_var": pe["env_var"],
+            "desc": pe["desc"],
+            "configured": has_token,
+            "token_preview": (token[:4] + "..." + token[-4:]) if len(token) > 8 else ("Configured" if has_token else "")
+        })
+
+    return {
+        "active_engine": _active_engine_key,
+        "active_label": _engine_label,
+        "mlx_available": True,
+        "mlx_models": mlx_list,
+        "ollama_running": ollama_running,
+        "local_models": local_list,
+        "public_engines": public_list,
+        "direct_engine": {
+            "id": "direct",
+            "name": "Direct FinOps Router (Built-in)",
+            "desc": "Built-in intelligent CloudHealth MCP query engine (No API key needed)"
+        }
+    }
+
+class EngineSelection(BaseModel):
+    engine: str
+
+@app.post("/api/engine")
+def set_engine(req: EngineSelection):
+    global _active_engine_key, _engine_label, _ai
+    _active_engine_key = req.engine
+    
+    if req.engine == "direct":
+        _engine_label = "Direct FinOps Router"
+    elif req.engine == "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit":
+        _engine_label = "Qwen2.5-7B-Instruct-4bit (MLX Default)"
+    elif req.engine.startswith("mlx:"):
+        model_part = req.engine.removeprefix("mlx:").split("/")[-1]
+        _engine_label = f"{model_part} (MLX)"
+    elif req.engine == "ollama:qwen2.5:7b":
+        _engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
+    elif req.engine.startswith("ollama:"):
+        model_part = req.engine.split(":", 1)[1]
+        _engine_label = f"Ollama ({model_part})"
+    elif req.engine in ("gemini", "openai", "anthropic"):
+        pe = next((p for p in PUBLIC_ENGINES if p["id"] == req.engine), None)
+        _engine_label = pe["name"] if pe else req.engine.capitalize()
+    else:
+        _engine_label = req.engine
+
+    _save_config({"AI_ENGINE": req.engine})
+    cfg = _load_config()
+    _ai = AIClient(req.engine, cfg, tools=_tools)
+    logger.info(f"🔄 [AI Engine Switched] Active engine is now: {_engine_label} ({req.engine})")
+    return {"status": "ok", "engine": req.engine, "label": _engine_label}
+
+class DownloadRequest(BaseModel):
+    model: str
+
+@app.post("/api/models/download")
+def download_model(req: DownloadRequest):
+    model = req.model
+    if model.startswith("mlx:") or "mlx-community" in model or "mlx" in model:
+        repo_id = model.removeprefix("mlx:").strip()
+        existing = _model_downloads.get(repo_id, {})
+        if existing.get("status") == "downloading":
+            return {"status": "already_downloading", "progress": existing.get("progress", 0)}
+        t = threading.Thread(target=_bg_pull_mlx_model, args=(repo_id,), daemon=True)
+        t.start()
+        return {"status": "started", "model": repo_id, "type": "mlx"}
+
+    if not _check_ollama_alive():
+        raise HTTPException(
+            status_code=503,
+            detail="Ollama daemon is not reachable at localhost:11434. Please start Ollama ('ollama serve') first."
+        )
+    existing = _model_downloads.get(model, {})
+    if existing.get("status") == "downloading":
+        return {"status": "already_downloading", "progress": existing.get("progress", 0)}
+
+    t = threading.Thread(target=_bg_pull_model, args=(model,), daemon=True)
+    t.start()
+    return {"status": "started", "model": model, "type": "ollama"}
+
+@app.get("/api/models/download-status")
+def get_download_status():
+    return {"downloads": _model_downloads}
+
+class TokenUpdateRequest(BaseModel):
+    engine: str
+    token: str
+
+@app.post("/api/tokens")
+def save_token(req: TokenUpdateRequest):
+    global _ai
+    env_map = {
+        "gemini": "GEMINI_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY"
+    }
+    env_var = env_map.get(req.engine.lower())
+    if not env_var:
+        raise HTTPException(status_code=400, detail=f"Unknown public LLM engine: {req.engine}")
+
+    _save_config({env_var: req.token.strip()})
+    cfg = _load_config()
+    if _ai:
+        _ai.cfg = cfg
+    logger.info(f"🔑 [Token Saved] Updated token for engine: {req.engine}")
+    return {"status": "ok", "engine": req.engine}
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    history: Optional[list[dict]] = None
+
+class ToolCallLog(BaseModel):
+    tool: str
+    arguments: dict
+    result_snippet: str
+
+class ChatResponse(BaseModel):
+    response: str
+    session_id: str
+    tool_calls: list[ToolCallLog]
+    title: Optional[str] = None
+    duration_secs: Optional[float] = None
+    tokens: Optional[int] = None
+    tokens_per_sec: Optional[float] = None
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(req: ChatRequest):
+    global _mcp, _ai, _tools
+    if not _mcp or not _tools:
+        if not init_mcp_if_authenticated():
+            raise HTTPException(
+                status_code=401, 
+                detail="CloudHealth is not authenticated. Please click 'Connect CloudHealth' in the top header."
+            )
+
+    if not _ai:
+        raise HTTPException(status_code=503, detail="AI engine is initializing.")
+
+    # ponytail: reset fallback flag each request so transient errors don't permanently poison channelCustomerId queries
+    if _mcp:
+        _mcp._use_fallback = False
+
+    # Session continuity (like Gemini):
+    # If session_id is omitted, empty, or "active", continue the most recent ongoing session.
+    # Only spawn a new session if "new" is explicitly requested or if no session exists yet.
+    session_id = req.session_id
+    if session_id in (None, "", "active", "current"):
+        session_id = _get_active_session_id()
+    if not session_id or session_id == "new" or session_id not in _sessions:
+        session_id = str(uuid.uuid4())
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    if session_id not in _sessions:
+        title = _generate_chat_title(req.message)
+        _sessions[session_id] = {
+            "id": session_id,
+            "title": title,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+            "messages": [
+                {"role": "system", "content": build_system_prompt(_tools)}
+            ]
+        }
+        if req.history:
+            for h in req.history:
+                if h.get("role") in ("user", "assistant") and h.get("content"):
+                    _sessions[session_id]["messages"].append({"role": h["role"], "content": h["content"]})
+
+    session_entry = _sessions[session_id]
+    if isinstance(session_entry, list):
+        session_entry = _normalize_session(session_id, session_entry)
+        _sessions[session_id] = session_entry
+
+    messages = session_entry["messages"]
+
+    # Refresh system prompt with live real-time calendar and prompt rules
+    if messages and messages[0].get("role") == "system":
+        messages[0]["content"] = build_system_prompt(_tools)
+
+    # Auto-title session if it was previously untitled
+    if session_entry.get("title") in ("New Conversation", "New Chat", "Untitled Chat", ""):
+        session_entry["title"] = _generate_chat_title(req.message)
+
+    messages.append({"role": "user", "content": req.message})
+    session_entry["updated_at"] = now_iso
+
+    tool_log: list[ToolCallLog] = []
+    original_call_tool = _mcp.call_tool
+
+    def tracked_call_tool(name: str, arguments: dict) -> dict:
+        result = original_call_tool(name, arguments)
+        tool_log.append(ToolCallLog(
+            tool=name,
+            arguments=arguments,
+            result_snippet=str(result)[:400]
+        ))
+        return result
+
+    _mcp.call_tool = tracked_call_tool
+    t0 = time.perf_counter()
+    try:
+        response = run_agent_turn(_mcp, _ai, messages)
+    finally:
+        _mcp.call_tool = original_call_tool
+
+    duration_secs = max(0.01, round(time.perf_counter() - t0, 2))
+    stats = getattr(_ai, "last_stats", {}) or {}
+    total_tokens = stats.get("tokens") or (stats.get("prompt_tokens", 0) + stats.get("completion_tokens", 0))
+    if not total_tokens:
+        p_tok = estimate_token_count(" ".join([m.get("content", "") for m in messages if isinstance(m, dict)]))
+        c_tok = estimate_token_count(response)
+        total_tokens = p_tok + c_tok
+        tokens_per_sec = round(c_tok / max(duration_secs, 0.05), 1)
+    else:
+        tokens_per_sec = stats.get("tokens_per_sec") or round(stats.get("completion_tokens", total_tokens) / max(duration_secs, 0.05), 1)
+
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+
+    # Persist assistant response to session messages for multi-turn conversational context
+    messages.append({
+        "role": "assistant",
+        "content": response,
+        "timestamp": now_ts,
+        "duration_secs": duration_secs,
+        "tokens": total_tokens,
+        "tokens_per_sec": tokens_per_sec,
+        "tool_calls": [t.dict() for t in tool_log]
+    })
+
+    if len(messages) > 40:
+        messages[:] = [messages[0]] + messages[-30:]
+
+    session_entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+    _save_sessions()
+
+    return ChatResponse(
+        response=response,
+        session_id=session_id,
+        tool_calls=tool_log,
+        title=session_entry.get("title"),
+        duration_secs=duration_secs,
+        tokens=total_tokens,
+        tokens_per_sec=tokens_per_sec
+    )
+
+@app.get("/api/sessions")
+def list_sessions():
+    summaries = []
+    sorted_items = sorted(
+        _sessions.items(),
+        key=lambda item: (
+            1 if (isinstance(item[1], dict) and item[1].get("pinned")) else 0,
+            item[1].get("updated_at", "") if isinstance(item[1], dict) else ""
+        ),
+        reverse=True
+    )
+    for sid, s in sorted_items[:MAX_SAVED_SESSIONS]:
+        if isinstance(s, list):
+            s = _normalize_session(sid, s)
+            _sessions[sid] = s
+        msgs = [m for m in s.get("messages", []) if m.get("role") in ("user", "assistant")]
+        msg_count = len(msgs)
+        last_msg = ""
+        for m in reversed(msgs):
+            if m.get("content"):
+                last_msg = m["content"][:100]
+                break
+        summaries.append({
+            "id": sid,
+            "title": s.get("title", "New Conversation"),
+            "created_at": s.get("created_at", ""),
+            "updated_at": s.get("updated_at", ""),
+            "message_count": msg_count,
+            "preview": last_msg,
+            "pinned": bool(s.get("pinned", False))
+        })
+    return {"sessions": summaries, "total": len(_sessions), "max_limit": MAX_SAVED_SESSIONS}
+
+@app.get("/api/session/{session_id}")
+def get_session(session_id: str):
+    if session_id not in _sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    s = _sessions[session_id]
+    if isinstance(s, list):
+        s = _normalize_session(session_id, s)
+        _sessions[session_id] = s
+    client_messages = []
+    for m in s.get("messages", []):
+        if m.get("role") not in ("user", "assistant"):
+            continue
+        item = {
+            "role": m["role"],
+            "content": m["content"],
+            "timestamp": m.get("timestamp"),
+            "duration_secs": m.get("duration_secs"),
+            "tokens": m.get("tokens"),
+            "tokens_per_sec": m.get("tokens_per_sec"),
+            "tool_calls": m.get("tool_calls", [])
+        }
+        if item["role"] == "assistant":
+            if item["tokens"] is None and item["content"]:
+                item["tokens"] = estimate_token_count(item["content"])
+            if item["duration_secs"] is None and item["tokens"]:
+                item["duration_secs"] = max(0.6, round(item["tokens"] / 75.0, 1))
+            if item["tokens_per_sec"] is None and item["duration_secs"] and item["tokens"]:
+                item["tokens_per_sec"] = round(item["tokens"] / item["duration_secs"], 1)
+        client_messages.append(item)
+    return {
+        "id": session_id,
+        "title": s.get("title", "New Conversation"),
+        "created_at": s.get("created_at", ""),
+        "updated_at": s.get("updated_at", ""),
+        "messages": client_messages,
+        "pinned": bool(s.get("pinned", False))
+    }
+
+@app.post("/api/session/{session_id}/pin")
+def toggle_pin_session(session_id: str):
+    if session_id not in _sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    s = _sessions[session_id]
+    if isinstance(s, list):
+        s = _normalize_session(session_id, s)
+        _sessions[session_id] = s
+    s["pinned"] = not s.get("pinned", False)
+    _save_sessions()
+    return {"status": "ok", "session_id": session_id, "pinned": s["pinned"]}
+
+@app.delete("/session/{session_id}")
+@app.delete("/api/session/{session_id}")
+def clear_session(session_id: str):
+    if session_id in _sessions:
+        del _sessions[session_id]
+        _save_sessions()
+    return {"status": "cleared", "session_id": session_id}
+
+@app.delete("/api/sessions")
+def clear_all_sessions():
+    _sessions.clear()
+    _save_sessions()
+    return {"status": "cleared", "total": 0}
+
+# ── Self-Learning Memory ───────────────────────────────────────────────────────
+
+from cleo_memory import get_memory as _get_memory
+
+class FeedbackRequest(BaseModel):
+    session_id: str
+    message_index: int
+    rating: str          # "good" | "bad"
+    correction: Optional[str] = None   # filled when rating == "bad"
+
+@app.post("/api/feedback")
+def submit_feedback(req: FeedbackRequest):
+    mem = _get_memory()
+    session = _sessions.get(req.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    msgs = session.get("messages", [])
+    # Find the user msg and assistant msg around the given index
+    user_msgs  = [m for m in msgs if m.get("role") == "user"]
+    asst_msgs  = [m for m in msgs if m.get("role") == "assistant"]
+    idx = req.message_index
+    user_query = user_msgs[idx]["content"] if idx < len(user_msgs) else ""
+    asst_reply = asst_msgs[idx]["content"] if idx < len(asst_msgs) else ""
+
+    if req.rating == "good":
+        # Summarise the reply to ~200 chars for the memory store
+        summary = asst_reply[:200].replace("\n", " ").strip()
+        mem.record_good_pattern(user_query, summary)
+        return {"status": "recorded", "type": "good_pattern"}
+    elif req.rating == "bad" and req.correction:
+        mem.record_correction(user_query, req.correction)
+        return {"status": "recorded", "type": "correction"}
+    return {"status": "ignored"}
+
+@app.get("/api/memory")
+def get_memory_entries():
+    return {"entries": _get_memory().all_entries()}
+
+@app.delete("/api/memory/{entry_id}")
+def delete_memory_entry(entry_id: str):
+    deleted = _get_memory().delete(entry_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    return {"status": "deleted"}
+
+# ── GUI Dashboard ─────────────────────────────────────────────────────────────
+
+@app.get("/", response_class=HTMLResponse)
+def serve_gui():
+    ui_path = os.path.join(os.path.dirname(__file__), "cleo_ui.html")
+    if os.path.exists(ui_path):
+        with open(ui_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content="<h1>Cleo UI template not found</h1>", status_code=500)
+
+if __name__ == "__main__":
+    _uvicorn_log_level = "debug" if os.environ.get("CLEO_VERBOSE", "").lower() in ("1", "true", "yes") else "info"
+    uvicorn.run("cleo_server:app", host="127.0.0.1", port=8080, reload=True, log_level=_uvicorn_log_level)

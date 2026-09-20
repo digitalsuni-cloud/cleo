@@ -1,0 +1,79 @@
+# ── Cleo FinOps Agent — Local Docker Stack ────────────────────────────────────
+# Runs Ollama (local LLM) + Cleo API server together.
+# The OAuth token is read from ~/.cleo on your host (read-only).
+#
+# Usage:
+#   docker compose up           # starts everything (pulls Qwen 7B on first run)
+#   docker compose down -v      # stop and remove volumes
+#
+# Then open: http://localhost:8080
+
+services:
+
+  # ── Ollama — local LLM server ───────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cleo-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # For NVIDIA GPU acceleration, uncomment:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  # ── Init — pull the model once ──────────────────────────────────────────────
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: cleo-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-qwen2.5:7b}"]
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: "no"
+
+  # ── Cleo — agent API + web UI ───────────────────────────────────────────────
+  cleo:
+    build: .
+    container_name: cleo-agent
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      AI_ENGINE: ollama
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      PORT: 8080
+      # Uncomment to use cloud LLM instead:
+      # AI_ENGINE: openai
+      # OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      # Mount your local Cleo token as read-only
+      - ${HOME}/.cleo:/run/secrets/cleo-token:ro
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  ollama_data:

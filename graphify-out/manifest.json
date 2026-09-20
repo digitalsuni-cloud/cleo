@@ -1,0 +1,758 @@
+{
+  "auth/__init__.py": {
+    "mtime": 1789643166.478358,
+    "seen": 1789726715.8784158,
+    "ast_hash": "f081fc358bd1cf83cbf22ee9d6f786d8",
+    "semantic_hash": ""
+  },
+  "auth/oauth.py": {
+    "mtime": 1789892305.884866,
+    "seen": 1789892386.89901,
+    "ast_hash": "875faf260feabe66d47b39f8f6849996",
+    "semantic_hash": ""
+  },
+  "cleo_agent.py": {
+    "mtime": 1789893646.0264118,
+    "seen": 1789893744.746445,
+    "ast_hash": "f62678585e7438c94f34cf604ddbc445",
+    "semantic_hash": ""
+  },
+  "cleo_gui.py": {
+    "mtime": 1789649584.620741,
+    "seen": 1789726715.8784199,
+    "ast_hash": "438b83c69c1c5fde4619bd150d8a2d9a",
+    "semantic_hash": ""
+  },
+  "cleo_logger.py": {
+    "mtime": 1789827944.246809,
+    "seen": 1789829986.0128992,
+    "ast_hash": "1872dc863349b9a5d40b2f63e0a83e76",
+    "semantic_hash": ""
+  },
+  "cleo_server.py": {
+    "mtime": 1789893093.7756774,
+    "seen": 1789893287.6518369,
+    "ast_hash": "610e941e3eafa7a15c52af7af9f70598",
+    "semantic_hash": ""
+  },
+  "workflows/cleo-v1.json": {
+    "mtime": 1789116959.2564054,
+    "seen": 1789726715.878422,
+    "ast_hash": "d97afa8d4e8c81437ed0fe97dd841858",
+    "semantic_hash": ""
+  },
+  "workflows/cleo-v2.json": {
+    "mtime": 1789123855.807782,
+    "seen": 1789726715.878422,
+    "ast_hash": "b14572deb84c6150f048defda649666c",
+    "semantic_hash": ""
+  },
+  ".agents/rules/graphify.md": {
+    "mtime": 1789724290.551734,
+    "seen": 1789726715.878423,
+    "ast_hash": "f1e53ecc9194573d3c28fc116c743a2e",
+    "semantic_hash": ""
+  },
+  ".agents/workflows/graphify.md": {
+    "mtime": 1789724290.5519001,
+    "seen": 1789726715.8784242,
+    "ast_hash": "6d73634a678cf1e1c71930adf80bd1f0",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1789458729.7250204,
+    "seen": 1789726715.878426,
+    "ast_hash": "d68f67ffdc89859b2e45761db1ced326",
+    "semantic_hash": ""
+  },
+  "docker-compose.yml": {
+    "mtime": 1789459421.023,
+    "seen": 1789726715.8784268,
+    "ast_hash": "7de3860a7f6a07d6c78d2cdcd0e36b33",
+    "semantic_hash": ""
+  },
+  "docs/flexreport_sql_guide.md": {
+    "mtime": 1789128029.9900649,
+    "seen": 1789726715.8784268,
+    "ast_hash": "d68e31c88e640b3faa2648593bd8385d",
+    "semantic_hash": ""
+  },
+  "docs/graphql_api_guide.md": {
+    "mtime": 1789128096.5753567,
+    "seen": 1789726715.878428,
+    "ast_hash": "fb22f4318efa741ae05125899bf2c1ea",
+    "semantic_hash": ""
+  },
+  "docs/rest_api_v4_guide.md": {
+    "mtime": 1789128096.5732026,
+    "seen": 1789726715.878428,
+    "ast_hash": "d1a65c910e07c750ca974bc12224cbd8",
+    "semantic_hash": ""
+  },
+  "requirements.txt": {
+    "mtime": 1789647716.73592,
+    "seen": 1789726715.878429,
+    "ast_hash": "1b9a4d969020c20b768fb4103ff8b1fb",
+    "semantic_hash": ""
+  },
+  "cleo_ui.html": {
+    "mtime": 1789892345.8397105,
+    "seen": 1789892386.8990772,
+    "ast_hash": "385d3dd9a7c9d1c218d8fbf7b51936e3",
+    "semantic_hash": ""
+  },
+  "skills-lock.json": {
+    "mtime": 1789802244.2030175,
+    "seen": 1789802859.36774,
+    "ast_hash": "1fdb54277684f41969c8d0aad8f2329f",
+    "semantic_hash": ""
+  },
+  ".agents/skills/brandkit/SKILL.md": {
+    "mtime": 1789802243.5712216,
+    "seen": 1789802859.367743,
+    "ast_hash": "cd3701c774e9bd7ce4fc9078377d517f",
+    "semantic_hash": ""
+  },
+  ".agents/skills/design-taste-frontend-v1/SKILL.md": {
+    "mtime": 1789802244.1924183,
+    "seen": 1789802859.367743,
+    "ast_hash": "d0ee97b35983cf5e786e5b65994a2ecb",
+    "semantic_hash": ""
+  },
+  ".agents/skills/design-taste-frontend/SKILL.md": {
+    "mtime": 1789802244.143354,
+    "seen": 1789802859.367744,
+    "ast_hash": "6f73606d20cd948b471b1ce1767aab50",
+    "semantic_hash": ""
+  },
+  ".agents/skills/full-output-enforcement/SKILL.md": {
+    "mtime": 1789802243.9116607,
+    "seen": 1789802859.367745,
+    "ast_hash": "5ed528ceb72c5d089757ba70c5a434e8",
+    "semantic_hash": ""
+  },
+  ".agents/skills/gpt-taste/SKILL.md": {
+    "mtime": 1789802243.6771321,
+    "seen": 1789802859.367745,
+    "ast_hash": "0968d17fda872b36dc35e6bcc0c9af36",
+    "semantic_hash": ""
+  },
+  ".agents/skills/high-end-visual-design/SKILL.md": {
+    "mtime": 1789802244.023061,
+    "seen": 1789802859.367746,
+    "ast_hash": "269e37851b3a17693d8052f5f8002cfc",
+    "semantic_hash": ""
+  },
+  ".agents/skills/image-to-code/SKILL.md": {
+    "mtime": 1789802243.722972,
+    "seen": 1789802859.367746,
+    "ast_hash": "442613e4710f0005b94f1c4b1d3ac246",
+    "semantic_hash": ""
+  },
+  ".agents/skills/imagegen-frontend-mobile/SKILL.md": {
+    "mtime": 1789802243.7713373,
+    "seen": 1789802859.367747,
+    "ast_hash": "4c84e37e50e610779a71e0fb0a198963",
+    "semantic_hash": ""
+  },
+  ".agents/skills/imagegen-frontend-web/SKILL.md": {
+    "mtime": 1789802243.8189654,
+    "seen": 1789802859.367747,
+    "ast_hash": "208c5866f7320c7f842283b312a00e17",
+    "semantic_hash": ""
+  },
+  ".agents/skills/industrial-brutalist-ui/SKILL.md": {
+    "mtime": 1789802243.6288955,
+    "seen": 1789802859.367748,
+    "ast_hash": "9e673477ecc2eaf4a230c8326cbc2f0d",
+    "semantic_hash": ""
+  },
+  ".agents/skills/minimalist-ui/SKILL.md": {
+    "mtime": 1789802243.866683,
+    "seen": 1789802859.367748,
+    "ast_hash": "c7f814d7df4b1b0e3eebf706a6d74adf",
+    "semantic_hash": ""
+  },
+  ".agents/skills/redesign-existing-projects/SKILL.md": {
+    "mtime": 1789802243.9674962,
+    "seen": 1789802859.3677492,
+    "ast_hash": "31d802d02ccb9f5da82d99156af36317",
+    "semantic_hash": ""
+  },
+  ".agents/skills/stitch-design-taste/DESIGN.md": {
+    "mtime": 1789802244.0909944,
+    "seen": 1789802859.3677492,
+    "ast_hash": "ee7cc02dcc99eda38299a5a6f6727563",
+    "semantic_hash": ""
+  },
+  ".agents/skills/stitch-design-taste/SKILL.md": {
+    "mtime": 1789802244.0909915,
+    "seen": 1789802859.36775,
+    "ast_hash": "82dc71a62461f956b5666c1041efc886",
+    "semantic_hash": ""
+  },
+  "agent/skills/brandkit/SKILL.md": {
+    "mtime": 1789802243.5336916,
+    "seen": 1789802859.3677518,
+    "ast_hash": "39a8196fa8879d5adb24274f18112279",
+    "semantic_hash": ""
+  },
+  "agent/skills/design-taste-frontend-v1/SKILL.md": {
+    "mtime": 1789802244.1604204,
+    "seen": 1789802859.367753,
+    "ast_hash": "b9dd23ac6b2c54a8d06238229992a38c",
+    "semantic_hash": ""
+  },
+  "agent/skills/design-taste-frontend/SKILL.md": {
+    "mtime": 1789802244.1088786,
+    "seen": 1789802859.367753,
+    "ast_hash": "3014c2f2afbacc27c4b4923db5ec12fe",
+    "semantic_hash": ""
+  },
+  "agent/skills/full-output-enforcement/SKILL.md": {
+    "mtime": 1789802243.8815248,
+    "seen": 1789802859.367754,
+    "ast_hash": "eddf2267711350258c751dbb6d1fc224",
+    "semantic_hash": ""
+  },
+  "agent/skills/gpt-taste/SKILL.md": {
+    "mtime": 1789802243.6452959,
+    "seen": 1789802859.367754,
+    "ast_hash": "555ab729c566eb9597b4bf21792b6be6",
+    "semantic_hash": ""
+  },
+  "agent/skills/high-end-visual-design/SKILL.md": {
+    "mtime": 1789802243.9868584,
+    "seen": 1789802859.367755,
+    "ast_hash": "516f6a6e816b671cc70b74491acecc32",
+    "semantic_hash": ""
+  },
+  "agent/skills/image-to-code/SKILL.md": {
+    "mtime": 1789802243.6926024,
+    "seen": 1789802859.367755,
+    "ast_hash": "1ad1318cb6d455dc707c495ba1fb454f",
+    "semantic_hash": ""
+  },
+  "agent/skills/imagegen-frontend-mobile/SKILL.md": {
+    "mtime": 1789802243.7384272,
+    "seen": 1789802859.3677561,
+    "ast_hash": "3490eefdeaa64aed7cdabdd348a0b136",
+    "semantic_hash": ""
+  },
+  "agent/skills/imagegen-frontend-web/SKILL.md": {
+    "mtime": 1789802243.787169,
+    "seen": 1789802859.3677561,
+    "ast_hash": "af6ddea2cf93470b5cfd8d25ce2f7078",
+    "semantic_hash": ""
+  },
+  "agent/skills/industrial-brutalist-ui/SKILL.md": {
+    "mtime": 1789802243.5903718,
+    "seen": 1789802859.367757,
+    "ast_hash": "788ffc6c0071acb3fad2f6234c0c26c6",
+    "semantic_hash": ""
+  },
+  "agent/skills/minimalist-ui/SKILL.md": {
+    "mtime": 1789802243.8347049,
+    "seen": 1789802859.367757,
+    "ast_hash": "73faa12a89c4d421e92425d196eb263d",
+    "semantic_hash": ""
+  },
+  "agent/skills/redesign-existing-projects/SKILL.md": {
+    "mtime": 1789802243.9305305,
+    "seen": 1789802859.367758,
+    "ast_hash": "19de6d6625a1857c495b68a77686513d",
+    "semantic_hash": ""
+  },
+  "agent/skills/stitch-design-taste/DESIGN.md": {
+    "mtime": 1789802244.0453339,
+    "seen": 1789802859.367759,
+    "ast_hash": "ee7cc02dcc99eda38299a5a6f6727563",
+    "semantic_hash": ""
+  },
+  "agent/skills/stitch-design-taste/SKILL.md": {
+    "mtime": 1789802244.0452683,
+    "seen": 1789802859.367759,
+    "ast_hash": "e56d8360493798cf1d019ebbd553d373",
+    "semantic_hash": ""
+  },
+  ".agents/rules/finops.md": {
+    "mtime": 1789804827.347749,
+    "seen": 1789804856.429058,
+    "ast_hash": "bc0b7de8fec74227b9105a8cd39e81df",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/POWER.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.4290612,
+    "ast_hash": "5f7b8cd8b4dbc3b2b48de3d825171c02",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/SKILL.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.4290612,
+    "ast_hash": "8f0c5d95679f45282f1f445a312085a6",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/README.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429062,
+    "ast_hash": "9b777e18b92ac97aac62d049178dd738",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-cross-az-egress.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.4290628,
+    "ast_hash": "d16d0117c829189187e126b2d5ba59b8",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-expiring-commitment-no-decision.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.4290628,
+    "ast_hash": "a65d48dfb0f1976895a17819f09ffeb6",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-gp2-to-gp3.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.4290628,
+    "ast_hash": "7c53e347d63b03b969e85c083006b82d",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-gpu-for-cpu-bound-workload.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429064,
+    "ast_hash": "b99bd26ca260a84b92dbeda98648b6f1",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-gpu-instance-oversized.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429065,
+    "ast_hash": "eae6fe044dac0ad64563c2a50cb3d228",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-graviton-candidate.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429065,
+    "ast_hash": "9370ad7b40d4233d7203b54a39314afb",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-idle-load-balancer.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429065,
+    "ast_hash": "84e556718cb5e90403b23f9156d62b50",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-mig-candidate.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429066,
+    "ast_hash": "1476b6e7be3d86727fde5d60cf79e833",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-multi-gpu-underutilized.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429066,
+    "ast_hash": "d581bb1600f8f27d2aeee2354ae6ad0e",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-nat-gateway-endpoint-substitution.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429067,
+    "ast_hash": "11f287e5a67d07b10b6d3effa9692a27",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-orphaned-ebs-volumes.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429067,
+    "ast_hash": "c6850b123e3aff3aa8dbb3099392a51a",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-outdated-gpu-generation.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429068,
+    "ast_hash": "4bf6b8b4e43649b88c7ec7cd24a24bf5",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-oversized-rds.md": {
+    "mtime": 1789829699.2041454,
+    "seen": 1789829986.0129158,
+    "ast_hash": "477970547d5d3a70e614feb3a3158e44",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-s3-cold-data-in-standard.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429069,
+    "ast_hash": "98868794f2b9c1fb8fc4df194d213fbc",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-s3-incomplete-multipart-uploads.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429069,
+    "ast_hash": "2e8b2498ebc2dca87138eed958840653",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-s3-noncurrent-version-sprawl.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.42907,
+    "ast_hash": "0bf1f32ed3d1dd8ff808e8c645b3a680",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-sagemaker-idle-endpoint.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.42907,
+    "ast_hash": "41e0a6dec448a736aa5f0a6bdcddc981",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-sagemaker-mme-consolidation.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.4290712,
+    "ast_hash": "eb730f908c948cc2eae203c8a486f2b1",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-sagemaker-notebook-always-on.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.4290712,
+    "ast_hash": "5ec41d24d196f5cd3e4d09f0f8f0a309",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-snapshot-sprawl.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429072,
+    "ast_hash": "9e8897850ff263569b70a4bb5537138e",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/aws-zombie-nat-gateway.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.4290729,
+    "ast_hash": "39fae3b8cbcecc88fd4ae0bd52f8070a",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/azure-app-service-overprovisioned.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.4290729,
+    "ast_hash": "93457d22e4aecf642397d5e9d62fb9d5",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/azure-idle-sql-database.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.4290738,
+    "ast_hash": "ed60717f66a732de757ab1d31f893ad1",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/azure-idle-vm.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.4290738,
+    "ast_hash": "c2df9ed81eef80b4e9c771e701b92c4b",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/azure-log-analytics-sprawl.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.4290738,
+    "ast_hash": "ad22a3ff396587c1764e4aad1559bad3",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/azure-orphan-disks.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429075,
+    "ast_hash": "97797fdadff6477ac4bf69a4bdb8f409",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/azure-orphaned-public-ips-and-nics.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429075,
+    "ast_hash": "c7da1c9ef6f6e4717ff9f1c19c1a330d",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/azure-snapshot-sprawl.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429076,
+    "ast_hash": "4fa751b6740e604e13b03fa10b9caffd",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/azure-unused-reservation.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429076,
+    "ast_hash": "be0893e50049ee39801b6389ddc486ee",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/cross-cloud-agent-loop-burn.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429077,
+    "ast_hash": "972cb2a8112fb44eb24263ea389fe946",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/cross-cloud-coding-agent-token-waste.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429077,
+    "ast_hash": "8af29dc0a696cbb424f706d897bd08a5",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/cross-cloud-schedule-blindness.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429078,
+    "ast_hash": "764be6b05d96a5d02bd504a168ca4a70",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/cross-cloud-untagged-spend-drift.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429078,
+    "ast_hash": "74f999c04296ac286c9d8f03de69eb35",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/gcp-cloud-functions-cold-starts.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429079,
+    "ast_hash": "bb55d693f67c0b5269644d420911a20e",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/gcp-cud-mismatch.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.429079,
+    "ast_hash": "f358836cd17f16ffd3c57127b751c18a",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/gcp-idle-gke-autopilot.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.42908,
+    "ast_hash": "039e85d2913f6b01c6a18ec5ea36c1fa",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/playbooks/gcp-orphan-persistent-disks.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.4290812,
+    "ast_hash": "4098cb2f3dd34614a12de0817458604c",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-agentic.md": {
+    "mtime": 1788982640.0,
+    "seen": 1789804856.4290812,
+    "ast_hash": "10690cdb0e3f65df685d6582f42df753",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-ai-dev-tools.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.4290822,
+    "ast_hash": "3dcd90282b43f62c321e95c39202efbe",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-ai-self-hosted-vs-managed.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.4290822,
+    "ast_hash": "375639241b4d67d7247fdee9dffdc5df",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-ai-value-management.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.4290829,
+    "ast_hash": "0d4ec79c8f1a46bc1c55e0fd12826ee8",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-allocation-showback.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.4290829,
+    "ast_hash": "6116b4884f2d85e2e5b2e37279001449",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-anomaly-management.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.4290838,
+    "ast_hash": "7446e16e175b99a042b218b01e4f7abb",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-anthropic.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.4290838,
+    "ast_hash": "165c457a53d79b833fdec81efaf78c05",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-aws-commitments.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429085,
+    "ast_hash": "266e9234a1c99091436f7e8488482237",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-aws-patterns.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429085,
+    "ast_hash": "3cb2045125e1992eedd4825648bee46b",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-aws.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429086,
+    "ast_hash": "ca39aefe9837b8e5b8a9a664b279da46",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-azure-commitments.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429086,
+    "ast_hash": "df2b6a2d4e221d6008804477e5df9ed6",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-azure-openai.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429086,
+    "ast_hash": "b053a1f22456a6a33e724fc27b22a1e6",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-azure-patterns.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429087,
+    "ast_hash": "9f1f5a82be0bbd7bc321f333703e6219",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-azure.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429087,
+    "ast_hash": "30339d9fd0083fa5ea790e502ec38461",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-bedrock.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429088,
+    "ast_hash": "9539cc98c326481f468c36510167f320",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-chargeback.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429088,
+    "ast_hash": "616e8eff8038f536c550e543a48b07b4",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-databricks.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429089,
+    "ast_hash": "2093796833742eaa19ae998655c0be3c",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-fabric.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429089,
+    "ast_hash": "2f2124db7db18737f83a888f1a54324c",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-for-ai.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.42909,
+    "ast_hash": "a200bf32ae5cc2606da989ef5d80315e",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-framework.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.42909,
+    "ast_hash": "f50ab7e37999e94060a3ca989c8a7905",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-gcp.md": {
+    "mtime": 1789829692.2876472,
+    "seen": 1789829986.012945,
+    "ast_hash": "d9a7f102b82f8822be35bd7aa02a0c78",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-genai-capacity.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429091,
+    "ast_hash": "7edf83de7820a75355a451b9d58bd203",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-itam.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.4290922,
+    "ast_hash": "dee630a0214592729703147af3ffdcf5",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-kpis-benchmarking.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.4290922,
+    "ast_hash": "f260eb01b5d4c9110973f31f2c4e8fba",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-kubernetes.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.4290931,
+    "ast_hash": "afb58d77f6290762ec4e1097d43102c1",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-oci.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.4290931,
+    "ast_hash": "477df54ccc9d7994eefbd7ee63c7743b",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-onboarding-workloads.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.4290938,
+    "ast_hash": "67f9ddaddb30e1c42f9b1a981a3f9746",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-open-weight-vendors.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.4290938,
+    "ast_hash": "b36dbafef4e4d7a0922316e5a6bba52c",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-sam.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429095,
+    "ast_hash": "4a0979ca8d64e1c87b521231976d8443",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-snowflake.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429095,
+    "ast_hash": "fc1468d7858f79d8446d39fee7cda55e",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-tagging.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429095,
+    "ast_hash": "55702ab65e097ad24e1d3186d34d2d50",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-vertexai.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429096,
+    "ast_hash": "22ea0db378e40a6c2564851c50673ac7",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/finops-waste-detection-playbooks.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429096,
+    "ast_hash": "c3516d429e82198ca543dcf25567ee38",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/greenops-cloud-carbon.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429097,
+    "ast_hash": "b35096be33da66fff7461b5e8771de3d",
+    "semantic_hash": ""
+  },
+  ".agents/skills/cloud-finops/references/optimnow-methodology.md": {
+    "mtime": 1788982641.0,
+    "seen": 1789804856.429097,
+    "ast_hash": "642a993d182a9672e2555c2a05fb321f",
+    "semantic_hash": ""
+  },
+  "cleo_finops_refs.py": {
+    "mtime": 1789829869.358671,
+    "seen": 1789829986.012897,
+    "ast_hash": "661cd1e9aac0c6029474b0db5e069296",
+    "semantic_hash": ""
+  },
+  "cleo_memory.py": {
+    "mtime": 1789893409.573656,
+    "seen": 1789893744.7464478,
+    "ast_hash": "53464c55201d9f7cdb7cbe870414721b",
+    "semantic_hash": ""
+  },
+  "test_cleo_finops_suite.py": {
+    "mtime": 1789893248.701215,
+    "seen": 1789893287.651838,
+    "ast_hash": "43b84ced49971e7dcb9faf9d99362c9d",
+    "semantic_hash": ""
+  },
+  ".claude/settings.local.json": {
+    "mtime": 1789892398.0315053,
+    "seen": 1789893287.651828,
+    "ast_hash": "07cb8da85144e4089f5ed59cddd9272d",
+    "semantic_hash": ""
+  }
+}
