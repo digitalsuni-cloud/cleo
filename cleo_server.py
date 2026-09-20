@@ -620,6 +620,34 @@ def health():
 def get_tools():
     return {"tools": _tools}
 
+_cached_customers = None
+
+@app.get("/api/customers")
+def get_channel_customers():
+    """Returns dynamic list of active partner channel customers."""
+    global _cached_customers
+    if _cached_customers is not None:
+        return {"customers": _cached_customers}
+    if not _mcp:
+        return {"customers": []}
+    try:
+        res = _mcp.call_tool("list_channel_customers", {})
+        txt = res.get("content", [{}])[0].get("text", "[]")
+        custs = json.loads(txt)
+        cleaned = []
+        for c in custs:
+            if isinstance(c, dict) and c.get("name"):
+                cleaned.append({
+                    "id": c.get("customerId", ""),
+                    "name": c.get("name", "").strip(),
+                    "status": c.get("status", "ACTIVE")
+                })
+        _cached_customers = cleaned
+        return {"customers": cleaned}
+    except Exception as e:
+        logger.warning(f"[API Customers] {e}")
+        return {"customers": []}
+
 @app.get("/api/engines")
 def list_engines():
     cfg = _load_config()
