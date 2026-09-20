@@ -2203,13 +2203,13 @@
               <div class="welcome-card-title">Top Cloud Services (All Clouds)</div>
               <div class="welcome-card-desc">Ranked monthly spend across AWS, Azure, GCP, and OCI with MoM variance.</div>
             </div>
-            <div class="welcome-card" onclick="sendPrompt('Find channel customers and show multi-cloud spend for July 2026')">
+            <div class="welcome-card" onclick="sendPrompt('Find channel customers and show multi-cloud spend this month')">
               <div class="welcome-card-title">Channel Customers</div>
               <div class="welcome-card-desc">Partner customer spend breakdown across cloud infrastructure.</div>
             </div>
-            <div class="welcome-card" onclick="sendPrompt('compare previous month service level cost for OpenNet with the current month project cost across all clouds')">
-              <div class="welcome-card-title">OpenNet Service Comparison</div>
-              <div class="welcome-card-desc">Service-by-service run-rate forecast and variance breakdown.</div>
+            <div class="welcome-card" id="card-service-comparison" onclick="sendPrompt('Compare previous month service level cost with the current month projected cost across all clouds')">
+              <div class="welcome-card-title" id="card-comparison-title">Service Spend Comparison</div>
+              <div class="welcome-card-desc" id="card-comparison-desc">Service-by-service run-rate forecast and variance breakdown.</div>
             </div>
             <div class="welcome-card" onclick="sendPrompt('What are our top cost optimization recommendations across all cloud providers?')">
               <div class="welcome-card-title">Waste Reclamation</div>
@@ -4853,10 +4853,27 @@
 
     function generateFollowUpChips(respText, userPrompt) {
       const rlow = (respText || '').toLowerCase();
+      const plow = (userPrompt || '').toLowerCase();
       const chips = [];
 
-      const custMatch = (respText || '').match(/Cost Breakdown:\s*([A-Za-z0-9\s_\-\(\)]+?)(?:—|\n|$)/i);
-      const custName = custMatch ? custMatch[1].trim() : null;
+      let custName = null;
+      const m1 = (respText || '').match(/for\s+\*\*([A-Za-z0-9\s_\-\(\)]+?)\*\*/i);
+      const m2 = (respText || '').match(/\|\s*\*\*([A-Za-z0-9\s_\-\(\)]+?)\*\*\s*\|/);
+      const m3 = (respText || '').match(/Cost Breakdown:\s*([A-Za-z0-9\s_\-\(\)]+?)(?:—|\n|$)/i);
+      for (const m of [m1, m2, m3]) {
+        if (m && m[1]) {
+          const cand = m[1].trim();
+          if (!['total', 'all', 'all accounts', 'customer name', 'cloud provider', 'service category', 'all instance types', 'cloud infrastructure'].includes(cand.toLowerCase())) {
+            custName = cand;
+            break;
+          }
+        }
+      }
+
+      if (!custName && window.channelCustomers && window.channelCustomers.length > 0) {
+        const found = window.channelCustomers.find(c => plow.includes(c.name.toLowerCase()));
+        if (found) custName = found.name;
+      }
 
       if (custName) {
         if (rlow.includes('azure')) {
@@ -4871,7 +4888,12 @@
           chips.push(`Show Azure spend for ${custName}`, `Show EC2 spend for ${custName}`, `Compare with previous month`);
         }
       } else if (rlow.includes('channel customer') || rlow.includes('customer name')) {
-        chips.push('Breakdown for OpenNet', 'Sort in ascending order', 'Top cloud services (All Clouds)');
+        const sampleCust = (window.channelCustomers && window.channelCustomers.length > 0) ? window.channelCustomers[0].name : null;
+        if (sampleCust) {
+          chips.push(`Breakdown for ${sampleCust}`, 'Sort in ascending order', 'Top cloud services (All Clouds)');
+        } else {
+          chips.push('Top channel customers by spend', 'Sort in ascending order', 'Top cloud services (All Clouds)');
+        }
       } else if (rlow.includes('azure')) {
         chips.push('Show top GCP services', 'Show top AWS services', 'Top channel customers by spend');
       } else if (rlow.includes('gcp') || rlow.includes('bigquery')) {
@@ -4879,7 +4901,12 @@
       } else if (rlow.includes('top') && rlow.includes('services')) {
         chips.push('Show Azure spend', 'Show GCP spend', 'Show OCI spend');
       } else {
-        chips.push('Top cloud services across all clouds', 'Show Azure spend', 'Breakdown for OpenNet');
+        const sampleCust = (window.channelCustomers && window.channelCustomers.length > 0) ? window.channelCustomers[0].name : null;
+        if (sampleCust) {
+          chips.push('Top cloud services across all clouds', 'Show Azure spend', `Breakdown for ${sampleCust}`);
+        } else {
+          chips.push('Top cloud services across all clouds', 'Show Azure spend', 'Top channel customers by spend');
+        }
       }
       return chips.slice(0, 3);
     }
@@ -5057,11 +5084,36 @@
       });
     }
 
+    // ── Dynamic Channel Customer Fetching ──
+    async function fetchChannelCustomers() {
+      try {
+        const res = await fetch('/api/customers');
+        if (!res.ok) return;
+        const data = await res.json();
+        window.channelCustomers = data.customers || [];
+        if (window.channelCustomers.length > 0) {
+          // Dynamically adapt the customer comparison card to the primary channel customer
+          const topCust = window.channelCustomers.find(c => c.name === 'Lundbeck') ? 'Lundbeck' : window.channelCustomers[0].name;
+          const card = document.getElementById('card-service-comparison');
+          const title = document.getElementById('card-comparison-title');
+          const desc = document.getElementById('card-comparison-desc');
+          if (card && title) {
+            title.textContent = `${topCust} Service Comparison`;
+            if (desc) desc.textContent = `Service run-rate forecast and variance breakdown for ${topCust}.`;
+            card.onclick = () => sendPrompt(`Compare previous month service level cost for ${topCust} with current month projected cost across all clouds`);
+          }
+        }
+      } catch (e) {
+        console.debug('[fetchChannelCustomers]', e);
+      }
+    }
+
     // ── Initialize ──
     updateInputHeight();
     checkHealth();
     loadEngines();
     loadHistoryList();
+    fetchChannelCustomers();
 
     setInterval(checkHealth, 5000);
   </script>
