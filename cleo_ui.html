@@ -4012,6 +4012,14 @@
     }
     function toggleChMenu(e) {
       e.stopPropagation();
+      // Never connected yet: the dropdown would only offer one entry ("Connect"), so skip
+      // it and connect directly. Once unauthorized/connected there's a real choice
+      // (Reconnect vs Disconnect, or Switch Account vs Disconnect) — keep the dropdown then.
+      const connectLabel = document.getElementById('connect-btn')?.querySelector('span')?.textContent;
+      if (connectLabel === 'Connect') {
+        connectCloudHealth();
+        return;
+      }
       const wrap = document.getElementById('ch-status-wrap');
       wrap.classList.toggle('open');
     }
