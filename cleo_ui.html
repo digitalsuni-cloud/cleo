@@ -62,6 +62,36 @@
       align-items: center;
       gap: 12px;
     }
+    .brand-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      text-decoration: none;
+      padding: 4px 8px;
+      margin: -4px -8px;
+      border-radius: 8px;
+      transition: background 0.15s ease, transform 0.1s ease;
+      user-select: none;
+    }
+    .brand-link:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .brand-link:hover .brand-name {
+      color: #38bdf8;
+      transition: color 0.15s ease;
+    }
+    .brand-link:hover .brand-logo-wrap {
+      transform: scale(1.05);
+      filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.45));
+    }
+    .brand-link:active {
+      transform: scale(0.98);
+    }
+    .brand-link:focus-visible {
+      outline: 2px solid #38bdf8;
+      outline-offset: 2px;
+    }
     .icon-btn {
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid var(--border);
@@ -88,7 +118,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: opacity 0.15s ease;
+      transition: transform 0.15s ease, filter 0.15s ease, opacity 0.15s ease;
     }
     .brand-logo-wrap:hover {
       opacity: 0.9;
@@ -2008,35 +2038,37 @@
         </svg>
       </button>
       
-      <div class="brand-logo-wrap" title="Cleo FinOps Agent">
-        <svg class="cleo-logo-svg" width="30" height="30" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="chGradTop" x1="24" y1="4" x2="24" y2="24" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#38bdf8" />
-              <stop offset="100%" stop-color="#0284c7" />
-            </linearGradient>
-            <linearGradient id="chGradLeft" x1="6" y1="14" x2="24" y2="44" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#818cf8" />
-              <stop offset="100%" stop-color="#4f46e5" />
-            </linearGradient>
-            <linearGradient id="chGradRight" x1="42" y1="14" x2="24" y2="44" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#34d399" />
-              <stop offset="100%" stop-color="#059669" />
-            </linearGradient>
-          </defs>
-          <polygon points="24,4 42,14 24,24 6,14" fill="url(#chGradTop)" opacity="0.95" />
-          <polygon points="6,14 24,24 24,44 6,34" fill="url(#chGradLeft)" opacity="0.95" />
-          <polygon points="42,14 42,34 24,44 24,24" fill="url(#chGradRight)" opacity="0.95" />
-          <circle cx="24" cy="24" r="3.5" fill="#ffffff" />
-        </svg>
-      </div>
-
-      <div class="brand-text">
-        <div class="brand-title-row">
-          <span class="brand-name">CLEO</span>
-          <span class="brand-tag">FINOPS AI</span>
+      <div class="brand-link" onclick="goToLandingPage()" role="button" tabindex="0" title="Return to Cleo Landing Page" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();goToLandingPage();}">
+        <div class="brand-logo-wrap" title="Cleo FinOps Agent">
+          <svg class="cleo-logo-svg" width="30" height="30" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="chGradTop" x1="24" y1="4" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#38bdf8" />
+                <stop offset="100%" stop-color="#0284c7" />
+              </linearGradient>
+              <linearGradient id="chGradLeft" x1="6" y1="14" x2="24" y2="44" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#818cf8" />
+                <stop offset="100%" stop-color="#4f46e5" />
+              </linearGradient>
+              <linearGradient id="chGradRight" x1="42" y1="14" x2="24" y2="44" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#34d399" />
+                <stop offset="100%" stop-color="#059669" />
+              </linearGradient>
+            </defs>
+            <polygon points="24,4 42,14 24,24 6,14" fill="url(#chGradTop)" opacity="0.95" />
+            <polygon points="6,14 24,24 24,44 6,34" fill="url(#chGradLeft)" opacity="0.95" />
+            <polygon points="42,14 42,34 24,44 24,24" fill="url(#chGradRight)" opacity="0.95" />
+            <circle cx="24" cy="24" r="3.5" fill="#ffffff" />
+          </svg>
         </div>
-        <div class="brand-subtitle">CloudHealth Autonomous Intelligence</div>
+
+        <div class="brand-text">
+          <div class="brand-title-row">
+            <span class="brand-name">CLEO</span>
+            <span class="brand-tag">FINOPS AI</span>
+          </div>
+          <div class="brand-subtitle">CloudHealth Autonomous Intelligence</div>
+        </div>
       </div>
     </div>
 
@@ -4388,6 +4420,22 @@
       }
 
       modal.style.display = 'flex';
+
+      // For pie/doughnut: constrain wrap width so Chart.js sizes the canvas
+      // to a smaller parent, then margin:auto centers it in the flex modal.
+      const canvasWrap = canvas.parentElement;
+      canvasWrap.className = 'expanded-chart-canvas-wrap'; // reset any prior class
+      if (['pie', 'doughnut'].includes(config.type)) {
+        canvasWrap.style.maxWidth = 'min(620px, 70%)';
+        canvasWrap.style.margin = 'auto';
+        canvasWrap.style.width = '100%';
+        canvasWrap.style.height = '100%';
+      } else {
+        canvasWrap.style.maxWidth = '';
+        canvasWrap.style.margin = '';
+        canvasWrap.style.width = '100%';
+        canvasWrap.style.height = '100%';
+      }
 
       const isPie = ['pie', 'doughnut'].includes(config.type);
       const baseOpts = config.options || {};
