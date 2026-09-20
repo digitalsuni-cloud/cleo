@@ -2248,7 +2248,7 @@
         <button class="ch-status-btn" id="ch-status-btn" onclick="toggleChMenu(event)" title="CloudHealth connection status">
           <span class="dot dot-pulse" id="ch-dot"></span>
           <span id="badge-text">Checking...</span>
-          <svg class="ch-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+          <svg class="ch-chevron" id="ch-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
         </button>
         <div class="ch-dropdown" id="ch-dropdown">
           <button id="connect-btn" class="ch-menu-item" onclick="connectCloudHealth(); closeChMenu();">
@@ -3926,6 +3926,7 @@
         const disconnectBtn = document.getElementById('disconnect-btn');
         const chDot = document.getElementById('ch-dot');
         const chStatusBtn = document.getElementById('ch-status-btn');
+        const chChevron = document.getElementById('ch-chevron');
         const toolCount = document.getElementById('tool-count');
         const aiEngine = document.getElementById('ai-engine-label');
 
@@ -3939,6 +3940,7 @@
           badgeText.textContent = `CloudHealth Active (${data.tools_count} tools)`;
           if (connectBtn) connectBtn.querySelector('span').textContent = 'Switch Account';
           if (disconnectBtn) disconnectBtn.style.display = 'flex';
+          if (chChevron) chChevron.style.display = '';
           if (toolCount) toolCount.textContent = `${data.tools_count} tools`;
           if (sidebarBadge) sidebarBadge.textContent = `${data.tools_count}`;
           renderTools(data.tools);
@@ -3948,6 +3950,7 @@
           badgeText.textContent = 'MCP Unauthorized';
           if (connectBtn) connectBtn.querySelector('span').textContent = 'Reconnect';
           if (disconnectBtn) disconnectBtn.style.display = 'flex';
+          if (chChevron) chChevron.style.display = '';
           if (toolCount) toolCount.textContent = '0 tools';
           if (sidebarBadge) sidebarBadge.textContent = '0';
           renderErrorNotice(data.last_error);
@@ -3957,6 +3960,7 @@
           badgeText.textContent = 'Connect CloudHealth';
           if (connectBtn) connectBtn.querySelector('span').textContent = 'Connect';
           if (disconnectBtn) disconnectBtn.style.display = 'none';
+          if (chChevron) chChevron.style.display = 'none';
           if (toolCount) toolCount.textContent = '0 tools';
           if (sidebarBadge) sidebarBadge.textContent = '0';
           renderTools([]);
