@@ -1,0 +1,734 @@
+---
+name: finops-for-ai
+fcp_domain: "Quantify Business Value"
+fcp_capability: "Unit Economics"
+fcp_capabilities_secondary: ["Usage Optimization", "Allocation"]
+fcp_phases: ["Inform", "Optimize"]
+fcp_personas_primary: ["FinOps Practitioner", "Engineering", "Product"]
+fcp_personas_collaborating: ["Finance", "Leadership"]
+fcp_maturity_entry: "Walk"
+---
+
+# FinOps for AI
+
+> AI workloads do not behave like infrastructure workloads. The tools, processes, and
+> mental models that have served cloud teams for a decade are insufficient on their own.
+> This file covers how to apply and extend FinOps discipline to AI cost management.
+
+---
+
+## AI cost management is no longer optional
+
+The State of FinOps 2026 survey (6th edition, 1,192 respondents, published February 2026)
+confirms that AI cost management has shifted from emerging concern to universal priority.
+The trajectory is striking: 31% of respondents managed AI spend in 2024, 63% in 2025,
+and 98% in 2026. AI cost management is now the #1 skillset that FinOps teams need to
+develop, and 81% of respondents are actively exploring how AI can improve FinOps
+efficiency itself. Many organisations report being asked to self-fund AI investments
+through efficiency gains - tying FinOps directly to strategic AI enablement.
+
+---
+
+## Why AI cost signals behave differently
+<!-- ref:37b46c22605776cb -->
+
+Traditional FinOps assumes a rhythm: usage happens first, costs are reported later,
+decisions follow. AI disrupts this sequence. With LLMs and agentic systems, cost is
+incurred at the moment a decision is made - a longer prompt, an extra retry, a different
+model, or a poorly bounded loop can change spend materially in seconds, not weeks.
+
+| Dimension | Traditional Cloud | AI Workloads |
+|---|---|---|
+| Cost unit | vCPU-hour, GB-month | Token, inference call, GPU-second |
+| Predictability | High - instance type × hours | Low - depends on user behaviour and model design |
+| Billing speed | Hourly/daily accumulation | Per-request, immediate COGS |
+| Attribution unit | Infrastructure tag | Application-layer metadata |
+| Optimisation lever | Rightsizing, reservations | Model selection, prompt design, caching, routing |
+| FinOps sequence | Report → Allocate → Optimise | Allocate first → Real-time ingest → Report |
+| Variance source | Provisioning decisions | User behaviour, prompt length, context window |
+
+**The structural mismatch:** Traditional FinOps was built for predictable infrastructure.
+AI workloads behave more like real-time COGS than capacity plans. A feature estimated
+at $1,600/month can cost $8,800 without any infrastructure change - the variance comes
+entirely from user behaviour and model design decisions.
+
+**The critical inversion:** For AI workloads, the FinOps sequence must run in reverse.
+Cost allocation must happen *before* the cost is created, not after the bill arrives.
+Organisations that wait for monthly invoices to understand AI spend are already operating
+with a structural disadvantage that compounds with every new model deployment.
+
+**Where token cost is actually determined.** Token cost is not one number but the
+output of decisions stacked across the serving path. The Tokenomics Foundation - a
+Linux Foundation project launched in 2026 to standardise AI cost management, with
+token cost telemetry in the FOCUS specification on its roadmap - decomposes it as a
+five-layer stack in *The Five-Layer Tokenomics Stack*
+(<https://www.tokeneconomics.com/projects/the-five-layer-tokenomics-stack/the-five-layer-tokenomics-stack-paper/>,
+stack concept credited to Ambud Sharma, Pinterest): L1 silicon (chip generation),
+L2 capacity (hardware selection, placement, utilisation), L3 inference stack
+(serving engine, caching, batching), L4 model and quantisation, L5 routing and
+governance (budgets, agent caps). The framing is diagnostic: a unit-cost problem
+blamed on the model (L4) often lives in utilisation (L2) or batching (L3), and the
+only layer most API consumers control is L5 - which is where this file's routing
+and governance guidance operates. The foundation is young; treat its specifications
+as roadmap until published.
+
+---
+
+## The four-phase AI FinOps implementation
+
+### Phase 1: Establish AI cost visibility (prerequisite)
+
+Without request-level attribution, everything downstream is guesswork.
+
+**What is required:**
+
+**Request-level instrumentation** - attach metadata to every API call at the moment of
+invocation. Minimum required fields:
+- Feature or product name
+- User or session identifier
+- Model name and version
+- Prompt template version or ID
+- Environment (prod / staging / dev)
+
+**A proxy or gateway layer** - sits between your application and the AI provider,
+attaches metadata before requests execute. Options by complexity:
+
+| Option | Examples | Effort | Metadata richness |
+|---|---|---|---|
+| Native provider feature | AWS Bedrock inference profiles | Low | Limited |
+| Open-source middleware | OpenLLMetry, Langfuse, Helicone | Medium | High |
+| API gateway | Kong, NGINX with custom plugins | Medium-High | High |
+| Custom application middleware | Direct SDK instrumentation | Low-Medium | Full control |
+
+**Real-time cost ingestion** - token counts must be captured as model responses are
+returned, not retrieved from billing exports. Cost Explorer lags 24-48 hours - acceptable
+for EC2, not for workloads where a misconfigured agent can generate thousands of dollars
+within hours.
+
+> **Implementation baseline:** Achieving visibility typically requires ~30 minutes of
+> design and ~2 hours of implementation. The barrier is lower than most teams expect.
+
+### The full AI cost surface
+
+The model API invoice is the most visible AI cost. It is rarely the complete picture.
+
+In production RAG architectures, the surrounding infrastructure - referred to as the
+harness - includes every component that supports the model call but is not itself a model
+call. In observed enterprise deployments, the harness represents 40-60% of total AI
+feature cost. In RAG-heavy architectures with multi-region data pipelines, it can exceed
+inference cost.
+
+**The emerging SaaS dimension:** Beyond infrastructure harness costs, AI agents are
+introducing a new cost category: per-query charges from SaaS vendors. As agents interact
+with CRM, ERP, and analytics platforms via APIs, vendors are shifting from seat-based
+pricing to consumption models that charge per data query. This fundamentally changes how
+organisations budget for SaaS tools - a sales intelligence agent querying Salesforce
+thousands of times daily can generate costs that dwarf traditional per-seat licensing.
+
+**Harness cost map:**
+
+| Cost component | Primary driver | Allocation difficulty | Attribution approach |
+|---|---|---|---|
+| Vector DB (managed) | Storage GB + read/write units | High - marketplace billing | Project isolation, app metering, virtual tagging |
+| Embedding generation | Token volume per ingestion + query | Medium | Per-request metadata logging |
+| Object storage | Corpus size, retrieval frequency | Low-Medium | Native tags + lifecycle policies |
+| GPU compute (self-hosted) | GPU-hours x instance rate | Medium | K8s labels + DCGM + OpenCost/Kubecost |
+| KV / in-memory cache | Memory GB-hours | Low | Tags + namespace isolation |
+| Data egress | Cross-region transfer volume | High - invisible in model billing | Architecture co-location + networking cost analysis |
+| Orchestration layer | Lambda/Fargate invocations, Step Functions | Low-Medium | Tags + application logging |
+| Reranking models | Token volume for secondary ranking calls | Medium | Per-request metadata logging |
+| Observability and logging | Log ingestion volume | Medium | Tiered logging strategy |
+| SaaS API queries | Per-query charges from agent interactions | High - new billing model | Agent-level metering + SaaS cost APIs |
+| Evaluation & trace curation | LLM-as-judge calls, trace storage, corpus curation and versioning | Medium | Per-use-case metering; treat as a standing cost line, not a one-off |
+
+**Vector database marketplace attribution:**
+Managed vector databases (Pinecone, Weaviate, Qdrant) purchased through a cloud
+marketplace consolidate into your cloud bill as a third-party line item. They do not
+carry your internal tags and do not map to a feature or team. Remediation approaches:
+
+- Project-based isolation - separate vector DB projects or tenants per team/product
+- Application-layer metering - log every query with metadata, multiply volume by unit rate
+- Virtual tagging - apply allocation rules via FinOps platform virtual dimensions
+- Self-hosting - running on Kubernetes means underlying compute carries standard tags
+
+**GPU compute attribution on Kubernetes:**
+Self-hosted models on GPU clusters (EKS, AKS, GKE) require pod-level attribution.
+Cloud billing shows the GPU node cost, not which workload consumed it.
+
+Pod labels at deployment time are the primary mechanism:
+```yaml
+labels:
+  team: nlp-team
+  product: contract-summarizer
+  environment: prod
+  cost-centre: cc-1234
+```
+
+These labels flow into Prometheus via kube-state-metrics. Combined with NVIDIA DCGM
+Exporter (GPU memory and compute utilisation per pod), attributable cost is:
+`GPU memory consumed by pod / total GPU memory x hourly node cost`
+
+The core Kubernetes limitation: GPUs are allocated as whole units. A pod requesting
+`nvidia.com/gpu: 1` gets the full physical GPU regardless of actual utilisation. NVIDIA
+MIG partitioning creates isolated GPU slices that Kubernetes schedules independently,
+reducing waste and improving allocation accuracy.
+
+| Layer | Tool |
+|---|---|
+| Node hardware labels | NVIDIA GPU Feature Discovery |
+| Pod attribution | Kubernetes labels + namespaces |
+| GPU utilisation metrics | NVIDIA DCGM Exporter + Prometheus |
+| Cost attribution | OpenCost or Kubecost |
+| GPU partitioning | NVIDIA MIG + GPU Operator |
+
+**GPU utilisation is misleading - read the right DCGM metrics:**
+
+The single biggest mistake in GPU FinOps is trusting `nvidia-smi`'s
+`GPU-Util` percentage (also surfaced as CloudWatch `GPUUtilization` on EC2,
+and as the default in many monitoring stacks). The metric reports whether
+the GPU did **anything** during the sampling interval, not how much of its
+compute capacity was used. A workload occupying 1 streaming multiprocessor
+(SM) out of 132 on an H100 SXM reports `GPU-Util: 100%`. Rightsizing
+decisions based on that signal are systematically wrong.
+
+A GPU can appear busy while being significantly underused. The real
+signals come from NVIDIA DCGM (Data Center GPU Manager) profiling metrics,
+exposed via DCGM Exporter:
+
+| DCGM metric | What it measures | When to use it |
+|---|---|---|
+| `DCGM_FI_DEV_GPU_UTIL` | (legacy) GPU did something this interval | **Ignore** for rightsizing decisions |
+| `DCGM_FI_PROF_GR_ENGINE_ACTIVE` | Fraction of time the graphics engine is active | First honest signal of compute usage |
+| `DCGM_FI_PROF_SM_ACTIVE` | Fraction of SMs with at least one warp resident | Parallel-occupancy signal |
+| `DCGM_FI_PROF_SM_OCCUPANCY` | Resident warps / max warps per SM | Density of SM utilisation |
+| `DCGM_FI_PROF_PIPE_TENSOR_ACTIVE` | Tensor core pipeline activity | Critical for ML inference / training - separates "doing matrix maths" from "doing kernel launches" |
+| `DCGM_FI_PROF_DRAM_ACTIVE` | GPU memory bandwidth in use | Detects memory-bound workloads (signal to move to higher-bandwidth SKU or batch differently) |
+| `DCGM_FI_DEV_FB_USED` | Frame buffer (GPU memory) used | Sizing decisions, MIG candidacy, OOM risk |
+
+A workload is genuinely well-sized when `DCGM_FI_PROF_GR_ENGINE_ACTIVE` and
+`DCGM_FI_PROF_PIPE_TENSOR_ACTIVE` are both > 40-60% during steady-state
+traffic. If `GR_ENGINE_ACTIVE` is high but `PIPE_TENSOR_ACTIVE` is low for
+an ML workload, the GPU is doing work that is not matrix multiplication -
+usually a sign of poor batching, memory copies, or framework overhead, and
+a candidate for code optimisation before infrastructure rightsizing.
+
+**Practical deployment:**
+
+- **On Kubernetes (EKS/AKS/GKE)**: install NVIDIA GPU Operator, which
+  bundles DCGM Exporter. Metrics scrape into Prometheus with `gpu` and pod
+  labels for per-workload attribution.
+- **On bare EC2**: deploy DCGM Exporter via systemd or SSM Run Command,
+  scrape with a CloudWatch agent or Prometheus.
+- **On SageMaker managed endpoints**: DCGM is not exposed natively. The
+  available CloudWatch metrics (`GPUUtilization`, `GPUMemoryUtilization`)
+  are the legacy signals and overestimate real usage. For honest GPU
+  telemetry on SageMaker, either run a custom container that emits DCGM
+  metrics, or run inference on self-managed EKS with DCGM and use
+  SageMaker only for training / Studio / managed catalogue features.
+
+This metric reference is the foundation for the GPU rightsizing
+playbooks: [aws-gpu-instance-oversized](../playbooks/aws-gpu-instance-oversized.md),
+[aws-multi-gpu-underutilized](../playbooks/aws-multi-gpu-underutilized.md),
+[aws-mig-candidate](../playbooks/aws-mig-candidate.md),
+[aws-gpu-for-cpu-bound-workload](../playbooks/aws-gpu-for-cpu-bound-workload.md).
+
+**Training vs serving - two different FinOps problems (Capital One framing):**
+
+Do not manage a training fleet and an inference fleet with the same metrics, levers,
+or cost models:
+
+| | Training | Inference / serving |
+|---|---|---|
+| Problem type | **Scheduling** - maximise saturation across batch jobs with predictable durations | **Sizing** - engineer for real-time variable traffic under latency SLOs |
+| Economic unit | GPU-hour utilised | Tokens: tokens/sec, **cost per million tokens**, input:output ratio |
+| Primary signal | GPU utilisation (find idle pockets by hour/day) + DCGM profiling | Token throughput vs latency; GPU-util is misleading (a "20% utilised" GPU may be memory-bound and saturated) |
+| Levers | Job packing, scheduling windows, capacity sharing | Instance selection, batching, quantisation, model size, autoscaling |
+| Latency metrics | Not applicable | TTFT (user experience), time per output token, end-to-end - tolerance is use-case specific (chatbot vs batch classification) |
+
+CloudWatch now exposes TTFT and estimated token consumption metrics for Bedrock
+workloads - token-economics tracking no longer requires custom instrumentation for
+managed inference.
+
+**Inference instance selection** balances three factors, and they interact: model
+(architecture, parameter count, quantisation), memory footprint (single vs multi-GPU),
+and traffic (peak/average, SLO, batch size). Counter-intuitive outcomes are normal -
+a larger model can be cheaper if it halves the number of calls; a quantised smaller
+model may meet the SLO on far cheaper hardware. Benchmark with FMBench before
+committing; SageMaker real-time inference (auto-scaling, multi-model endpoints,
+inference components) is the managed path.
+
+**ODCR sharing across accounts:**
+
+On-Demand Capacity Reservations for GPU instances can be shared across accounts via
+AWS RAM. Pattern: instead of team A holding idle reserved GPU capacity while team B
+is starved, treat ODCRs as a portfolio and move capacity to demand. Same governance
+logic as commitment portfolio management - utilisation review cadence, plus internal
+allocation rules for who draws on shared capacity when.
+
+**Observability cost feedback loop:**
+Token-level logging for every AI request generates large log volumes. Cloud observability
+platforms charge by the GB for ingestion and retention. A production AI system with full
+request-level logging can generate observability costs that rival inference costs. Use
+tiered logging: always log metadata (token counts, feature identifier, latency, model
+version); log full request and response content only for sampled traffic or error cases.
+
+**Cross-provider allocation summary:**
+
+| Allocation need | AWS | Azure | GCP |
+|---|---|---|---|
+| Team / product boundary | Separate accounts | Separate subscriptions / resource groups | Separate projects |
+| Training job attribution | SageMaker tags -> CUR | AzureML resource group + tags -> Cost Management | Vertex AI project labels -> BigQuery |
+| Inference attribution | Tags on provisioned throughput + app instrumentation | Separate AOAI accounts + tags + app instrumentation | Project labels + API call labels + Cloud Monitoring |
+| Token-level unit economics | App instrumentation + CloudWatch | App instrumentation + Azure Monitor | App instrumentation + Cloud Monitoring |
+| AI cost visibility | Bedrock inference profiles (limited) | Cost Management AI views | AI Cost Summary Agent (preview) + Cloud Billing "Originating products" filter/group-by and Gemini Enterprise preset report |
+
+As of July 2026, Anthropic ships native cost governance tooling directly (announced 2 July
+2026, independent of any model release): admin spend analytics by group and user, model
+entitlements, spend-threshold alerts, and an Admin API. Scope: **Claude Enterprise** plans
+(chat, Cowork, Claude Code seats) - it narrows the visibility and governance gaps for that
+surface but does not cover raw API platform spend, where application-layer instrumentation
+is still required. See `finops-anthropic.md` for detail
+([Anthropic announcement, 2 July 2026](https://claude.com/blog/giving-admins-more-visibility-and-control-over-claude-usage-and-spend)).
+
+The common thread: native billing does not provide feature-level or user-level cost
+attribution for inference out of the box. Account and project separation handles
+team-level allocation. Application-layer instrumentation is required for feature-level
+and per-request attribution.
+
+### Unallocated % as an AI allocation KPI
+
+Allocation quality deserves its own tracked KPI for AI spend, the same way
+`finops-allocation-showback.md` treats unallocated spend as a first-class signal for
+infrastructure. Define it tightly and track it weekly, by **repo / team / feature**,
+next to the unit-economics numbers.
+
+**Unallocated % of AI spend** = token and harness cost that cannot be tied to a repo,
+team, or feature, divided by total AI spend. The threshold discipline mirrors the
+infrastructure rule (hold it below ~10%, trend toward 5%), but the failure modes are
+AI-specific:
+
+- **API keys drift faster than resources do.** A shared key used across three features
+  attributes all of its spend to whatever label the key carries, not to the features
+  that actually consumed it. Static key-level tagging is a Crawl-stage approximation,
+  not an allocation.
+- **The person is a shared resource.** One engineer runs several concurrent agent
+  sessions across different projects on the same key or seat - a Claude Code session on
+  repo A, an agent debugging repo B, an ad-hoc script against repo C, all at once.
+  Per-key or per-seat tagging collapses the three into one owner. Attribution has to
+  happen at the **session level**: a session or trace ID carried as request metadata
+  (the Phase 1 instrumentation above) and mapped to repo/team/feature. As agent
+  concurrency per person rises, identity-level attribution degrades and unallocated %
+  climbs even when nothing else has changed.
+
+Treat a rising unallocated % as a governance signal, not a rounding error - it means new
+AI spend (a new agent surface, a wallet-funded payment, a per-query SaaS charge) is
+outrunning the instrumentation. Session-level metadata on every call is what keeps the
+number low; key-level or seat-level tagging is the fallback that lets it drift.
+
+---
+
+### Phase 2: Establish unit economics
+
+Once costs are attributed, translate them from infrastructure metrics to business metrics.
+
+**Step 1 - Define your unit of value:**
+- Customer conversation
+- Document processed
+- Task completed
+- Query answered
+- Report generated
+
+**Step 2 - Calculate the three-layer cost per unit:**
+
+| Layer | What it measures | Example |
+|---|---|---|
+| Layer 1: Inference | Raw model API cost (tokens × rate) | $0.0003 per conversation |
+| Layer 2: Harness | All surrounding infrastructure (compute, storage, retrieval, egress) | $0.0035 per conversation |
+| Layer 3: Total unit cost | Layer 1 + Layer 2 + amortized fixed costs | $0.004 per conversation |
+
+"Amortized fixed costs" in Layer 3 hides the lines that most often go unbudgeted. The
+Tokenomics Foundation calls the full numerator the *total cost of AI* (TCA, proposed
+September 2026; see `finops-ai-value-management.md` for the ratio it sits in), and the
+components it names are the checklist to run before quoting a unit cost:
+
+- **Model consumption** - the token invoice, the only line most teams report
+- **Harness** - the infrastructure map above
+- **Platform** - gateways, routers, observability and evaluation tooling, bought or built
+- **Software and licences** - AI dev tools, SaaS AI add-ons, vector database
+  subscriptions, marketplace lines
+- **Labour** - the people who build, evaluate, review and supervise the system, including
+  residual human review of its output and the FinOps effort to run all of the above
+- **Energy and capital** - GPU hardware, power and cooling, wherever any of it is
+  self-hosted
+- **Process change** - the business-process rework the feature required; one-off, but real
+
+One enterprise audit the foundation cites put model consumption at roughly a quarter of
+total AI spend, and the practitioner reports it has collected range from a tenth to a
+quarter. Treat the exact share as illustrative and single-sourced; the harness figure
+above (40-60%) is consistent with it, and the ordering is durable. A token-only report
+understates the bill by a multiple before value is even discussed.
+
+**Step 3 - Define value per unit** (pick the most relevant method):
+
+- **Cost displacement** - what does the equivalent human action cost?
+  `Value = human cost × deflection rate`
+- **Revenue generation** - does the feature increase conversion or order value?
+  `Value = uplift × average transaction value`
+- **Retention improvement** - does the feature reduce churn?
+  `Value = retained customers × LTV delta`
+- **Premium monetisation** - is the feature sold as a paid tier?
+  `Value = subscription price − unit cost`
+
+**Step 4 - Track unit economics weekly**, not monthly. AI cost patterns shift faster
+than monthly reporting cycles can capture.
+
+**Core formula:**
+```
+Unit margin = (Value per output × success_rate) − cost_per_unit
+Monthly profit = (unit_margin × volume) − fixed_costs
+ROI% = monthly_profit / fixed_costs × 100
+Payback period = fixed_costs / monthly_profit (months)
+```
+
+**ROI time dimension:** AI systems follow a predictable ramp.
+- Month 1: Negative ROI - integration costs dominate
+- Month 3: Near cost parity - prompts improve, routing optimises
+- Month 6+: Positive ROI - learning effects compound, volume absorbs fixed costs
+
+Tolerating early losses is rational if the weekly trajectory toward breakeven is positive.
+Systems showing no improvement after 8-12 weeks warrant scrutiny.
+
+#### The agent deployment inequality (go/no-go economics)
+
+The deployment inequality (David Tepper, Pay-i): an agent adds value when
+
+```
+P(success) > T(verify) / T(do)
+```
+
+where T(verify) is the human time to check the agent's work and T(do) the human time
+to do the task. Example: a 2-hour task verifiable in 6 minutes gives a threshold of
+5% - the agent only needs to succeed 1 time in 20 to be net positive. For a large
+class of enterprise work, the bar is far lower than intuition suggests.
+
+**The agency tax - when the clean math breaks.** The inequality holds only when
+failure leaves the environment unchanged (a bad draft is discarded, no harm done).
+When failure changes the environment - a wrong refund promised to a customer, a bad
+commit merged - add recovery cost:
+
+```
+Cost of failure = T(verify) + rework/recovery cost
+```
+
+In production, rework is rarely zero. Environment-changing use cases need a
+sharply higher reliability bar; assess this use case by use case before deployment.
+
+**Why expensive models can be the cheap option:** a more capable model raises
+P(success) AND typically shrinks T(verify). If a pricier model cuts verification
+from ten minutes to two, the productivity gain usually swamps the extra token
+spend. Per-token price comparison misses this entirely - evaluate at the level of
+the inequality, not the rate card.
+
+**Practice note:** use the inequality as a stage-gate artefact (see
+`finops-ai-value-management.md`): estimate P(success), T(verify), T(do), and
+whether failure is environment-changing, per use case, before funding.
+
+### Phase 3: Optimize
+
+**Model selection** (highest impact lever):
+
+Treat model selection like instance rightsizing. Defaulting to the largest or latest model
+for every feature is the AI equivalent of running all workloads on ml.p4d.24xlarge.
+
+What drives the routing decision is the **spread between tiers**, not the absolute rate.
+The spread is the durable, transferable number; the rate card behind it changes every
+few months. Tier structure as observed September 2026:
+
+| Model tier | Use case | Cost ratio vs small tier (Claude) |
+|---|---|---|
+| Small / fast (Haiku class) | Classification, routing, simple Q&A | 1x |
+| Mid-tier (Sonnet class) | Complex reasoning, code generation | 2x (Sonnet 5; 3x for Sonnet 4.6) |
+| Large (Opus class) | Research, nuanced judgment | 5x |
+| Frontier (Fable class) | Hardest reasoning, high-stakes work | 10x |
+
+The spread is vendor-specific and compresses across generations: the Claude 3-era
+small-to-large ratio was roughly 60x, the current one is 5-10x, while OpenAI's spread
+depends on the pairing: about 20x within one model family and 150x or more from a nano
+model to a pro reasoning model. A vendor whose spread is 100x rewards
+tiered routing far more than one at 5x, and that alone can decide whether the routing
+harness is worth building.
+
+**Pull the live rate card before building routing economics on a remembered ratio.**
+Call a pricing tool if one is available, or check <https://optimtoken.optimnow.io>. The
+payoff from tiered routing depends directly on the current spread. For the Claude
+per-model rate structure, see `finops-anthropic.md` - and treat the figures there as
+illustrative, not as a quotable rate card. For the open-weight vendors' own hosted
+APIs (DeepSeek, Qwen, Kimi, GLM) and their distinct discount mechanics, see
+`finops-open-weight-vendors.md`.
+
+Implement tiered routing: classify query complexity first (cheap), then route to the
+appropriate model. Simple queries to small models, complex queries to large models.
+
+**The router enforces a quality floor; it does not set one.** The bar (what output is
+acceptable for this task) belongs to the product or business owner, and the router's job
+is to find the cheapest path that clears it. A routing change that lowers quality does not
+show up as a saving: it shows up later as retention loss or rework, which is why routing
+decisions need the same quality gate as the value claims in
+`finops-ai-value-management.md`. Vocabulary, since the tooling market blurs it: a *proxy*
+is transparent pass-through (rate limits, retries); a *router* is the decision layer, and
+model selection is a routing decision; a *gateway* houses both plus organisation-level
+policy, observability and failover. Containment runs one way: a router that grows policy
+and failover has become a gateway (Tokenomics Foundation consumption working group,
+September 2026).
+
+**Prompt engineering as cost control:**
+- System prompts are billed on every request - keep them lean and precise
+- Context windows accumulate cost - manage conversation history length explicitly
+- Always define `max_tokens` on every model call - unbounded responses are a common
+  and avoidable source of cost overruns
+- Tune `temperature`, `top_p`, `top_k` for concise output on structured tasks
+
+**Caching:**
+- Cache system prompts and static context (Anthropic and OpenAI support prompt caching)
+- Cache embedding results for repeated documents in RAG systems
+- Cache responses for deterministic or near-deterministic queries
+- Cache at the application layer before hitting the model API
+- Routing and caching interact: provider prompt caches are local to the provider and
+  often to the serving path, so a request routed to a different model or vendor misses
+  the cache it would otherwise have hit. Measure the two levers together, not separately
+- Report a cache **hit ratio** (bounded, 0-100%), not a reuse multiple. Bounded ratios
+  compose across teams; a figure in the hundreds of thousands of percent means nothing
+  to a reader
+
+**Architecture hygiene:**
+- Not every feature needs AI - use deterministic code or standard APIs when they are
+  sufficient. A weather API call costs a fraction of a cent. An LLM call to answer
+  "what is the weather today?" is waste.
+- Audit for zombie features: AI systems still running at full cost after usage has dropped
+- Review agentic retry logic - retries multiply token consumption silently
+
+**Model parameters:**
+The following inference parameters directly affect output length and therefore cost:
+- `temperature` - higher values produce longer, more varied outputs
+- `top_p` / `top_k` - affect output distribution and length
+- `max_tokens` - the single most important cost guardrail; always set it
+
+#### Token engineering - the input/output optimisation menu
+
+Per-token, input is roughly 4-8x cheaper than output (5x across Anthropic's line, 4-8x
+across OpenAI's, as of September 2026). That price signal misleads:
+**in multi-turn conversations and agent loops, the entire history is re-billed as
+input on every turn.** Input token spend compounds quadratically with conversation
+length and routinely dominates. Optimise both sides.
+
+**Input side - before the request:**
+
+| Lever | Mechanism | Impact |
+|---|---|---|
+| Lexical pre-filtering | Strip filler ("please", greetings, niceties) via rules before the call | Small per-call, large at fleet scale |
+| Prompt compression | Automated compression (e.g. LLMLingua) removes low-information tokens | Workload-dependent |
+| Small-model preprocessing | Cheap model (Haiku-class) condenses input before the expensive model sees it | Pays when big-model rates dominate |
+
+**Input side - during the conversation:**
+
+- **Rolling context window** - keep only the last N turns (cheap, loses long context)
+- **Selective history pruning** - drop niceties, resolved clarifications, dead ends
+- **Summarisation checkpoints** - compress history into a summary near context limits
+- **Minimum viable context (MVC)** - one file, not the repository; one document, not
+  the corpus. Context selection is a cost decision, not just a quality decision.
+- **RAG retrieval precision** - broad-match retrieval stuffs marginally relevant
+  fragments into every prompt; tune top-k and relevance thresholds
+
+**The multilingual token tax:**
+
+Tokenizers fragment non-English text into more tokens per unit of meaning - the
+same conversation costs materially more in some languages. For multilingual
+deployments:
+
+- Include language mix in cost-per-task baselines and forecasts; a rollout to new
+  geographies raises unit cost with zero functional change
+- Compare tokenizer efficiency across candidate models for the dominant languages
+  (it varies by model family)
+- On Vertex AI, character-based pricing can be cheaper for verbose target languages
+  (see `finops-vertexai.md`)
+
+**Format and schema (agent-to-agent traffic):**
+
+- Minifying JSON (strip whitespace/newlines) between agents: 30-50% token reduction
+  (AWS-reported) with zero information loss
+- CSV instead of JSON where structure allows: ~30-40% fewer tokens (no repeated keys)
+- Constrain inter-agent outputs to the minimum schema (a number, a label) - verbose
+  prose between agents is pure waste and degrades downstream parsing
+
+**Output side:**
+
+- `max_tokens` remains the blunt guardrail (see "Model parameters" above)
+- **System-prompt output constraints** are the better lever: instructing the model to
+  answer only what is asked, in a fixed format. AWS session demo (Nova): same
+  question, output dropped 400 → 90 tokens, latency 6s → 1.3s, ~75% cheaper per call.
+- Few-shot examples anchor output format and length
+- **Reasoning/chain-of-thought only where justified** (compliance, high-stakes
+  accuracy) - reasoning tokens are output tokens; disable or pick non-reasoning
+  models for routine tasks
+- **Task decomposition** - route sub-tasks to smaller models; reserve the large model
+  for synthesis (this is the supervisor/worker agentic pattern priced correctly)
+
+### Phase 4: Govern
+
+**Budget guardrails:**
+- Set spending limits at the feature level, not just the account level
+- Anomaly alerts should trigger within minutes, not surface on the monthly bill
+- Define thresholds that require review before spend, not after
+- Where the platform offers native token-budget enforcement, use it as a proactive
+  guardrail rather than relying on alerts alone. Since 31 August 2026, BigQuery
+  again supports daily token quotas for its generative AI functions (AI.GENERATE_TEXT
+  and the other Gemini-based inference functions), per project and per user; the
+  defaults are high, so the control is the stricter override you set - a GCP-native
+  example of token budget enforcement that complements budget alerts and anomaly
+  detection (see `finops-gcp.md`).
+
+**Governance policies to establish:**
+- Require AI cost estimates (COGS modelling) before feature deployment
+- Mandate application-layer metadata tagging as a development standard
+- Establish a model approval process - preventing shadow AI through procurement
+  controls is more effective than prohibition after the fact
+- Define escalation paths when unit economics deteriorate
+
+**Shadow AI:**
+Research indicates 90% of employee AI tool usage does not appear in corporate billing
+systems. The remainder occurs through personal subscriptions, departmental cards, or
+free-tier accounts that bypass procurement. Shadow AI is not only a governance issue -
+it destroys cost attribution and makes forecasting impossible.
+
+Detection approach:
+- Audit for marketplace subscriptions (AWS, Azure, GCP) that may not appear in
+  centralized cost management tools
+- Review expense reports for recurring SaaS charges from known AI vendors
+- Survey teams on tools in active use before assuming billing systems are complete
+
+---
+
+## The five AI cost anti-patterns
+
+These patterns generate significant financial impact within hours, but remain invisible
+to monthly dashboards until the bill arrives.
+
+### 1. Zombie AI features
+A feature loses adoption but continues processing in the background - pre-processing
+documents, indexing content, maintaining persistent connections, or retrying failed calls.
+Cost persists while value delivered collapses.
+
+*Real example:* An AI summarization feature was used heavily at launch, then dropped to
+fewer than 5 active users per day. The feature continued pre-processing every uploaded
+document regardless of whether a summary was requested - 2.8M tokens/month, $1,400.
+Actual value delivered: negligible.
+
+*Detection signal:* Token consumption stable or rising while active user sessions decline.
+
+### 2. Technology churn debt
+Each AI provider or framework migration leaves behind infrastructure that continues
+incurring charges: API keys, Lambda functions, S3 buckets, committed capacity reservations.
+Organisations running 3+ AI providers simultaneously often find 30-40% of AI spend
+supports abandoned experiments rather than production features.
+
+*Detection signal:* Active resources in accounts or regions with no recent deployments;
+committed capacity with low utilization.
+
+### 3. Agentic loops
+AI agents calling other agents create multiplicative cost patterns. Retry logic, recursive
+calls, validation loops, or agents that invoke themselves multiply token consumption by
+5-50× per user request. This compounds when agents interact with SaaS APIs that charge
+per query - each retry or validation loop triggers additional SaaS charges alongside
+model costs.
+
+*Real example (figures illustrative):* A sales intelligence agent validated its own output
+with a second API call. When validation failed, it retried the full sequence. A single user
+query generated 47 API calls, about $2.30 per query where a single call would have cost
+$0.05. At 12,000 queries/month: $27,600 in unintended cost. When
+the same agent began querying Salesforce data, per-query charges added another $18,000/month
+that appeared in the SaaS bill, not the AI infrastructure budget.
+
+*Detection signal:* Average tokens per request significantly above design estimate; high
+variance in cost per session; cost growing faster than user volume; unexpected increases
+in SaaS API usage charges.
+
+### 4. Data egress in AI pipelines
+RAG systems that store data in one region, generate embeddings in another, and run
+inference in a third create multi-directional transfer costs invisible in model-level
+reporting. For high-volume applications, data movement can represent 15-25% of total
+AI costs.
+
+*Detection signal:* S3 or network costs rising in proportion with AI feature usage;
+cross-region data transfer appearing in billing without a clear infrastructure change.
+
+### 5. Negative unit economics at scale
+A feature appears viable at low volume. Each interaction loses money, but losses are
+small and unnoticed. As adoption grows, the scale-up accelerates the loss.
+
+*Real example (figures illustrative):* An AI-powered search feature was included in a
+standard $15/user/month subscription. Power users performed 220 searches/month at $0.08
+each - $17.60 in AI costs per user, against $15 in subscription revenue, before any other
+cost of serving the account. Break-even sat at roughly 187 searches/month, and the users
+who adopted the feature most were exactly the ones above it. Feature adoption growth
+increased losses, not margins.
+
+*Detection signal:* AI costs growing proportionally with user adoption; unit margin
+declining as volume increases.
+
+---
+
+## AI cost readiness assessment
+
+Use this to diagnose an organisation's current state before recommending solutions.
+
+**Visibility (prerequisite - assess first):**
+- [ ] Token counts captured per feature, not just per account or model
+- [ ] Request-level cost attribution with application metadata at invocation time
+- [ ] Cost data available within minutes, not 24-48 hours
+
+**Unit economics:**
+- [ ] Cost per unit defined and tracked (conversation / task / document)
+- [ ] Unit cost trend tracked weekly
+- [ ] Value metric defined and measured alongside cost metric
+
+**Optimization:**
+- [ ] Model selection reviewed per use case (not defaulting to largest model)
+- [ ] Maximum token limits set on all model calls
+- [ ] System prompts and repeated context cached where provider supports it
+
+**Governance:**
+- [ ] AI COGS estimated before feature deployment
+- [ ] Budget alerts configured at feature level
+- [ ] Process exists to detect and decommission zombie features
+- [ ] Shadow AI audit conducted in last 12 months
+- [ ] SaaS API query costs included in agent budget planning
+- [ ] Monitoring for agent-driven SaaS consumption spikes
+
+**Scoring:**
+- 0-4 ✓: Crawl - start with visibility. Nothing else is meaningful without it.
+- 5-8 ✓: Walk - focus on unit economics and model optimisation.
+- 9-14 ✓: Run - focus on governance automation and agentic FinOps patterns.
+
+---
+
+## Agentic FinOps
+
+Agentic systems (true agents that decide at run time what to call, in what order,
+and for how long) introduce cost patterns a static budget cannot anticipate:
+unbounded per-task cost, refinement-heavy token anatomy, multi-model-per-run
+attribution, cost-safe architecture patterns, and a new agent-initiated payment
+surface (x402 / MPP wallets). That material now lives in its own reference:
+
+- `finops-agentic.md` - workflow vs pipeline vs true agent cost behaviour, agentic
+  cost anatomy, the three architectural pillars for cost-safe agents, and
+  agent-initiated payments (x402 / MPP).
+
+The five anti-patterns above (including agentic loops) and the Phase 2
+unit-economics model still apply; `finops-agentic.md` extends them for
+runtime-autonomous agents.
+
+---
+
+> Sources: FinOps Foundation (State of FinOps 2026), OptimNow methodology.
+
+> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

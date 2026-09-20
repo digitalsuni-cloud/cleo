@@ -1,0 +1,19 @@
+# Secrets — never commit real credentials
+.env
+.envrc
+credentials.json
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Cleo runtime data
+graphify-out/cache/
+*.log
+
+# OS & Local editor/agent files
+.DS_Store
+*.local.json

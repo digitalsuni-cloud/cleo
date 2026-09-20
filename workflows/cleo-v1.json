@@ -1,0 +1,335 @@
+{
+  "name": "Cleo — Cloud Efficiency Optimizer",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [-1000, 0],
+      "id": "3f2a1b4c-8d9e-4f0a-b1c2-d3e4f5a6b7c8",
+      "name": "Cleo Chat",
+      "webhookId": "c1e0-c1e0-c1e0-c1e0-c1e0c1e0c1e0"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "aa001",
+              "name": "chatInput",
+              "value": "={{ $json.chatInput }}",
+              "type": "string"
+            },
+            {
+              "id": "aa002",
+              "name": "sessionId",
+              "value": "={{(+new Date).toString(36).slice(-5) + Math.random().toString(36).substr(2, 5)}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-780, 0],
+      "id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+      "name": "Generate Agent Input"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Classify this cloud cost question as 'simple' or 'complex'.\n\nSimple = direct lookup, one metric, one time period, one cloud, dataset discovery\nComplex = trend comparison, month-over-month, root cause, multi-cloud breakdown, projections, multi-step\n\nQuestion: {{ $json.chatInput }}\n\nReply with ONE word only: simple or complex",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [-560, 0],
+      "id": "2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e",
+      "name": "Query Classifier"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "mlx-community/gemma-2-9b-it-4bit",
+          "mode": "id"
+        },
+        "options": {
+          "maxTokens": 5,
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [-560, 220],
+      "id": "3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f",
+      "name": "LLM Classifier (gemma-2-9b)",
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "Cleo Fast (gemma-2-9b)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "route-001",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "simple",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-340, 0],
+      "id": "4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a",
+      "name": "Simple or Complex?"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Today's Date: {{ $now.toFormat('yyyy-MM-dd') }}\nQuestion: {{ $('Generate Agent Input').first().json.chatInput }}\nSession: {{ $('Generate Agent Input').first().json.sessionId }}",
+        "options": {
+          "systemMessage": "You are Cleo (Cloud Efficiency Optimizer), a FinOps AI assistant. You answer questions about cloud costs, spending trends, and optimization opportunities using live CloudHealth data.\n\nDATA SCOPE:\nYou have ONE live data connection: cloudhealth-mcp-prod at https://apps.cloudhealthtech.com/mcp\nThis is your ONLY source of truth. Never fabricate cost figures or estimate from memory.\n\nCLOUDHEALTH MCP TOOLS:\n- list_managed_orgs: Lists organizations. Active org with real data: \"Thespina test\" (crn:573:organization/137438953498)\n- list_standard_datasources: Lists 40+ available datasets. Call this when unsure which dataset to use.\n- get_datasource_metadata: Gets column names for a specific dataset. Always call this before querying an unfamiliar dataset.\n- execute_datasource_query: Runs SQL queries. This is your main workhorse.\n- list_channel_customers: Lists channel customers.\n\nKEY DATASETS (confirmed working):\n- MULTICLOUD_FOCUS_COST_AND_USAGE → AWS + Azure combined. Columns: provider, ServiceName, Month, EffectiveCost, BilledCost\n- AWS_FOCUS_COST_AND_USAGE → AWS only. Columns: ServiceName, Month, EffectiveCost, BilledCost\n- AZURE_FOCUS_COST_AND_USAGE → Azure only. Columns: ServiceName, Month, EffectiveCost, BilledCost\n\nDATASET SELECTION RULE:\n- Multi-cloud or comparison → MULTICLOUD_FOCUS_COST_AND_USAGE\n- AWS only → AWS_FOCUS_COST_AND_USAGE\n- Azure only → AZURE_FOCUS_COST_AND_USAGE\n- Unknown dataset → call list_standard_datasources, then get_datasource_metadata first\n\nSQL RULES (CRITICAL — violating these causes query failures):\n1. NEVER use SELECT * — always list and alias every column explicitly\n2. WITH clause names MUST start with \"cxtemp_\" (e.g., WITH cxtemp_monthly AS (...))\n3. Aliases with special characters use double quotes (e.g., \"Effective Cost\")\n4. Always include a LIMIT clause\n5. Always pass orgId: \"crn:573:organization/137438953498\" in every execute_datasource_query call\n6. Month format in WHERE clauses: 'YYYY-MM' (e.g., '2026-08')\n\nSQL EXAMPLE (correct):\nSELECT\n  ServiceName AS service,\n  SUM(EffectiveCost) AS total_cost\nFROM AWS_FOCUS_COST_AND_USAGE\nWHERE Month >= '2026-06'\nGROUP BY ServiceName\nORDER BY total_cost DESC\nLIMIT 10\n\nWORKFLOW:\n1. Use Think tool to plan your approach before making tool calls\n2. For unknown columns, call get_datasource_metadata first\n3. For multi-step questions, break into sequential queries\n4. Use Calculator for percentages and comparisons\n5. Never retry a failed query with identical parameters — adjust the approach\n\nRESPONSE FORMAT:\n- Always state source: \"Source: CloudHealth (EffectiveCost)\"\n- Use markdown tables for cost breakdowns\n- Always include $ amounts and % where relevant\n- Lead with the most important insight\n- Keep responses under 2000 characters\n- For long lists, show top 5 and offer more on request\n\nTHINK TOOL RULE: Think is completely invisible to the user. NEVER write \"Calling Think\" or narrate tool calls. Your reply must contain ONLY the final answer.\n\nIf asked about anything outside CloudHealth (Slack, GitHub billing, GCP, Dynatrace, etc.):\n\"I only have access to CloudHealth data. I can help with AWS and Azure cloud cost questions.\"",
+          "maxIterations": 20
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [-100, -200],
+      "id": "5e6f7a8b-9c0d-1e2f-3a4b-5c6d7e8f9a0b",
+      "name": "Cleo Fast Agent",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "mlx-community/gemma-2-9b-it-4bit",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [-100, 20],
+      "id": "6f7a8b9c-0d1e-2f3a-4b5c-6d7e8f9a0b1c",
+      "name": "LLM Fast (gemma-2-9b)",
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "Cleo Fast (gemma-2-9b)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://apps.cloudhealthtech.com/mcp",
+        "authentication": "none",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [160, -200],
+      "id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+      "name": "CloudHealth MCP (Fast)"
+    },
+    {
+      "parameters": {
+        "description": "IMPORTANT: This tool is completely invisible to the user. NEVER write \"Calling Think\" or any narration about this tool.\n\nUse this to silently reason through a problem before making CloudHealth queries:\n- Plan which dataset to use\n- Decide what SQL to write\n- Reason through multi-step cost comparisons\n- Verify your approach before committing\n\nAfter thinking, respond with ONLY the final answer. Never show your reasoning to the user."
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [160, -60],
+      "id": "8b9c0d1e-2f3a-4b5c-6d7e-8f9a0b1c2d3e",
+      "name": "Think (Fast)"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [160, 80],
+      "id": "9c0d1e2f-3a4b-5c6d-7e8f-9a0b1c2d3e4f",
+      "name": "Calculator (Fast)"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Today's Date: {{ $now.toFormat('yyyy-MM-dd') }}\nQuestion: {{ $('Generate Agent Input').first().json.chatInput }}\nSession: {{ $('Generate Agent Input').first().json.sessionId }}",
+        "options": {
+          "systemMessage": "You are Cleo (Cloud Efficiency Optimizer), a FinOps AI assistant. You answer questions about cloud costs, spending trends, and optimization opportunities using live CloudHealth data.\n\nDATA SCOPE:\nYou have ONE live data connection: cloudhealth-mcp-prod at https://apps.cloudhealthtech.com/mcp\nThis is your ONLY source of truth. Never fabricate cost figures or estimate from memory.\n\nCLOUDHEALTH MCP TOOLS:\n- list_managed_orgs: Lists organizations. Active org with real data: \"Thespina test\" (crn:573:organization/137438953498)\n- list_standard_datasources: Lists 40+ available datasets. Call this when unsure which dataset to use.\n- get_datasource_metadata: Gets column names for a specific dataset. Always call this before querying an unfamiliar dataset.\n- execute_datasource_query: Runs SQL queries. This is your main workhorse.\n- list_channel_customers: Lists channel customers.\n\nKEY DATASETS (confirmed working):\n- MULTICLOUD_FOCUS_COST_AND_USAGE → AWS + Azure combined. Columns: provider, ServiceName, Month, EffectiveCost, BilledCost\n- AWS_FOCUS_COST_AND_USAGE → AWS only. Columns: ServiceName, Month, EffectiveCost, BilledCost\n- AZURE_FOCUS_COST_AND_USAGE → Azure only. Columns: ServiceName, Month, EffectiveCost, BilledCost\n\nDATASET SELECTION RULE:\n- Multi-cloud or comparison → MULTICLOUD_FOCUS_COST_AND_USAGE\n- AWS only → AWS_FOCUS_COST_AND_USAGE\n- Azure only → AZURE_FOCUS_COST_AND_USAGE\n- Unknown dataset → call list_standard_datasources, then get_datasource_metadata first\n\nSQL RULES (CRITICAL — violating these causes query failures):\n1. NEVER use SELECT * — always list and alias every column explicitly\n2. WITH clause names MUST start with \"cxtemp_\" (e.g., WITH cxtemp_monthly AS (...))\n3. Aliases with special characters use double quotes (e.g., \"Effective Cost\")\n4. Always include a LIMIT clause\n5. Always pass orgId: \"crn:573:organization/137438953498\" in every execute_datasource_query call\n6. Month format in WHERE clauses: 'YYYY-MM' (e.g., '2026-08')\n\nSQL EXAMPLE (correct):\nSELECT\n  ServiceName AS service,\n  SUM(EffectiveCost) AS total_cost\nFROM AWS_FOCUS_COST_AND_USAGE\nWHERE Month >= '2026-06'\nGROUP BY ServiceName\nORDER BY total_cost DESC\nLIMIT 10\n\nWORKFLOW:\n1. Use Think tool to plan your approach before making tool calls\n2. For unknown columns, call get_datasource_metadata first\n3. For multi-step questions, break into sequential queries\n4. Use Calculator for percentages and comparisons\n5. Never retry a failed query with identical parameters — adjust the approach\n\nRESPONSE FORMAT:\n- Always state source: \"Source: CloudHealth (EffectiveCost)\"\n- Use markdown tables for cost breakdowns\n- Always include $ amounts and % where relevant\n- Lead with the most important insight\n- Keep responses under 2000 characters\n- For long lists, show top 5 and offer more on request\n\nTHINK TOOL RULE: Think is completely invisible to the user. NEVER write \"Calling Think\" or narrate tool calls. Your reply must contain ONLY the final answer.\n\nIf asked about anything outside CloudHealth (Slack, GitHub billing, GCP, Dynatrace, etc.):\n\"I only have access to CloudHealth data. I can help with AWS and Azure cloud cost questions.\"",
+          "maxIterations": 30
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [-100, 200],
+      "id": "0d1e2f3a-4b5c-6d7e-8f9a-0b1c2d3e4f5a",
+      "name": "Cleo Deep Agent",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "mlx-community/Qwen3-VL-32B-Instruct-8bit",
+          "mode": "id"
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [-100, 420],
+      "id": "1e2f3a4b-5c6d-7e8f-9a0b-1c2d3e4f5a6b",
+      "name": "LLM Deep (Qwen3-VL-32B)",
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "Cleo Deep (Qwen3-VL-32B)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://apps.cloudhealthtech.com/mcp",
+        "authentication": "none",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [160, 200],
+      "id": "2f3a4b5c-6d7e-8f9a-0b1c-2d3e4f5a6b7c",
+      "name": "CloudHealth MCP (Deep)"
+    },
+    {
+      "parameters": {
+        "description": "IMPORTANT: This tool is completely invisible to the user. NEVER write \"Calling Think\" or any narration about this tool.\n\nUse this to silently reason through a problem before making CloudHealth queries:\n- Plan which dataset to use\n- Decide what SQL to write\n- Reason through multi-step cost comparisons\n- Verify your approach before committing\n\nAfter thinking, respond with ONLY the final answer. Never show your reasoning to the user."
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [160, 340],
+      "id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+      "name": "Think (Deep)"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [160, 480],
+      "id": "4b5c6d7e-8f9a-0b1c-2d3e-4f5a6b7c8d9e",
+      "name": "Calculator (Deep)"
+    }
+  ],
+  "connections": {
+    "Cleo Chat": {
+      "main": [
+        [{"node": "Generate Agent Input", "type": "main", "index": 0}]
+      ]
+    },
+    "Generate Agent Input": {
+      "main": [
+        [{"node": "Query Classifier", "type": "main", "index": 0}]
+      ]
+    },
+    "LLM Classifier (gemma-2-9b)": {
+      "ai_languageModel": [
+        [{"node": "Query Classifier", "type": "ai_languageModel", "index": 0}]
+      ]
+    },
+    "Query Classifier": {
+      "main": [
+        [{"node": "Simple or Complex?", "type": "main", "index": 0}]
+      ]
+    },
+    "Simple or Complex?": {
+      "main": [
+        [{"node": "Cleo Fast Agent", "type": "main", "index": 0}],
+        [{"node": "Cleo Deep Agent", "type": "main", "index": 0}]
+      ]
+    },
+    "LLM Fast (gemma-2-9b)": {
+      "ai_languageModel": [
+        [{"node": "Cleo Fast Agent", "type": "ai_languageModel", "index": 0}]
+      ]
+    },
+    "CloudHealth MCP (Fast)": {
+      "ai_tool": [
+        [{"node": "Cleo Fast Agent", "type": "ai_tool", "index": 0}]
+      ]
+    },
+    "Think (Fast)": {
+      "ai_tool": [
+        [{"node": "Cleo Fast Agent", "type": "ai_tool", "index": 0}]
+      ]
+    },
+    "Calculator (Fast)": {
+      "ai_tool": [
+        [{"node": "Cleo Fast Agent", "type": "ai_tool", "index": 0}]
+      ]
+    },
+    "LLM Deep (Qwen3-VL-32B)": {
+      "ai_languageModel": [
+        [{"node": "Cleo Deep Agent", "type": "ai_languageModel", "index": 0}]
+      ]
+    },
+    "CloudHealth MCP (Deep)": {
+      "ai_tool": [
+        [{"node": "Cleo Deep Agent", "type": "ai_tool", "index": 0}]
+      ]
+    },
+    "Think (Deep)": {
+      "ai_tool": [
+        [{"node": "Cleo Deep Agent", "type": "ai_tool", "index": 0}]
+      ]
+    },
+    "Calculator (Deep)": {
+      "ai_tool": [
+        [{"node": "Cleo Deep Agent", "type": "ai_tool", "index": 0}]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "cleo-local"
+  },
+  "id": "cleo-v1-workflow",
+  "tags": [
+    {"name": "finops"},
+    {"name": "cloudhealth"},
+    {"name": "cleo"}
+  ]
+}

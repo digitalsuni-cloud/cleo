@@ -1,0 +1,534 @@
+{
+  "name": "Cleo v2 — Cloud Efficiency Optimizer",
+  "nodes": [
+    {
+      "parameters": { "options": {} },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [-1200, 0],
+      "id": "3f2a1b4c-8d9e-4f0a-b1c2-d3e4f5a6b7c8",
+      "name": "Cleo Chat",
+      "webhookId": "c1e0-c1e0-c1e0-c1e0-c1e0c1e0c1e0"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "aa001", "name": "chatInput", "value": "={{ $json.chatInput }}", "type": "string" },
+            { "id": "aa002", "name": "sessionId", "value": "={{ $json.sessionId || 'cleo-session' }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-980, 0],
+      "id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+      "name": "Extract Input"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.sessionId }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [-760, 220],
+      "id": "mem-read-001",
+      "name": "Read Session Memory"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "sm002", "name": "orgId", "value": "={{ $json.orgId || '' }}", "type": "string" },
+            { "id": "sm003", "name": "orgName", "value": "={{ $json.orgName || '' }}", "type": "string" },
+            { "id": "sm004", "name": "awaitingOrgSelection", "value": "={{ $json.awaitingOrgSelection || false }}", "type": "boolean" },
+            { "id": "sm005", "name": "orgList", "value": "={{ $json.orgList || [] }}", "type": "array" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-760, 0],
+      "id": "set-session-defaults",
+      "name": "Load Session State"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "typeValidation": "loose", "version": 3 },
+          "conditions": [
+            {
+              "id": "cond-reset",
+              "leftValue": "={{ $('Extract Input').first().json.chatInput.toLowerCase().trim() }}",
+              "rightValue": "/reset",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-540, 0],
+      "id": "check-reset",
+      "name": "Reset Requested?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "reset-orgid", "name": "orgId", "value": "", "type": "string" },
+            { "id": "reset-orgname", "name": "orgName", "value": "", "type": "string" },
+            { "id": "reset-awaiting", "name": "awaitingOrgSelection", "value": false, "type": "boolean" },
+            { "id": "reset-orglist", "name": "orgList", "value": "=[]", "type": "array" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-320, -200],
+      "id": "reset-session",
+      "name": "Reset Session"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "typeValidation": "loose", "version": 3 },
+          "conditions": [
+            {
+              "id": "cond-has-session",
+              "leftValue": "={{ $json.orgId }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-320, 40],
+      "id": "check-session",
+      "name": "Has Session?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "typeValidation": "loose", "version": 3 },
+          "conditions": [
+            {
+              "id": "cond-awaiting",
+              "leftValue": "={{ $json.awaitingOrgSelection }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-100, 160],
+      "id": "check-awaiting-selection",
+      "name": "Awaiting Org Selection?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8080/mcp",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": { \"name\": \"list_managed_orgs\", \"arguments\": {} },\n  \"id\": 1\n}",
+        "options": { "timeout": 30000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-100, -200],
+      "id": "list-orgs",
+      "name": "List Orgs & Customers"
+    },
+    {
+      "parameters": {
+        "jsCode": "const mcpResponse = $input.first().json;\nlet orgs = [];\ntry {\n  const content = (mcpResponse.result || mcpResponse).content || [];\n  for (const item of content) {\n    if (item.type === 'text') {\n      const parsed = JSON.parse(item.text);\n      orgs = Array.isArray(parsed) ? parsed : (parsed.organizations || parsed.data || []);\n    }\n  }\n} catch(e) {}\nif (orgs.length === 0) {\n  orgs = [{ name: 'Thespina test', id: 'crn:573:organization/137438953498' }];\n}\nlet menu = '👋 **Welcome to Cleo — Cloud Efficiency Optimizer!**\\n\\nPlease type the **number** of the tenant you want to query:\\n\\n';\norgs.forEach((org, i) => {\n  const name = org.name || org.orgName || org.displayName || `Org ${i+1}`;\n  const id = org.id || org.crn || org.orgId || '';\n  menu += `**${i+1}.** ${name}`;\n  if (id) menu += ` \\`${id}\\``;\n  menu += '\\n';\n});\nmenu += '\\n_Type `/reset` at any time to switch tenants._';\nreturn [{ json: { orgList: orgs, menuMessage: menu, awaitingOrgSelection: true } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [140, -200],
+      "id": "format-org-menu",
+      "name": "Format Org Menu"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "store-orglist", "name": "orgList", "value": "={{ $json.orgList }}", "type": "array" },
+            { "id": "store-awaiting", "name": "awaitingOrgSelection", "value": "={{ $json.awaitingOrgSelection }}", "type": "boolean" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [380, -200],
+      "id": "store-session-pending",
+      "name": "Store Pending Session"
+    },
+    {
+      "parameters": {
+        "jsCode": "const userInput = $('Extract Input').first().json.chatInput.trim();\nconst sessionData = $('Load Session State').first().json;\nconst orgList = sessionData.orgList || [];\nconst selection = parseInt(userInput, 10);\nif (isNaN(selection) || selection < 1 || selection > orgList.length) {\n  return [{ json: { valid: false, message: `\u26a0\ufe0f Please type a number between 1 and ${orgList.length} to select a tenant.`, orgList, awaitingOrgSelection: true } }];\n}\nconst selected = orgList[selection - 1];\nconst orgName = selected.name || selected.orgName || selected.displayName || `Org ${selection}`;\nconst orgId = selected.id || selected.crn || selected.orgId || 'crn:573:organization/137438953498';\nreturn [{ json: { valid: true, orgId, orgName, orgList, awaitingOrgSelection: false, confirmMessage: `\u2705 **Connected to: ${orgName}**\\n\\nI'm ready to answer your CloudHealth cost questions. What would you like to know?\\n\\n_Examples:_\\n- What are my top 5 AWS services by cost this month?\\n- Show me Azure spending trends for the last 3 months?\\n- Which region had the highest EC2 spend in August?` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [140, 160],
+      "id": "parse-org-selection",
+      "name": "Parse Org Selection"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "typeValidation": "loose", "version": 3 },
+          "conditions": [
+            { "id": "cond-valid", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [380, 160],
+      "id": "valid-selection",
+      "name": "Valid Selection?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "store-orgid", "name": "orgId", "value": "={{ $json.orgId }}", "type": "string" },
+            { "id": "store-orgname", "name": "orgName", "value": "={{ $json.orgName }}", "type": "string" },
+            { "id": "store-awaiting2", "name": "awaitingOrgSelection", "value": false, "type": "boolean" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [620, 100],
+      "id": "store-confirmed-session",
+      "name": "Store Confirmed Session"
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8080/start?model=gemma",
+        "options": { "timeout": 90000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [620, -100],
+      "id": "start-gemma",
+      "name": "Start Gemma"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Classify this cloud cost question as 'simple' or 'complex'.\n\nSimple = direct lookup, one metric, one time period, one cloud, dataset discovery\nComplex = trend comparison, month-over-month, root cause, multi-cloud breakdown, projections, multi-step\n\nQuestion: {{ $('Extract Input').first().json.chatInput }}\n\nReply with ONE word only: simple or complex",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [840, 0],
+      "id": "2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e",
+      "name": "Query Classifier"
+    },
+    {
+      "parameters": {
+        "model": { "__rl": true, "value": "mlx-community/gemma-2-9b-it-4bit", "mode": "id" },
+        "options": { "maxTokens": 5, "temperature": 0 }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [840, 200],
+      "id": "3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f",
+      "name": "LLM Classifier (gemma-2-9b)",
+      "credentials": { "openAiApi": { "id": "cleo-fast-003", "name": "Cleo Fast (gemma-2-9b)" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "typeValidation": "loose", "version": 3 },
+          "conditions": [
+            { "id": "route-001", "leftValue": "={{ $json.text }}", "rightValue": "simple", "operator": { "type": "string", "operation": "contains" } }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1060, 0],
+      "id": "4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a",
+      "name": "Simple or Complex?"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Today: {{ $now.toFormat('yyyy-MM-dd') }}\nTenant: {{ $('Store Confirmed Session').first().json.orgName }}\nOrgId: {{ $('Store Confirmed Session').first().json.orgId }}\nQuestion: {{ $('Extract Input').first().json.chatInput }}",
+        "options": {
+          "systemMessage": "=You are Cleo, a FinOps AI assistant for {{ $('Store Confirmed Session').first().json.orgName }}. Answer questions using live CloudHealth data only.\n\nORG ID for all queries: {{ $('Store Confirmed Session').first().json.orgId }}\n\nMCP TOOLS: list_managed_orgs, list_standard_datasources, get_datasource_metadata, execute_datasource_query, list_channel_customers\n\nKEY DATASETS:\n- MULTICLOUD_FOCUS_COST_AND_USAGE (AWS+Azure): provider, ServiceName, Month, EffectiveCost, BilledCost\n- AWS_FOCUS_COST_AND_USAGE: ServiceName, Month, EffectiveCost, BilledCost\n- AZURE_FOCUS_COST_AND_USAGE: ServiceName, Month, EffectiveCost, BilledCost\n\nSQL RULES:\n1. NEVER SELECT * — list columns explicitly\n2. WITH clause names start with cxtemp_\n3. Always LIMIT results\n4. Always pass orgId: \"{{ $('Store Confirmed Session').first().json.orgId }}\"\n5. Month format: 'YYYY-MM'\n\nRESPONSE: Use markdown tables, show $ and %, cite source as CloudHealth. Under 2000 chars. NEVER narrate tool calls.",
+          "maxIterations": 20
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [1300, -160],
+      "id": "5e6f7a8b-9c0d-1e2f-3a4b-5c6d7e8f9a0b",
+      "name": "Cleo Fast Agent",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": { "__rl": true, "value": "mlx-community/gemma-2-9b-it-4bit", "mode": "id" },
+        "options": { "temperature": 0.1 }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [1300, 40],
+      "id": "6f7a8b9c-0d1e-2f3a-4b5c-6d7e8f9a0b1c",
+      "name": "LLM Fast (gemma-2-9b)",
+      "credentials": { "openAiApi": { "id": "cleo-fast-003", "name": "Cleo Fast (gemma-2-9b)" } }
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8080/stop?model=gemma",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, -160],
+      "id": "stop-gemma-fast",
+      "name": "Stop Gemma (Fast)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "restore-text", "name": "output", "value": "={{ $('Cleo Fast Agent').first().json.output || $('Cleo Fast Agent').first().json.text }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1760, -160],
+      "id": "restore-fast",
+      "name": "Restore Answer (Fast)"
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://127.0.0.1:8080/mcp",
+        "options": { "timeout": 60000 }
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [1540, 20],
+      "id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+      "name": "CloudHealth MCP (Fast)"
+    },
+    {
+      "parameters": {
+        "description": "Silent reasoning tool. Plan SQL queries, dataset selection, and multi-step approaches. Never narrate usage to user."
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [1540, 160],
+      "id": "8b9c0d1e-2f3a-4b5c-6d7e-8f9a0b1c2d3e",
+      "name": "Think (Fast)"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [1760, 20],
+      "id": "9c0d1e2f-3a4b-5c6d-7e8f-9a0b1c2d3e4f",
+      "name": "Calculator (Fast)"
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8080/start?model=qwen",
+        "options": { "timeout": 90000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 240],
+      "id": "start-qwen",
+      "name": "Start Qwen"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Today: {{ $now.toFormat('yyyy-MM-dd') }}\nTenant: {{ $('Store Confirmed Session').first().json.orgName }}\nOrgId: {{ $('Store Confirmed Session').first().json.orgId }}\nQuestion: {{ $('Extract Input').first().json.chatInput }}",
+        "options": {
+          "systemMessage": "=You are Cleo, a FinOps AI assistant for {{ $('Store Confirmed Session').first().json.orgName }}. You handle complex, multi-step cloud cost analysis using live CloudHealth data only.\n\nORG ID for all queries: {{ $('Store Confirmed Session').first().json.orgId }}\n\nMCP TOOLS: list_managed_orgs, list_standard_datasources, get_datasource_metadata, execute_datasource_query, list_channel_customers\n\nKEY DATASETS:\n- MULTICLOUD_FOCUS_COST_AND_USAGE (AWS+Azure): provider, ServiceName, Month, EffectiveCost, BilledCost\n- AWS_FOCUS_COST_AND_USAGE: ServiceName, Month, EffectiveCost, BilledCost\n- AZURE_FOCUS_COST_AND_USAGE: ServiceName, Month, EffectiveCost, BilledCost\n\nSQL RULES:\n1. NEVER SELECT * — list columns explicitly\n2. WITH clause names start with cxtemp_\n3. Always LIMIT results\n4. Always pass orgId: \"{{ $('Store Confirmed Session').first().json.orgId }}\"\n5. Month format: 'YYYY-MM'\n\nRESPONSE: Use markdown tables, show $ and %, cite source as CloudHealth. Under 2000 chars. NEVER narrate tool calls.",
+          "maxIterations": 30
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [1540, 360],
+      "id": "0d1e2f3a-4b5c-6d7e-8f9a-0b1c2d3e4f5a",
+      "name": "Cleo Deep Agent",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": { "__rl": true, "value": "mlx-community/Qwen3-VL-32B-Instruct-8bit", "mode": "id" },
+        "options": { "temperature": 0.1 }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [1540, 560],
+      "id": "1e2f3a4b-5c6d-7e8f-9a0b-1c2d3e4f5a6b",
+      "name": "LLM Deep (Qwen3-VL-32B)",
+      "credentials": { "openAiApi": { "id": "cleo-deep-004", "name": "Cleo Deep (Qwen3-VL-32B)" } }
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8080/stop_all",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 360],
+      "id": "stop-models-deep",
+      "name": "Stop Models (Deep)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "restore-text-deep", "name": "output", "value": "={{ $('Cleo Deep Agent').first().json.output || $('Cleo Deep Agent').first().json.text }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1980, 360],
+      "id": "restore-deep",
+      "name": "Restore Answer (Deep)"
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://127.0.0.1:8080/mcp",
+        "options": { "timeout": 60000 }
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [1760, 560],
+      "id": "2f3a4b5c-6d7e-8f9a-0b1c-2d3e4f5a6b7c",
+      "name": "CloudHealth MCP (Deep)"
+    },
+    {
+      "parameters": {
+        "description": "Silent reasoning tool. Plan SQL queries, dataset selection, and multi-step approaches. Never narrate usage to user."
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [1760, 700],
+      "id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+      "name": "Think (Deep)"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [1980, 560],
+      "id": "4b5c6d7e-8f9a-0b1c-2d3e-4f5a6b7c8d9e",
+      "name": "Calculator (Deep)"
+    }
+  ],
+  "connections": {
+    "Cleo Chat": { "main": [[{"node": "Extract Input", "type": "main", "index": 0}]] },
+    "Extract Input": { "main": [[{"node": "Load Session State", "type": "main", "index": 0}]] },
+    "Load Session State": { "main": [[{"node": "Reset Requested?", "type": "main", "index": 0}]] },
+    "Reset Requested?": {
+      "main": [
+        [{"node": "Reset Session", "type": "main", "index": 0}],
+        [{"node": "Has Session?", "type": "main", "index": 0}]
+      ]
+    },
+    "Reset Session": { "main": [[{"node": "List Orgs & Customers", "type": "main", "index": 0}]] },
+    "Has Session?": {
+      "main": [
+        [{"node": "Start Gemma", "type": "main", "index": 0}],
+        [{"node": "Awaiting Org Selection?", "type": "main", "index": 0}]
+      ]
+    },
+    "Awaiting Org Selection?": {
+      "main": [
+        [{"node": "Parse Org Selection", "type": "main", "index": 0}],
+        [{"node": "List Orgs & Customers", "type": "main", "index": 0}]
+      ]
+    },
+    "List Orgs & Customers": { "main": [[{"node": "Format Org Menu", "type": "main", "index": 0}]] },
+    "Format Org Menu": { "main": [[{"node": "Store Pending Session", "type": "main", "index": 0}]] },
+    "Parse Org Selection": { "main": [[{"node": "Valid Selection?", "type": "main", "index": 0}]] },
+    "Valid Selection?": {
+      "main": [
+        [{"node": "Store Confirmed Session", "type": "main", "index": 0}],
+        [{"node": "Store Pending Session", "type": "main", "index": 0}]
+      ]
+    },
+    "Store Confirmed Session": { "main": [[{"node": "Start Gemma", "type": "main", "index": 0}]] },
+    "Start Gemma": { "main": [[{"node": "Query Classifier", "type": "main", "index": 0}]] },
+    "Query Classifier": { "main": [[{"node": "Simple or Complex?", "type": "main", "index": 0}]] },
+    "Simple or Complex?": {
+      "main": [
+        [{"node": "Cleo Fast Agent", "type": "main", "index": 0}],
+        [{"node": "Start Qwen", "type": "main", "index": 0}]
+      ]
+    },
+    "Cleo Fast Agent": { "main": [[{"node": "Stop Gemma (Fast)", "type": "main", "index": 0}]] },
+    "Stop Gemma (Fast)": { "main": [[{"node": "Restore Answer (Fast)", "type": "main", "index": 0}]] },
+    
+    "Start Qwen": { "main": [[{"node": "Cleo Deep Agent", "type": "main", "index": 0}]] },
+    "Cleo Deep Agent": { "main": [[{"node": "Stop Models (Deep)", "type": "main", "index": 0}]] },
+    "Stop Models (Deep)": { "main": [[{"node": "Restore Answer (Deep)", "type": "main", "index": 0}]] },
+    
+    "LLM Classifier (gemma-2-9b)": { "ai_languageModel": [[{"node": "Query Classifier", "type": "ai_languageModel", "index": 0}]] },
+    "LLM Fast (gemma-2-9b)": { "ai_languageModel": [[{"node": "Cleo Fast Agent", "type": "ai_languageModel", "index": 0}]] },
+    "CloudHealth MCP (Fast)": { "ai_tool": [[{"node": "Cleo Fast Agent", "type": "ai_tool", "index": 0}]] },
+    "Think (Fast)": { "ai_tool": [[{"node": "Cleo Fast Agent", "type": "ai_tool", "index": 0}]] },
+    "Calculator (Fast)": { "ai_tool": [[{"node": "Cleo Fast Agent", "type": "ai_tool", "index": 0}]] },
+    
+    "LLM Deep (Qwen3-VL-32B)": { "ai_languageModel": [[{"node": "Cleo Deep Agent", "type": "ai_languageModel", "index": 0}]] },
+    "CloudHealth MCP (Deep)": { "ai_tool": [[{"node": "Cleo Deep Agent", "type": "ai_tool", "index": 0}]] },
+    "Think (Deep)": { "ai_tool": [[{"node": "Cleo Deep Agent", "type": "ai_tool", "index": 0}]] },
+    "Calculator (Deep)": { "ai_tool": [[{"node": "Cleo Deep Agent", "type": "ai_tool", "index": 0}]] }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "meta": { "templateCredsSetupCompleted": false, "instanceId": "cleo-local" },
+  "id": "cleo-v2-workflow",
+  "tags": [{"name": "finops"}, {"name": "cloudhealth"}, {"name": "cleo"}]
+}
