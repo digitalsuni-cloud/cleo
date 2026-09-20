@@ -605,6 +605,24 @@
       color: #f87171;
       background: rgba(239, 68, 68, 0.15);
     }
+    .export-btn {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 4px;
+      opacity: 0;
+      transition: all 0.15s ease;
+    }
+    .history-item:hover .export-btn {
+      opacity: 1;
+    }
+    .export-btn:hover {
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.15);
+    }
     .history-item-meta {
       display: flex;
       align-items: center;
@@ -1296,6 +1314,12 @@
       display: flex;
       align-items: center;
       gap: 6px;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    .cleo-chart-wrap:hover .cleo-chart-actions,
+    .cleo-chart-actions:focus-within {
+      opacity: 1;
     }
     .cleo-chart-action-btn {
       display: inline-flex;
@@ -1581,6 +1605,8 @@
       align-items: center;
     }
     .chip {
+      display: inline-flex;
+      align-items: center;
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid rgba(255, 255, 255, 0.08);
       padding: 4px 11px;
@@ -1590,7 +1616,7 @@
       color: var(--text-muted);
       cursor: pointer;
       white-space: nowrap;
-      transition: all 0.15s ease;
+      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
       user-select: none;
     }
     .chip:hover {
@@ -1600,6 +1626,138 @@
     }
     .chip:active {
       transform: scale(0.97);
+    }
+    .chip-icon {
+      flex-shrink: 0;
+      display: inline-flex;
+      opacity: 0.65;
+      margin-right: 6px;
+      transition: opacity 0.2s ease;
+    }
+    .chip:hover .chip-icon {
+      opacity: 1;
+    }
+    /* Inline auto-expand: a real max-width transition on the chip's own detail text reads as
+       "the chip grew", which a satellite tooltip box below it does not. It can't run in-flow
+       though — .chips-row's overflow-x:auto forces overflow-y to compute as auto too (not
+       visible), so anything that grows past the row's own box gets clipped there, and normal
+       flex layout can only grow a item's box toward the right (toward the row's end), which
+       runs the last chips off the visible edge.
+       Fix: a single reusable "shadow" chip, fixed-positioned (escapes the row's clipping
+       entirely), cloned from whichever real chip is hovered and placed exactly over it, that
+       does the actual expanding. For chips near the right edge it's anchored via `right`
+       instead of `left`, so growing wider pushes its own left edge further left instead of
+       running past the window's edge. The real chip underneath never moves, so nothing else
+       in the row shifts.  */
+    .chip-shadow {
+      display: none;
+      position: fixed;
+      z-index: 70;
+      pointer-events: none;
+      /* Must be fully opaque, not the translucent rgba() .chip:hover normally uses — this sits
+         on top of whatever real chips it overlaps while expanded, and a see-through background
+         let their text show through and garble together with the shadow's own text. */
+      background: #1e293b;
+      border-color: rgba(255, 255, 255, 0.18);
+      color: #f8fafc;
+    }
+    .chip-shadow.visible {
+      display: inline-flex;
+    }
+    .chip-shadow .chip-detail {
+      max-width: 0;
+      margin-left: 0;
+      opacity: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      font-weight: 400;
+      color: var(--text-dim);
+      transition: max-width 0.35s ease, opacity 0.25s ease, margin-left 0.35s ease;
+    }
+    .chip-shadow.expanded .chip-detail {
+      max-width: 420px;
+      margin-left: 6px;
+      opacity: 0.85;
+    }
+
+    /* Compact "Clear all histories" confirm — anchored next to the button instead of a
+       full-screen modal, since this is a low-stakes, quickly-reversible-by-not-clicking action
+       that doesn't need to interrupt the whole page. */
+    .clear-confirm-popover {
+      position: fixed;
+      z-index: 200;
+      width: 240px;
+      background: #12151f;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      border-radius: 10px;
+      padding: 12px 14px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 24px rgba(239, 68, 68, 0.15);
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(0.92) translateY(6px);
+      transform-origin: bottom left;
+      transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+    }
+    .clear-confirm-popover.visible {
+      opacity: 1;
+      visibility: visible;
+      transform: scale(1) translateY(0);
+    }
+    /* Empty-state variant: same anchored box, recolored neutral and no actions —
+       used instead of a generic corner toast so "nothing to clear" appears exactly
+       where the user looked (at the button), not somewhere else on the page. */
+    .clear-confirm-popover.info-variant {
+      border-color: rgba(56, 189, 248, 0.35);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 24px rgba(56, 189, 248, 0.15);
+    }
+    .clear-confirm-popover.info-variant .clear-confirm-header {
+      color: #7dd3fc;
+    }
+    .clear-confirm-header {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 8px;
+      color: #f87171;
+      font-weight: 600;
+      font-size: 0.78rem;
+    }
+    .clear-confirm-text {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+      margin-bottom: 12px;
+    }
+    .clear-confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .clear-confirm-btn {
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.74rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-muted);
+      transition: all 0.15s ease;
+    }
+    .clear-confirm-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #f8fafc;
+    }
+    .clear-confirm-btn-danger {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+    }
+    .clear-confirm-btn-danger:hover {
+      background: rgba(239, 68, 68, 0.28);
+      color: #fff;
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.35);
     }
 
     /* Footer Input */
@@ -2155,11 +2313,25 @@
         </div>
 
         <div class="history-footer">
-          <button class="btn-link-danger" onclick="clearAllHistories()">
+          <button class="btn-link-danger" id="btn-clear-history" onclick="clearAllHistories()">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
             <span>Clear history</span>
           </button>
           <span class="persist-hint">100 Max LRU</span>
+        </div>
+      </div>
+
+      <!-- Compact anchored confirm for "Clear history" — see clearAllHistories() comment for
+           why this doesn't use the shared appConfirm() modal. -->
+      <div class="clear-confirm-popover" id="clear-confirm-popover">
+        <div class="clear-confirm-header">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          <span>Clear all histories?</span>
+        </div>
+        <div class="clear-confirm-text">This deletes every saved chat from disk. Cannot be undone.</div>
+        <div class="clear-confirm-actions">
+          <button class="clear-confirm-btn" onclick="hideClearConfirm()">Cancel</button>
+          <button class="clear-confirm-btn clear-confirm-btn-danger" onclick="confirmClearAllHistories()">Clear All</button>
         </div>
       </div>
 
@@ -2235,7 +2407,7 @@
               <div class="welcome-card-title">Top Cloud Services (All Clouds)</div>
               <div class="welcome-card-desc">Ranked monthly spend across AWS, Azure, GCP, and OCI with MoM variance.</div>
             </div>
-            <div class="welcome-card" onclick="sendPrompt('Find channel customers and show multi-cloud spend this month')">
+            <div class="welcome-card" id="card-channel-customers" onclick="sendPrompt('Find channel customers and show multi-cloud spend this month')">
               <div class="welcome-card-title">Channel Customers</div>
               <div class="welcome-card-desc">Partner customer spend breakdown across cloud infrastructure.</div>
             </div>
@@ -2253,15 +2425,39 @@
 
       <!-- Quick Chips Bar (Multi-Cloud: AWS, Azure, GCP, OCI) -->
       <div class="chips-row">
-        <div class="chip" onclick="sendPrompt('Show our top cloud services across AWS, Azure, GCP, and OCI this month')">All Clouds Spend</div>
-        <div class="chip" onclick="sendPrompt('Show our top Azure services and spend breakdown')">Azure Spend</div>
-        <div class="chip" onclick="sendPrompt('Show our top Google Cloud GCP services and spend breakdown')">GCP Spend</div>
-        <div class="chip" onclick="sendPrompt('Show our top Oracle Cloud OCI services and spend breakdown')">OCI Spend</div>
-        <div class="chip" onclick="sendPrompt('Show our top 5 most expensive AWS services this month')">AWS Spend</div>
-        <div class="chip" onclick="sendPrompt('Show my top cost anomalies across all clouds for this month')">Cost Anomalies</div>
-        <div class="chip" onclick="sendPrompt('Find channel customers and show multi-cloud spend')">Channel Customers</div>
-        <div class="chip" onclick="sendPrompt('Show monthly cost breakdown for the last 3 months across all clouds')">3-Month Trend</div>
+        <div class="chip" data-detail="Show our top cloud services across AWS, Azure, GCP, and OCI this month" onclick="sendPrompt('Show our top cloud services across AWS, Azure, GCP, and OCI this month')">
+          <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          <span>All Clouds Spend</span>
+        </div>
+        <div class="chip" data-detail="Show our top Azure services and spend breakdown" onclick="sendPrompt('Show our top Azure services and spend breakdown')">
+          <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M4 20h16L15 4h-4L8 14l-4 6z"></path></svg>
+          <span>Azure Spend</span>
+        </div>
+        <div class="chip" data-detail="Show our top Google Cloud GCP services and spend breakdown" onclick="sendPrompt('Show our top Google Cloud GCP services and spend breakdown')">
+          <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
+          <span>GCP Spend</span>
+        </div>
+        <!-- OCI Spend chip intentionally omitted: this account's CloudHealth data has zero OCI
+             telemetry right now (no dedicated OCI dataset, no rows in the multicloud rollup) —
+             re-add once real OCI support/data exists. -->
+        <div class="chip" data-detail="Show our top 5 most expensive AWS services this month" onclick="sendPrompt('Show our top 5 most expensive AWS services this month')">
+          <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14c3.5 3 9.5 3.5 14 .5"></path><path d="M16.5 12.5l2.5 2.5-2.5 2.5"></path><path d="M7 8h10M9 4h6"></path></svg>
+          <span>AWS Spend</span>
+        </div>
+        <div class="chip" data-detail="Show my top cost anomalies across all clouds for this month" onclick="sendPrompt('Show my top cost anomalies across all clouds for this month')">
+          <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          <span>Cost Anomalies</span>
+        </div>
+        <div class="chip" id="chip-channel-customers" data-detail="Find channel customers and show multi-cloud spend" onclick="sendPrompt('Find channel customers and show multi-cloud spend')">
+          <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          <span>Channel Customers</span>
+        </div>
+        <div class="chip" data-detail="Show monthly cost breakdown for the last 3 months across all clouds" onclick="sendPrompt('Show monthly cost breakdown for the last 3 months across all clouds')">
+          <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+          <span>3-Month Trend</span>
+        </div>
       </div>
+      <div class="chip chip-shadow" id="chip-shadow"></div>
 
       <!-- Command Bar Input -->
       <footer>
@@ -2721,6 +2917,13 @@
                       <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"></path>
                     </svg>
                   </button>
+                  <button class="export-btn" onclick="exportConversation(event, '${s.id}', '${escapeAttr(s.title)}')" title="Export conversation">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                      <polyline points="7 10 12 15 17 10"></polyline>
+                      <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                  </button>
                   <button class="del-btn" onclick="deleteHistory(event, '${s.id}')" title="Delete conversation">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <polyline points="3 6 5 6 21 6"></polyline>
@@ -2909,6 +3112,10 @@
       }
     }
 
+    function goToLandingPage() {
+      newSession();
+    }
+
     function newSession() {
       currentSessionId = 'new';
       localStorage.setItem('cleo_session_id', 'new');
@@ -2962,13 +3169,88 @@
       }
     }
 
-    async function clearAllHistories() {
-      const confirmed = await appConfirm("Clear all saved chat histories from disk? This cannot be undone.", {
-        title: "Clear All Histories",
-        confirmText: "Clear All",
-        isDestructive: true
-      });
-      if (!confirmed) return;
+    async function exportConversation(event, sid, title) {
+      if (event) event.stopPropagation();
+      const btn = event ? event.currentTarget : null;
+      try {
+        const res = await fetch(`/api/session/${sid}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!data.messages || data.messages.length === 0) {
+          showToast("Nothing to export — this chat has no messages", "info");
+          return;
+        }
+
+        const lines = [`# ${title || 'Cleo Conversation'}`, ''];
+        data.messages.forEach(msg => {
+          const who = msg.role === 'user' ? 'You' : 'Cleo';
+          const ts = msg.timestamp ? new Date(msg.timestamp * 1000).toLocaleString() : '';
+          lines.push(`## ${who}${ts ? ` — ${ts}` : ''}`, '', msg.content || '', '');
+        });
+
+        const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const safeName = (title || 'cleo-conversation').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'cleo-conversation';
+        a.download = `${safeName}_${new Date().toISOString().slice(0, 10)}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        if (btn) {
+          const origHTML = btn.innerHTML;
+          btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+          setTimeout(() => { btn.innerHTML = origHTML; }, 1600);
+        }
+        showToast("Conversation exported", "info");
+      } catch (err) {
+        showToast(`Export failed: ${err.message}`, "error");
+      }
+    }
+
+    function _clearConfirmOutsideHandler(e) {
+      const popover = document.getElementById('clear-confirm-popover');
+      const btn = document.getElementById('btn-clear-history');
+      if (popover && !popover.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+        hideClearConfirm();
+      }
+    }
+    function hideClearConfirm() {
+      const popover = document.getElementById('clear-confirm-popover');
+      if (popover) popover.classList.remove('visible');
+      document.removeEventListener('mousedown', _clearConfirmOutsideHandler);
+    }
+    function clearAllHistories() {
+      const btn = document.getElementById('btn-clear-history');
+      const popover = document.getElementById('clear-confirm-popover');
+      if (!btn || !popover) return;
+      const rect = btn.getBoundingClientRect();
+      popover.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+      popover.style.left = `${rect.left}px`;
+
+      // Nothing to clear — a confirmation dialog for a no-op action is just an extra click for
+      // no reason, so show the same anchored box in a neutral, button-less, auto-dismissing
+      // state instead of asking the user to confirm deleting nothing (or popping a toast
+      // somewhere unrelated to the button they just clicked).
+      const hasHistory = document.querySelectorAll('#history-list .history-item').length > 0;
+      popover.classList.toggle('info-variant', !hasHistory);
+      popover.querySelector('.clear-confirm-header span').textContent = hasHistory ? 'Clear all histories?' : 'Nothing to clear';
+      popover.querySelector('.clear-confirm-text').textContent = hasHistory
+        ? 'This deletes every saved chat from disk. Cannot be undone.'
+        : 'No saved chats yet.';
+      popover.querySelector('.clear-confirm-actions').style.display = hasHistory ? '' : 'none';
+
+      popover.classList.add('visible');
+      if (!hasHistory) {
+        setTimeout(() => popover.classList.remove('visible'), 1600);
+        return;
+      }
+      setTimeout(() => document.addEventListener('mousedown', _clearConfirmOutsideHandler), 0);
+    }
+    async function confirmClearAllHistories() {
+      hideClearConfirm();
       try {
         const res = await fetch('/api/sessions', { method: 'DELETE' });
         if (res.ok) {
@@ -3705,6 +3987,16 @@
       if (sidebarBadge && tools) {
         sidebarBadge.textContent = `${tools.length}`;
       }
+      // Hide the "Channel Customers" suggestion chip when this MCP connection doesn't expose
+      // channel-customer telemetry at all (e.g. a direct-customer token) — suggesting a prompt
+      // that can never return real customer data isn't useful. Exposed globally so
+      // generateFollowUpChips() (the post-response "Suggested:" chips) can apply the same rule.
+      const hasChannelCustomers = Array.isArray(tools) && tools.some(t => t.name === 'list_channel_customers');
+      window.hasChannelCustomersTool = hasChannelCustomers;
+      const channelCustomersChip = document.getElementById('chip-channel-customers');
+      if (channelCustomersChip) channelCustomersChip.style.display = hasChannelCustomers ? '' : 'none';
+      const channelCustomersCard = document.getElementById('card-channel-customers');
+      if (channelCustomersCard) channelCustomersCard.style.display = hasChannelCustomers ? '' : 'none';
       if (tools && tools.length > 0) {
         container.innerHTML = tools.map(t => `
           <div class="tool-item" title="${escapeHtml(t.description || '')}" style="display: flex; align-items: center; gap: 6px;">
@@ -4339,6 +4631,35 @@
     }
 
     // ── Chart Rendering ───────────────────────────────────────────────────────
+    function _formatAxisNumber(v, withCurrency) {
+      const n = Number(v) || 0;
+      const abs = Math.abs(n);
+      const sign = n < 0 ? '-' : '';
+      const prefix = withCurrency ? '$' : '';
+      if (abs >= 1e9) return `${sign}${prefix}${(abs / 1e9).toFixed(abs % 1e9 ? 1 : 0)}B`;
+      if (abs >= 1e6) return `${sign}${prefix}${(abs / 1e6).toFixed(abs % 1e6 ? 1 : 0)}M`;
+      if (abs >= 1e3) return `${sign}${prefix}${(abs / 1e3).toFixed(abs % 1e3 ? 1 : 0)}K`;
+      return `${sign}${prefix}${abs}`;
+    }
+    function _formatAxisCurrency(v) {
+      return _formatAxisNumber(v, true);
+    }
+    // A chart's value_label (e.g. "Cost ($)", "Instance Hours", "Instance Count") tells us
+    // whether the Y-axis is actually a dollar metric — only prefix "$" when it is, so hours/
+    // count/quantity axes aren't mislabeled as currency.
+    function _isCostMetricLabel(label) {
+      return /cost|spend|\$/i.test(label || '');
+    }
+    // No explicit x-axis label is passed from the server today, so infer one from the shape of
+    // the labels themselves (month/quarter/day strings vs. plain category names).
+    function _inferXAxisLabel(labels) {
+      const sample = String((labels && labels[0]) || '');
+      if (!sample) return '';
+      if (/^Q[1-4]\b/i.test(sample)) return 'Quarter';
+      if (/^\d{4}-\d{2}-\d{2}/.test(sample)) return 'Day';
+      if (/^\d{4}-\d{2}\b/.test(sample) || /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(sample)) return 'Month';
+      return 'Category';
+    }
     const _CHART_PALETTE = [
       '#0284c7', '#dc2626', '#ea580c', '#f59e0b', '#8b5cf6', '#84cc16',
       '#94a3b8', '#ec4899', '#14b8a6', '#eab308', '#06b6d4', '#6366f1',
@@ -4390,7 +4711,7 @@
           ticks: {
             color: '#64748b',
             font: { size: 11 },
-            callback: v => v >= 1000 ? `$${(v/1000).toFixed(0)}k` : `$${v}`
+            callback: _formatAxisCurrency
           },
           grid: { color: 'rgba(255,255,255,0.06)' }
         }
@@ -4568,7 +4889,7 @@
       expandBtn.type = 'button';
       expandBtn.className = 'cleo-chart-action-btn';
       expandBtn.title = 'Expand chart';
-      expandBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg> <span>Expand</span>';
+      expandBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>';
       expandBtn.onclick = onExpand;
       actions.appendChild(expandBtn);
       header.appendChild(actions);
@@ -4615,6 +4936,43 @@
         const isHorizontal = Boolean(spec.horizontal);
 
         const opts = JSON.parse(JSON.stringify(_CHART_DEFAULTS));
+        // JSON.stringify silently drops function values, so the Y-axis currency-formatting
+        // callback defined on _CHART_DEFAULTS never survives this clone — every axis showed
+        // raw unformatted numbers. Re-attach it after cloning, and only as a $ format when the
+        // metric actually is a cost (a chart of hours/instance counts shouldn't get a "$" prefix).
+        // Also label the axis with the actual metric (Effective Cost, Instance Hours, etc.) so
+        // it's clear what the numbers mean, not just "there are numbers".
+        const axisLabel = spec.value_label || spec.yLabel || (isWaterfall ? 'Cost Change' : 'Cost');
+        const axisIsCost = _isCostMetricLabel(axisLabel);
+        if (opts.scales?.y?.ticks) {
+          opts.scales.y.ticks.callback = v => _formatAxisNumber(v, axisIsCost);
+        }
+        if (opts.scales?.y) {
+          opts.scales.y.title = { display: true, text: axisLabel, color: '#64748b', font: { size: 11 } };
+        }
+        if (opts.scales?.x) {
+          const xLabel = spec.x_label || spec.xLabel || _inferXAxisLabel(labels);
+          if (xLabel) opts.scales.x.title = { display: true, text: xLabel, color: '#64748b', font: { size: 11 } };
+        }
+        // Same JSON-clone problem drops the tooltip's number-formatting callback — re-attach it,
+        // matching the axis's cost-vs-non-cost formatting so tooltips and axis agree.
+        if (opts.plugins?.tooltip) {
+          opts.plugins.tooltip.callbacks = {
+            label: ctx => {
+              const v = ctx.parsed.y ?? ctx.parsed ?? ctx.raw;
+              const dsLabel = ctx.dataset.label ? `${ctx.dataset.label}: ` : '';
+              if (typeof v !== 'number') return ` ${dsLabel}${v}`;
+              const formatted = axisIsCost
+                ? `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+              return ` ${dsLabel}${formatted}`;
+            }
+          };
+        }
+        // Pie/doughnut keep a fixed, centered shape (see .cleo-chart-type-pie/doughnut max-width);
+        // everything else should stretch to fill its container width instead of being locked to
+        // a fixed aspect ratio and left-aligned with dead space on the right.
+        opts.maintainAspectRatio = isPie;
 
         if (spec.title) {
           opts.plugins.title = { display: false };
@@ -4918,6 +5276,11 @@
       const rlow = (respText || '').toLowerCase();
       const plow = (userPrompt || '').toLowerCase();
       const chips = [];
+      // This MCP connection may not expose list_channel_customers at all (e.g. a direct-customer
+      // token) — suggesting "Top channel customers by spend" in that case is a dead-end prompt
+      // that will always fail, same issue as the main chips-row (see renderTools()).
+      const channelCustomersAvailable = !!window.hasChannelCustomersTool;
+      const channelCustomersFallbackChip = channelCustomersAvailable ? 'Top channel customers by spend' : 'Show AWS spend';
 
       let custName = null;
       const m1 = (respText || '').match(/for\s+\*\*([A-Za-z0-9\s_\-\(\)]+?)\*\*/i);
@@ -4955,20 +5318,20 @@
         if (sampleCust) {
           chips.push(`Breakdown for ${sampleCust}`, 'Sort in ascending order', 'Top cloud services (All Clouds)');
         } else {
-          chips.push('Top channel customers by spend', 'Sort in ascending order', 'Top cloud services (All Clouds)');
+          chips.push(channelCustomersFallbackChip, 'Sort in ascending order', 'Top cloud services (All Clouds)');
         }
       } else if (rlow.includes('azure')) {
-        chips.push('Show top GCP services', 'Show top AWS services', 'Top channel customers by spend');
+        chips.push('Show top GCP services', 'Show top AWS services', channelCustomersFallbackChip);
       } else if (rlow.includes('gcp') || rlow.includes('bigquery')) {
-        chips.push('Show top Azure services', 'Show top AWS services', 'Top channel customers by spend');
+        chips.push('Show top Azure services', 'Show top AWS services', channelCustomersFallbackChip);
       } else if (rlow.includes('top') && rlow.includes('services')) {
-        chips.push('Show Azure spend', 'Show GCP spend', 'Show OCI spend');
+        chips.push('Show Azure spend', 'Show GCP spend', 'Show AWS spend');
       } else {
         const sampleCust = (window.channelCustomers && window.channelCustomers.length > 0) ? window.channelCustomers[0].name : null;
         if (sampleCust) {
           chips.push('Top cloud services across all clouds', 'Show Azure spend', `Breakdown for ${sampleCust}`);
         } else {
-          chips.push('Top cloud services across all clouds', 'Show Azure spend', 'Top channel customers by spend');
+          chips.push('Top cloud services across all clouds', 'Show Azure spend', channelCustomersFallbackChip);
         }
       }
       return chips.slice(0, 3);
@@ -5170,6 +5533,46 @@
         console.debug('[fetchChannelCustomers]', e);
       }
     }
+
+    // ── Chip suggestion auto-expand ──
+    // See the .chip-shadow CSS comment for why this is a fixed-position clone rather than an
+    // in-flow expansion or a separate tooltip box.
+    function showChipExpand(chip) {
+      const text = chip.dataset.detail;
+      const shadow = document.getElementById('chip-shadow');
+      if (!text || !shadow) return;
+
+      const rect = chip.getBoundingClientRect();
+      shadow.innerHTML = chip.innerHTML + `<span class="chip-detail">${escapeHtml(text)}</span>`;
+      shadow.style.top = `${rect.top}px`;
+      shadow.style.height = `${rect.height}px`;
+      shadow.style.padding = getComputedStyle(chip).padding;
+      shadow.style.fontSize = getComputedStyle(chip).fontSize;
+      shadow.style.borderRadius = getComputedStyle(chip).borderRadius;
+
+      const estimatedExpandedWidth = rect.width + 420; // matches .chip-shadow.expanded max-width
+      const growLeft = rect.left + estimatedExpandedWidth > window.innerWidth - 16;
+      if (growLeft) {
+        shadow.style.right = `${window.innerWidth - rect.right}px`;
+        shadow.style.left = 'auto';
+      } else {
+        shadow.style.left = `${rect.left}px`;
+        shadow.style.right = 'auto';
+      }
+
+      shadow.classList.add('visible');
+      // Add .expanded on the next frame so the max-width transition actually animates instead
+      // of jumping straight to its end state.
+      requestAnimationFrame(() => shadow.classList.add('expanded'));
+    }
+    function hideChipExpand() {
+      const shadow = document.getElementById('chip-shadow');
+      if (shadow) shadow.classList.remove('expanded', 'visible');
+    }
+    document.querySelectorAll('.chips-row .chip[data-detail]').forEach(chip => {
+      chip.addEventListener('mouseenter', () => showChipExpand(chip));
+      chip.addEventListener('mouseleave', hideChipExpand);
+    });
 
     // ── Initialize ──
     updateInputHeight();

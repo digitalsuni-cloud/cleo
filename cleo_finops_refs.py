@@ -20,17 +20,17 @@ PLAYBOOKS_DIR = BASE_DIR / ".agents/skills/cloud-finops/playbooks"
 # Other keys resolve in REFS_DIR.
 ROUTING: list[tuple[str, list[str]]] = [
     # ── High-frequency named playbooks (Exact Pattern Matching) ───────────────
-    ("playbook:aws-gp2-to-gp3",                 ["gp2 to gp3", "gp2-to-gp3", "gp2", "gp3", "volume usage gp2", "ebs volume"]),
-    ("playbook:aws-zombie-nat-gateway",         ["zombie nat", "zombie nat gateway", "idle nat", "nat gateway cost", "nat gateway idle"]),
-    ("playbook:aws-nat-gateway-endpoint-substitution", ["gateway endpoint", "nat gateway data", "s3 nat gateway", "endpoint substitution", "nat to gateway"]),
-    ("playbook:aws-graviton-candidate",         ["graviton", "arm64", "c7g", "m7g", "r7g", "t4g", "graviton candidate", "x86 to arm"]),
-    ("playbook:aws-orphaned-ebs-volumes",       ["orphaned ebs", "unattached ebs", "available ebs", "unattached volume", "orphan volume", "orphan ebs"]),
-    ("playbook:aws-snapshot-sprawl",            ["snapshot sprawl", "ebs snapshot", "old snapshot", "prune snapshot"]),
-    ("playbook:aws-s3-incomplete-multipart-uploads", ["incomplete multipart", "multipart upload", "abort multipart", "abortincomplete"]),
-    ("playbook:aws-s3-noncurrent-version-sprawl", ["noncurrent version", "version sprawl", "s3 versioning cost", "noncurrentversion"]),
-    ("playbook:aws-s3-cold-data-in-standard",   ["cold data", "s3 cold", "s3 standard to", "intelligent-tiering", "glacier lifecycle"]),
+    ("playbook:aws-gp2-to-gp3",                 ["gp2 to gp3", "gp2-to-gp3", "gp2", "gp3", "volume usage gp2", "ebs volume", "upgrade gp2", "migrate gp2", "ebs storage modernization", "gp2 savings"]),
+    ("playbook:aws-zombie-nat-gateway",         ["zombie nat", "zombie nat gateway", "idle nat", "nat gateway cost", "nat gateway idle", "eliminate nat gateway", "nat gateway waste", "unused nat"]),
+    ("playbook:aws-nat-gateway-endpoint-substitution", ["gateway endpoint", "nat gateway data", "s3 nat gateway", "endpoint substitution", "nat to gateway", "vpc endpoint", "nat data processing charge", "nat $0.045", "s3 gateway endpoint"]),
+    ("playbook:aws-graviton-candidate",         ["graviton", "arm64", "c7g", "m7g", "r7g", "t4g", "graviton candidate", "x86 to arm", "graviton savings", "silicon modernization", "migrate to arm"]),
+    ("playbook:aws-orphaned-ebs-volumes",       ["orphaned ebs", "unattached ebs", "available ebs", "unattached volume", "orphan volume", "orphan ebs", "unused ebs", "unattached disks"]),
+    ("playbook:aws-snapshot-sprawl",            ["snapshot sprawl", "ebs snapshot", "old snapshot", "prune snapshot", "snapshot retention", "delete old snapshots", "ebs snapshot cost"]),
+    ("playbook:aws-s3-incomplete-multipart-uploads", ["incomplete multipart", "multipart upload", "abort multipart", "abortincomplete", "multipart lifecycle", "s3 multipart cost"]),
+    ("playbook:aws-s3-noncurrent-version-sprawl", ["noncurrent version", "version sprawl", "s3 versioning cost", "noncurrentversion", "prune s3 versions", "expired object delete marker"]),
+    ("playbook:aws-s3-cold-data-in-standard",   ["cold data", "s3 cold", "s3 standard to", "intelligent-tiering", "glacier lifecycle", "s3 lifecycle", "s3 storage tiers", "s3 tiering", "s3 archive"]),
     ("playbook:aws-idle-load-balancer",         ["idle load balancer", "load balancer", "alb", "nlb", "idle alb", "idle nlb", "unused load balancer", "underutilized load balancer", "application load balancer"]),
-    ("playbook:aws-cross-az-egress",            ["cross-az", "cross az", "availability zone egress", "az chatterbox", "cross-availability"]),
+    ("playbook:aws-cross-az-egress",            ["cross-az", "cross az", "availability zone egress", "az chatterbox", "cross-availability", "cross-az egress", "inter-az traffic"]),
     ("playbook:aws-oversized-rds",              ["oversized rds", "rds rightsiz", "database rightsiz", "rds cpu", "rds overprovisioned", "rds instance class", "rightsizing levers for rds", "rightsizing rds", "rightsize rds", "rds databases", "rds database"]),
     ("playbook:aws-sagemaker-idle-endpoint",    ["sagemaker idle", "sagemaker endpoint", "idle endpoint", "endpoint sprawl"]),
     ("playbook:aws-sagemaker-notebook-always-on", ["sagemaker notebook", "always-on notebook", "notebook instance", "auto-stop notebook"]),
@@ -38,55 +38,64 @@ ROUTING: list[tuple[str, list[str]]] = [
     ("playbook:aws-gpu-instance-oversized",     ["oversized gpu", "gpu oversized", "tensor core underutilized", "gpu rightsizing"]),
     ("playbook:aws-multi-gpu-underutilized",    ["multi-gpu", "single-gpu workload", "underutilized gpu"]),
     ("playbook:aws-outdated-gpu-generation",    ["outdated gpu", "k80", "v100 to", "a100 to", "gpu generation"]),
-    ("playbook:aws-expiring-commitment-no-decision", ["expiring commitment", "commitment no decision", "commitment cliff", "renewal decision"]),
+    ("playbook:aws-expiring-commitment-no-decision", ["expiring commitment", "commitment no decision", "commitment cliff", "renewal decision", "commitment renewal", "expiring savings plan"]),
 
     # Azure Playbooks
     ("playbook:azure-log-analytics-sprawl",     ["log analytics", "log ingestion", "workspace ingestion", "log analytics cost", "retention data"]),
-    ("playbook:azure-orphan-disks",             ["orphan disk", "orphaned disk", "unattached disk", "managed disk", "managed disks", "orphan disks", "orphaned disks", "unattached managed"]),
-    ("playbook:azure-idle-vm",                  ["stopped vs deallocated", "deallocated", "idle vm", "stopped vm", "azure idle"]),
+    ("playbook:azure-orphan-disks",             ["orphan disk", "orphaned disk", "unattached disk", "managed disk", "managed disks", "orphan disks", "orphaned disks", "unattached managed", "azure unattached disk"]),
+    ("playbook:azure-idle-vm",                  ["stopped vs deallocated", "deallocated", "idle vm", "stopped vm", "azure idle", "deallocate vm", "azure idle vm"]),
     ("playbook:azure-orphaned-public-ips-and-nics", ["public ip", "public ips", "network interface", "network interfaces", "orphaned public", "orphaned nic", "unassociated ip", "unused public ip"]),
     ("playbook:azure-snapshot-sprawl",          ["azure snapshot", "managed disk snapshot"]),
-    ("playbook:azure-unused-reservation",       ["unused reservation", "unused azure reservation", "reservation refund"]),
+    ("playbook:azure-unused-reservation",       ["unused reservation", "unused azure reservation", "reservation refund", "azure reservation exchange"]),
     ("playbook:azure-app-service-overprovisioned", ["app service plan", "app service overprovisioned", "app service scale"]),
     ("playbook:azure-idle-sql-database",        ["idle sql", "idle azure sql", "sql database pause"]),
 
     # GCP Playbooks
     ("playbook:gcp-orphan-persistent-disks",    ["persistent disk", "persistent disks", "orphan persistent disk", "unattached persistent disk", "orphan disk gcp", "orphan persistent"]),
-    ("playbook:gcp-cud-mismatch",               ["cud mismatch", "resource-based cud", "cud machine family"]),
+    ("playbook:gcp-cud-mismatch",               ["cud mismatch", "resource-based cud", "cud machine family", "gcp cud", "committed use discount gcp"]),
     ("playbook:gcp-idle-gke-autopilot",         ["idle gke", "gke autopilot idle", "autopilot cluster"]),
     ("playbook:gcp-cloud-functions-cold-starts", ["cloud functions cold", "functions min instances", "cold start"]),
 
     # Cross-Cloud Playbooks
     ("playbook:cross-cloud-agent-loop-burn",    ["agent loop", "agent-loop", "loop burn", "flat-line burn", "infinite loop agent"]),
     ("playbook:cross-cloud-coding-agent-token-waste", ["coding agent", "coding tool", "claude code cost", "cursor cost", "copilot cost", "windsurf cost"]),
-    ("playbook:cross-cloud-schedule-blindness", ["schedule blindness", "non-production 24/7", "non-prod schedule", "weekend shutdown", "auto stop"]),
+    ("playbook:cross-cloud-schedule-blindness", ["schedule blindness", "non-production 24/7", "non-prod schedule", "weekend shutdown", "auto stop", "off-hours shutdown"]),
     ("playbook:cross-cloud-untagged-spend-drift", ["untagged spend", "untagged drift", "tag drift", "unallocated spend drift"]),
 
     # ── AI / LLM Inference & Economics References ─────────────────────────────
-    ("finops-bedrock",              ["bedrock", "aws bedrock", "sagemaker", "foundation model", "model unit", "inference profile"]),
-    ("finops-azure-openai",         ["azure openai", "aoai", "gpt-4o", "gpt-5", "ptu", "provisioned throughput units", "openai service"]),
+    ("finops-bedrock",              ["bedrock", "aws bedrock", "sagemaker", "foundation model", "model unit", "inference profile", "bedrock token", "bedrock pricing", "bedrock models"]),
+    ("finops-azure-openai",         ["azure openai", "aoai", "gpt-4o", "gpt-5", "ptu", "provisioned throughput units", "openai service", "azure ai cost"]),
     ("finops-vertexai",             ["vertex ai", "vertex", "vertexai", "google vertex", "gemini pricing", "gemini models", "gemini", "vertex batch", "google ai studio", "vertex provisioned throughput"]),
-    ("finops-anthropic",            ["anthropic", "claude api", "opus", "haiku", "batch api", "50% discount", "prompt caching"]),
-    ("finops-for-ai",               ["llm inference", "token economics", "gpu cost", "ai cost", "ai roi", "ai allocation", "gpu utilization", "dcgm", "tensor core", "memory bandwidth", "rag harness", "genai cost"]),
-    ("finops-agentic",              ["agentic finops", "agent wallet", "cost per completed task", "cost per task", "agent payment", "x402", "mpp"]),
+    ("finops-anthropic",            ["anthropic", "claude api", "opus", "haiku", "batch api", "50% discount", "prompt caching", "claude pricing", "cache hits"]),
+    ("finops-for-ai",               ["llm inference", "token economics", "gpu cost", "ai cost", "ai roi", "ai allocation", "gpu utilization", "dcgm", "tensor core", "memory bandwidth", "rag harness", "genai cost", "ai finops", "ai token economics", "cost of inference", "how to optimize ai cost", "llm cost"]),
+    ("finops-agentic",              ["agentic finops", "agent wallet", "cost per completed task", "cost per task", "agent payment", "x402", "mpp", "agent loop"]),
     ("finops-genai-capacity",       ["genai capacity", "provisioned vs shared", "throughput units", "traffic shape", "spillover", "capacity planning"]),
-    ("finops-ai-self-hosted-vs-managed", ["self-hosted", "vllm", "sglang", "llama.cpp", "gpu rental", "runpod", "coreweave", "lambda labs", "build vs buy llm", "hybrid routing", "litellm", "portkey"]),
+    ("finops-ai-self-hosted-vs-managed", ["self-hosted", "vllm", "sglang", "llama.cpp", "gpu rental", "runpod", "coreweave", "lambda labs", "build vs buy llm", "hybrid routing", "litellm", "portkey", "self-hosted vs serverless"]),
     ("finops-open-weight-vendors",  ["deepseek", "qwen", "qwen api", "kimi", "moonshot", "glm", "z.ai", "open-weight", "chinese model", "peak and off-peak"]),
     ("finops-ai-dev-tools",         ["ai coding tool", "dev tool finops", "byok coding", "github copilot", "cursor"]),
     ("finops-ai-value-management",  ["ai investment", "ai business case", "ai value", "stage gate", "incremental funding", "realisation rate", "total cost of ai", "tca", "labour claim"]),
 
     # ── AWS Core References ───────────────────────────────────────────────────
-    ("finops-aws-commitments",      ["savings plan", "reserved instance", "compute savings plan", "ec2 instance savings plan", "convertible ri", "standard ri", "break-even", "edp negotiation", "commitment portfolio", "peak compute", "peak usage", "spot diversification", "spot instance"]),
-    ("finops-aws-patterns",         ["aws pattern", "aws optimis", "aws rightsiz", "aurora acu", "aurora serverless", "commercial database licensing"]),
+    ("finops-aws-commitments",      [
+        "savings plan", "reserved instance", "compute savings plan", "ec2 instance savings plan",
+        "convertible ri", "standard ri", "break-even", "edp negotiation", "commitment portfolio",
+        "peak compute", "peak usage", "spot diversification", "spot instance",
+        "savings plan vs ri", "compute savings plan vs ec2", "savings plans vs reserved instances",
+        "1-year vs 3-year", "1yr vs 3yr", "break-even on commitment", "commitment break even",
+        "commitment coverage target", "coverage target", "commitment utilization target",
+        "commitment cliff", "expiration cliff", "edp discount", "commitment strategy",
+        "should i purchase savings plans", "should we commit", "commitments"
+    ]),
+    ("finops-aws-patterns",         ["aws pattern", "aws optimis", "aws rightsiz", "aurora acu", "aurora serverless", "commercial database licensing", "database license exit"]),
     ("finops-aws",                  ["aws billing", "aws cur", "cost explorer", "ec2 rightsiz", "s3 lifecycle", "cloudfront", "billing conductor", "cost categories", "aws governance"]),
 
     # ── Azure Core References ─────────────────────────────────────────────────
-    ("finops-azure-commitments",    ["azure reservation", "azure savings plan", "azure hybrid benefit", "ahb", "azure spot", "macc", "ri exchange", "2027 exchange"]),
+    ("finops-azure-commitments",    ["azure reservation", "azure savings plan", "azure hybrid benefit", "ahb", "azure spot", "macc", "ri exchange", "2027 exchange", "azure commitment"]),
     ("finops-azure-patterns",       ["azure pattern", "azure optimis", "azure rightsiz", "aks cost", "azure storage tier", "hot to cool", "archive tier"]),
     ("finops-azure",                ["azure cost", "azure billing", "cost management export", "azure advisor", "azure policy", "ea-to-mca", "mca transition", "p95", "rehydration", "early deletion", "archive storage", "aks node pool", "azure kubernetes service", "aks system", "aks user"]),
 
     # ── GCP Core References ───────────────────────────────────────────────────
-    ("finops-gcp",                  ["gcp", "google cloud", "bigquery", "bigquery billing", "bigquery slot", "slot reservation", "on-demand analysis", "partition table", "clustering", "cloud sql", "gcs", "sustained use discount", "sud", "committed use discount", "cud", "cloud carbon footprint", "gcs lifecycle", "coldline", "archive storage gcp", "google cloud storage"]),
+    ("finops-gcp",                  ["google cloud", "bigquery", "bigquery billing", "bigquery slot", "slot reservation", "on-demand analysis", "partition table", "clustering", "cloud sql", "gcs", "sustained use discount", "sud", "committed use discount", "cud", "cloud carbon footprint", "gcs lifecycle", "coldline", "archive storage gcp", "google cloud storage"]),
 
     # ── OCI References ────────────────────────────────────────────────────────
     ("finops-oci",                  ["oci compute", "oci storage", "oracle cloud", "universal credits", "oci cost report", "oci budget"]),
@@ -100,16 +109,43 @@ ROUTING: list[tuple[str, list[str]]] = [
     ("finops-snowflake",            ["snowflake", "auto-suspend", "warehouse credit", "snowflake optimis", "query_attribution_history", "cortex governance"]),
 
     # ── FinOps Practice & Operating Model References ──────────────────────────
-    ("finops-framework",            ["finops framework", "finops foundation", "finops capability", "finops maturity", "crawl walk run", "crawl, walk, and run", "crawl-to-walk", "inform optimize operate", "inform, optimize, operate", "principles", "finops lifecycle", "core phases", "three phases", "three core phases", "lifecycle"]),
-    ("finops-allocation-showback",  ["effectivecost", "billedcost", "effectivecost vs billedcost", "effectivecost and billedcost", "blended cost", "blended rate", "blended cost trap", "showback", "amortised", "unblended cost", "shared services allocation", "defensible allocation", "unallocated spend"]),
-    ("finops-chargeback",           ["hard chargeback", "chargeback", "financial accountability", "erp readiness", "sap co", "transfer pricing", "intercompany recharge", "sox controls"]),
-    ("finops-kpis-benchmarking",    ["finops kpi", "unit economics", "business denominator", "cost per customer", "forecast variance", "benchmarking", "executive reporting", "cfo narrative", "maturity scorecard", "realised savings", "potential savings"]),
-    ("finops-anomaly-management",   ["anomaly detection", "cost anomaly", "cost spike", "masked anomaly", "threshold tuning", "alert fatigue", "budget anomaly", "unusual spend"]),
-    ("finops-tagging",              ["tagging strategy", "mandatory tagging", "naming convention", "tag enforcement", "iac tag", "mcp governance", "tag compliance", "intake migration"]),
+    ("finops-framework",            [
+        "finops framework", "finops foundation", "finops capability", "finops maturity",
+        "crawl walk run", "crawl, walk, and run", "crawl-to-walk", "inform optimize operate",
+        "inform, optimize, operate", "principles", "finops lifecycle", "core phases",
+        "three phases", "three core phases", "lifecycle", "how does finops work", "what is finops",
+        "finops core principles"
+    ]),
+    ("finops-allocation-showback",  [
+        "effectivecost", "billedcost", "effectivecost vs billedcost", "effectivecost and billedcost",
+        "difference between billedcost and effectivecost", "what is effectivecost", "what is billedcost",
+        "blended cost", "blended rate", "blended cost trap", "showback", "amortised",
+        "unblended cost", "shared services allocation", "defensible allocation", "unallocated spend",
+        "shared cost allocation", "focus 1.2", "focus standard"
+    ]),
+    ("finops-chargeback",           [
+        "hard chargeback", "chargeback", "financial accountability", "erp readiness", "sap co",
+        "transfer pricing", "intercompany recharge", "sox controls", "showback vs chargeback",
+        "chargeback vs showback"
+    ]),
+    ("finops-kpis-benchmarking",    [
+        "finops kpi", "finops kpis", "finops metrics", "unit economics", "business denominator",
+        "cost per customer", "cost per user", "cost per tenant", "cost per transaction",
+        "cost per order", "cost per 1k", "cost per api call", "forecast variance",
+        "benchmarking", "executive reporting", "cfo narrative", "maturity scorecard",
+        "realised savings", "potential savings", "realised vs potential savings",
+        "cogs", "cloud cogs", "gross margin impact"
+    ]),
+    ("finops-anomaly-management",   ["anomaly detection", "cost anomaly", "cost spike", "masked anomaly", "threshold tuning", "alert fatigue", "budget anomaly", "unusual spend", "spend surge"]),
+    ("finops-tagging",              ["tagging strategy", "mandatory tagging", "naming convention", "tag enforcement", "iac tag", "mcp governance", "tag compliance", "intake migration", "mandatory tags"]),
     ("finops-sam",                  ["saas management", "licence optimis", "shadow it", "saas sprawl", "renewal governance"]),
     ("finops-itam",                 ["itam", "byol", "bring your own license", "licence compliance", "vendor negotiation", "entitlement management", "marketplace channel", "software asset management"]),
     ("finops-onboarding-workloads", ["onboarding workload", "migration cost", "intake gate", "double-bubble", "ma integration", "post-migration finops"]),
-    ("finops-waste-detection-playbooks", ["waste detection", "waste playbook", "two-signal classification", "classification confidence"]),
+    ("finops-waste-detection-playbooks", [
+        "waste detection", "waste playbook", "two-signal classification", "classification confidence",
+        "waste classification", "where am i wasting", "how to find waste", "cloud waste",
+        "quick wins vs strategic", "quick win savings", "waste elimination", "waste backlog"
+    ]),
     ("greenops-cloud-carbon",       ["greenops", "cloud carbon", "scope 2", "scope 3", "carbon-aware", "sustainability", "csrd"]),
     ("optimnow-methodology",        ["optimnow", "diagnose before prescribing", "four pillars", "finops strategy design", "engagement design", "practice positioning"]),
 ]
