@@ -4408,7 +4408,7 @@
       if (!modal || !canvas) return;
 
       if (titleEl) {
-        titleEl.textContent = config.title || 'Expanded Chart View';
+        titleEl.textContent = cleanChartTitle(config.title) || 'Expanded Chart View';
       }
       if (resetBtn) {
         resetBtn.style.display = 'none';
@@ -4539,12 +4539,27 @@
       link.click();
     }
 
+    function cleanChartTitle(raw) {
+      if (!raw) return '';
+      let s = String(raw).replace(/[`'"]/g, '');
+      s = s.replace(/\s*\(\s*([^()]+?)\s*\(\s*([^()]+?)\s*\)\s*\)/g, (m, p1, p2) => ` — ${p1.trim()}: ${p2.trim()}`);
+      s = s.replace(/\s*\(\s*Partner-Wide\s*\)/gi, ' Partner-Wide');
+      s = s.replace(/\s*\(\s*Partner Tenant\s*\)/gi, ' Partner Tenant');
+      s = s.replace(/([—:])\s*\(([^)]+)\)/g, '$1 $2');
+      s = s.replace(/\s*\(([^)]+)\)/g, ' — $1');
+      s = s.replace(/[()]/g, '');
+      s = s.replace(/\s*:\s*/g, ': ');
+      s = s.replace(/\s*—\s*—+\s*/g, ' — ');
+      s = s.replace(/\s+/g, ' ');
+      return s.replace(/^[\s—:]+|[\s—:]+$/g, '');
+    }
+
     function createChartHeader(titleText, onExpand) {
       const header = document.createElement('div');
       header.className = 'cleo-chart-header';
       const h = document.createElement('div');
       h.className = 'cleo-chart-title';
-      h.textContent = titleText;
+      h.textContent = cleanChartTitle(titleText);
       header.appendChild(h);
 
       const actions = document.createElement('div');

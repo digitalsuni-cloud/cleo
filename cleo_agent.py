@@ -720,6 +720,44 @@ def _format_time_label(ym_str: str, time_format: str = "month") -> str:
     return s
 
 
+def _clean_chart_title(title: str) -> str:
+    """
+    Sanitize chart titles to remove backticks, quotes, and parentheses.
+    Transforms:
+      "RDS Spend by Instance Type (Last 10 Days Trend (`2026-09-10` to `2026-09-19`)) — All Accounts (Partner-Wide)"
+    Into:
+      "RDS Spend by Instance Type — Last 10 Days Trend: 2026-09-10 to 2026-09-19 — All Accounts Partner-Wide"
+    """
+    if not title:
+        return ""
+    # Strip quotes and backticks
+    s = str(title).replace("`", "").replace("'", "").replace('"', "")
+    
+    # Handle nested parentheses like (Last 10 Days Trend (2026-09-10 to 2026-09-19))
+    def _unparenthesize_nested(m):
+        prefix = m.group(1).strip()
+        inner = m.group(2).strip()
+        return f" — {prefix}: {inner}"
+    s = re.sub(r'\s*\(\s*([^()]+?)\s*\(\s*([^()]+?)\s*\)\s*\)', _unparenthesize_nested, s)
+    
+    # Clean partner suffixes
+    s = re.sub(r'\s*\(\s*Partner-Wide\s*\)', ' Partner-Wide', s, flags=re.IGNORECASE)
+    s = re.sub(r'\s*\(\s*Partner Tenant\s*\)', ' Partner Tenant', s, flags=re.IGNORECASE)
+    
+    # Convert any other parentheses: if preceded by dash/colon, strip parens; else prefix with dash
+    s = re.sub(r'([—:])\s*\(([^)]+)\)', r'\1 \2', s)
+    s = re.sub(r'\s*\(([^)]+)\)', r' — \1', s)
+    
+    # Strip any stray leftover parens
+    s = s.replace("(", "").replace(")", "")
+    
+    # Normalize colons, dashes, and whitespace
+    s = re.sub(r'\s*:\s*', ': ', s)
+    s = re.sub(r'\s*—\s*—+\s*', ' — ', s)
+    s = re.sub(r'\s+', ' ', s)
+    return s.strip(" —:")
+
+
 def _chart_block(chart_type: str, title: str, labels: list, values: list = None,
                  datasets: list = None, value_label: str = "Cost ($)",
                  horizontal: bool = False, stacked: bool = True,
@@ -732,9 +770,10 @@ def _chart_block(chart_type: str, title: str, labels: list, values: list = None,
     limit = max_labels if max_labels is not None else (366 if (datasets or len(labels) > 30) else 30)
     labels_clean = [str(l)[:40] for l in labels[:limit]]
     spec_type = "doughnut" if chart_type == "donut" else chart_type
+    clean_title = _clean_chart_title(title)
     spec = {
         "type": spec_type,
-        "title": title,
+        "title": clean_title,
         "labels": labels_clean,
         "value_label": value_label,
         "stacked": stacked,
@@ -2852,9 +2891,9 @@ class AIClient:
                         rds_rows = [r for r in rds_rows if r["month"] != today_str]
                     months_present = sorted(list({r["month"] for r in rds_rows}))
                     if num_days > 0:
-                        period_str = f"Last {num_days} Days Trend (`{months_present[0]}` to `{months_present[-1]}`)" if months_present else f"Last {num_days} Days Trend"
+                        period_str = f"Last {num_days} Days Trend ({months_present[0]} to {months_present[-1]})" if months_present else f"Last {num_days} Days Trend"
                     else:
-                        period_str = f"Last {len(months_present)} Months (`{months_present[0]}` to `{months_present[-1]}`)" if months_present else f"Last {num_months} Months"
+                        period_str = f"Last {len(months_present)} Months ({months_present[0]} to {months_present[-1]})" if months_present else f"Last {num_months} Months"
                     total_rds_cost = sum(r["cost"] for r in rds_rows)
 
                     agg_types = {}
@@ -3225,7 +3264,7 @@ class AIClient:
                         days_present = sorted(list({r["time_val"] for r in ec2_rows}))
                         start_lbl = _format_time_label(days_present[0], "day") if days_present else "Start"
                         end_lbl = _format_time_label(days_present[-1], "day") if days_present else "End"
-                        period_header = f"Trailing {num_days} Days (`{start_lbl}` to `{end_lbl}`)"
+                        period_header = f"Trailing {num_days} Days ({start_lbl} to {end_lbl})"
 
                         agg_types = {}
                         for r in ec2_rows:
