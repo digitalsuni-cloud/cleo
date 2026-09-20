@@ -667,6 +667,13 @@
     .btn-link-danger:hover {
       color: #f87171;
     }
+    .btn-link-danger:disabled {
+      color: #475569;
+      cursor: not-allowed;
+    }
+    .btn-link-danger:disabled:hover {
+      color: #475569;
+    }
     .persist-hint {
       font-size: 0.65rem;
       color: var(--text-dim);
@@ -1703,16 +1710,6 @@
       visibility: visible;
       transform: scale(1) translateY(0);
     }
-    /* Empty-state variant: same anchored box, recolored neutral and no actions —
-       used instead of a generic corner toast so "nothing to clear" appears exactly
-       where the user looked (at the button), not somewhere else on the page. */
-    .clear-confirm-popover.info-variant {
-      border-color: rgba(56, 189, 248, 0.35);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 24px rgba(56, 189, 248, 0.15);
-    }
-    .clear-confirm-popover.info-variant .clear-confirm-header {
-      color: #7dd3fc;
-    }
     .clear-confirm-header {
       display: flex;
       align-items: center;
@@ -2313,7 +2310,7 @@
         </div>
 
         <div class="history-footer">
-          <button class="btn-link-danger" id="btn-clear-history" onclick="clearAllHistories()">
+          <button class="btn-link-danger" id="btn-clear-history" onclick="clearAllHistories()" disabled>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
             <span>Clear history</span>
           </button>
@@ -2888,6 +2885,9 @@
         const listEl = document.getElementById('history-list');
         if (!listEl) return;
 
+        const clearBtn = document.getElementById('btn-clear-history');
+        if (clearBtn) clearBtn.disabled = !data.sessions || data.sessions.length === 0;
+
         if (!data.sessions || data.sessions.length === 0) {
           listEl.innerHTML = '<div class="history-empty">No saved chats yet.<br>Start asking Cleo questions to record sessions.</div>';
           return;
@@ -3223,30 +3223,15 @@
       document.removeEventListener('mousedown', _clearConfirmOutsideHandler);
     }
     function clearAllHistories() {
+      // Button is disabled (see loadHistoryList) whenever there's nothing to clear, so
+      // reaching here means history exists — no "nothing to clear" case to handle.
       const btn = document.getElementById('btn-clear-history');
       const popover = document.getElementById('clear-confirm-popover');
-      if (!btn || !popover) return;
+      if (!btn || btn.disabled || !popover) return;
       const rect = btn.getBoundingClientRect();
       popover.style.bottom = `${window.innerHeight - rect.top + 8}px`;
       popover.style.left = `${rect.left}px`;
-
-      // Nothing to clear — a confirmation dialog for a no-op action is just an extra click for
-      // no reason, so show the same anchored box in a neutral, button-less, auto-dismissing
-      // state instead of asking the user to confirm deleting nothing (or popping a toast
-      // somewhere unrelated to the button they just clicked).
-      const hasHistory = document.querySelectorAll('#history-list .history-item').length > 0;
-      popover.classList.toggle('info-variant', !hasHistory);
-      popover.querySelector('.clear-confirm-header span').textContent = hasHistory ? 'Clear all histories?' : 'Nothing to clear';
-      popover.querySelector('.clear-confirm-text').textContent = hasHistory
-        ? 'This deletes every saved chat from disk. Cannot be undone.'
-        : 'No saved chats yet.';
-      popover.querySelector('.clear-confirm-actions').style.display = hasHistory ? '' : 'none';
-
       popover.classList.add('visible');
-      if (!hasHistory) {
-        setTimeout(() => popover.classList.remove('visible'), 1600);
-        return;
-      }
       setTimeout(() => document.addEventListener('mousedown', _clearConfirmOutsideHandler), 0);
     }
     async function confirmClearAllHistories() {
