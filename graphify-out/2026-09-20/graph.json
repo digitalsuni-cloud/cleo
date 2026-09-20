@@ -157,7 +157,7 @@
       "file_type": "code",
       "norm_label": "servicematch",
       "source_file": "cleo_agent.py",
-      "source_location": "L1254"
+      "source_location": "L1260"
     },
     {
       "id": "cleo_memory_cleomemory",
@@ -183,7 +183,7 @@
       "file_type": "code",
       "norm_label": "aiclient",
       "source_file": "cleo_agent.py",
-      "source_location": "L1728"
+      "source_location": "L1735"
     },
     {
       "id": "cleo_agent_mcpclient",
@@ -234,7 +234,7 @@
       "file_type": "code",
       "norm_label": ".generate()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1899"
+      "source_location": "L1907"
     },
     {
       "id": "cleo_agent_estimate_token_count",
@@ -642,7 +642,7 @@
       "file_type": "code",
       "norm_label": "._generate_impl()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1927"
+      "source_location": "L1935"
     },
     {
       "id": "cleo_agent_aiclient_generate_impl_fetch_cust_spend",
@@ -654,7 +654,7 @@
       "file_type": "code",
       "norm_label": "_fetch_cust_spend()",
       "source_file": "cleo_agent.py",
-      "source_location": "L4151"
+      "source_location": "L4181"
     },
     {
       "id": "cleo_agent_aiclient_generate_impl_fetch_ec2_chunk",
@@ -666,7 +666,7 @@
       "file_type": "code",
       "norm_label": "_fetch_ec2_chunk()",
       "source_file": "cleo_agent.py",
-      "source_location": "L2992"
+      "source_location": "L3014"
     },
     {
       "id": "cleo_agent_build_time_category_stacked_chart",
@@ -738,7 +738,7 @@
       "file_type": "code",
       "norm_label": "extract_requested_cloud()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1429"
+      "source_location": "L1435"
     },
     {
       "id": "cleo_agent_format_time_label",
@@ -786,7 +786,7 @@
       "file_type": "code",
       "norm_label": "parse_query_time_context()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1454"
+      "source_location": "L1460"
     },
     {
       "id": "cleo_agent_parse_table_data_from_assistant_markdown",
@@ -906,7 +906,7 @@
       "file_type": "code",
       "norm_label": "get_memory()",
       "source_file": "cleo_memory.py",
-      "source_location": "L164"
+      "source_location": "L178"
     },
     {
       "id": "cleo_agent_cloudhealthdirectengine_execute_datasource_query",
@@ -990,7 +990,7 @@
       "file_type": "code",
       "norm_label": "get_access_token()",
       "source_file": "cleo_agent.py",
-      "source_location": "L4809"
+      "source_location": "L4848"
     },
     {
       "id": "cleo_agent_get_installed_mlx_models",
@@ -1230,7 +1230,7 @@
       "file_type": "code",
       "norm_label": "._call_active_llm()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1745"
+      "source_location": "L1752"
     },
     {
       "id": "cleo_agent_call_anthropic_api",
@@ -1338,7 +1338,7 @@
       "file_type": "code",
       "norm_label": "extract_requested_service()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1400"
+      "source_location": "L1406"
     },
     {
       "id": "cleo_agent_servicematch_init",
@@ -1350,7 +1350,7 @@
       "file_type": "code",
       "norm_label": ".__init__()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1258"
+      "source_location": "L1264"
     },
     {
       "id": "cleo_agent_servicematch_new",
@@ -1362,7 +1362,7 @@
       "file_type": "code",
       "norm_label": ".__new__()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1256"
+      "source_location": "L1262"
     },
     {
       "id": "cleo_memory_cleomemory_add",
@@ -1386,7 +1386,7 @@
       "file_type": "code",
       "norm_label": ".all_entries()",
       "source_file": "cleo_memory.py",
-      "source_location": "L107"
+      "source_location": "L115"
     },
     {
       "id": "cleo_memory_cleomemory_build_context_block",
@@ -1398,7 +1398,7 @@
       "file_type": "code",
       "norm_label": ".build_context_block()",
       "source_file": "cleo_memory.py",
-      "source_location": "L126"
+      "source_location": "L136"
     },
     {
       "id": "cleo_memory_cleomemory_delete",
@@ -1410,7 +1410,7 @@
       "file_type": "code",
       "norm_label": ".delete()",
       "source_file": "cleo_memory.py",
-      "source_location": "L99"
+      "source_location": "L107"
     },
     {
       "id": "cleo_memory_cleomemory_find_relevant",
@@ -1422,7 +1422,7 @@
       "file_type": "code",
       "norm_label": ".find_relevant()",
       "source_file": "cleo_memory.py",
-      "source_location": "L112"
+      "source_location": "L120"
     },
     {
       "id": "cleo_memory_cleomemory_init",
@@ -1471,6 +1471,18 @@
       "norm_label": ".record_good_pattern()",
       "source_file": "cleo_memory.py",
       "source_location": "L90"
+    },
+    {
+      "id": "cleo_memory_cleomemory_record_rule",
+      "label": ".record_rule()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "CleoMemory",
+      "file_type": "code",
+      "norm_label": ".record_rule()",
+      "source_file": "cleo_memory.py",
+      "source_location": "L99"
     },
     {
       "id": "cleo_memory_cleomemory_record_sql_fix",
@@ -1554,7 +1566,7 @@
       "file_type": "code",
       "norm_label": ".get_last_stats()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1742"
+      "source_location": "L1749"
     },
     {
       "id": "cleo_agent_aiclient_init",
@@ -1566,7 +1578,7 @@
       "file_type": "code",
       "norm_label": ".__init__()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1729"
+      "source_location": "L1736"
     },
     {
       "id": "cleo_agent_aiclient_understand_query",
@@ -1578,7 +1590,7 @@
       "file_type": "code",
       "norm_label": "._understand_query()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1815"
+      "source_location": "L1822"
     },
     {
       "id": "cleo_agent_build_system_prompt",
@@ -1590,7 +1602,7 @@
       "file_type": "code",
       "norm_label": "build_system_prompt()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1179"
+      "source_location": "L1184"
     },
     {
       "id": "cleo_agent_deterministic_understand_query",
@@ -1602,7 +1614,7 @@
       "file_type": "code",
       "norm_label": "_deterministic_understand_query()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1601"
+      "source_location": "L1608"
     },
     {
       "id": "cleo_agent_get_memory",
@@ -1734,7 +1746,7 @@
       "file_type": "code",
       "norm_label": "run_agent_turn()",
       "source_file": "cleo_agent.py",
-      "source_location": "L4806"
+      "source_location": "L4845"
     },
     {
       "id": "test_cleo_finops_suite_run_suite",
@@ -1974,7 +1986,7 @@
       "source_location": ""
     },
     {
-      "id": "cleo_agent_rationale_1430",
+      "id": "cleo_agent_rationale_1436",
       "label": "Detects if user specifically asks for a cloud provider: aws, azure, gcp, oci,\u2026",
       "_origin": "ast",
       "community": 1,
@@ -1982,10 +1994,10 @@
       "file_type": "rationale",
       "norm_label": "detects if user specifically asks for a cloud provider: aws, azure, gcp, oci,...",
       "source_file": "cleo_agent.py",
-      "source_location": "L1430"
+      "source_location": "L1436"
     },
     {
-      "id": "cleo_agent_rationale_1455",
+      "id": "cleo_agent_rationale_1461",
       "label": "Extracts time context, target month, limit, and sort direction from user\u2026",
       "_origin": "ast",
       "community": 1,
@@ -1993,7 +2005,7 @@
       "file_type": "rationale",
       "norm_label": "extracts time context, target month, limit, and sort direction from user...",
       "source_file": "cleo_agent.py",
-      "source_location": "L1455"
+      "source_location": "L1461"
     },
     {
       "id": "cleo_agent_rationale_621",
@@ -18607,7 +18619,7 @@
       "source_location": "L1114"
     },
     {
-      "id": "cleo_agent_rationale_1746",
+      "id": "cleo_agent_rationale_1753",
       "label": "Attempts to call the configured LLM engine. Returns (response_text,\u2026",
       "_origin": "ast",
       "community": 20,
@@ -18615,7 +18627,7 @@
       "file_type": "rationale",
       "norm_label": "attempts to call the configured llm engine. returns (response_text,...",
       "source_file": "cleo_agent.py",
-      "source_location": "L1746"
+      "source_location": "L1753"
     },
     {
       "id": "cleo_agent_rationale_975",
@@ -20702,7 +20714,7 @@
       "source_location": ""
     },
     {
-      "id": "cleo_agent_rationale_1255",
+      "id": "cleo_agent_rationale_1261",
       "label": "Subclass of tuple supporting both 2-item legacy unpacking (pcode, disp) and\u2026",
       "_origin": "ast",
       "community": 226,
@@ -20710,10 +20722,10 @@
       "file_type": "rationale",
       "norm_label": "subclass of tuple supporting both 2-item legacy unpacking (pcode, disp) and...",
       "source_file": "cleo_agent.py",
-      "source_location": "L1255"
+      "source_location": "L1261"
     },
     {
-      "id": "cleo_agent_rationale_1401",
+      "id": "cleo_agent_rationale_1407",
       "label": "Extracts cloud service identifier, display label, and provider from query text,\u2026",
       "_origin": "ast",
       "community": 226,
@@ -20721,7 +20733,7 @@
       "file_type": "rationale",
       "norm_label": "extracts cloud service identifier, display label, and provider from query text,...",
       "source_file": "cleo_agent.py",
-      "source_location": "L1401"
+      "source_location": "L1407"
     },
     {
       "id": "agent_skills_design_taste_frontend_skill",
@@ -22432,7 +22444,18 @@
       "source_location": "L52"
     },
     {
-      "id": "cleo_memory_rationale_113",
+      "id": "cleo_memory_rationale_100",
+      "label": "Stores a persistent operational or FinOps rule in memory.",
+      "_origin": "ast",
+      "community": 3,
+      "community_name": "CleoMemory",
+      "file_type": "rationale",
+      "norm_label": "stores a persistent operational or finops rule in memory.",
+      "source_file": "cleo_memory.py",
+      "source_location": "L100"
+    },
+    {
+      "id": "cleo_memory_rationale_121",
       "label": "Return up to top_k entries most relevant to query by token overlap.",
       "_origin": "ast",
       "community": 3,
@@ -22440,10 +22463,10 @@
       "file_type": "rationale",
       "norm_label": "return up to top_k entries most relevant to query by token overlap.",
       "source_file": "cleo_memory.py",
-      "source_location": "L113"
+      "source_location": "L121"
     },
     {
-      "id": "cleo_memory_rationale_127",
+      "id": "cleo_memory_rationale_137",
       "label": "Returns a formatted string ready to append to the system prompt, or empty\u2026",
       "_origin": "ast",
       "community": 3,
@@ -22451,7 +22474,7 @@
       "file_type": "rationale",
       "norm_label": "returns a formatted string ready to append to the system prompt, or empty...",
       "source_file": "cleo_memory.py",
-      "source_location": "L127"
+      "source_location": "L137"
     },
     {
       "id": "cleo_memory_rationale_27",
@@ -24290,7 +24313,7 @@
       "source_location": "L1154"
     },
     {
-      "id": "cleo_agent_rationale_1602",
+      "id": "cleo_agent_rationale_1609",
       "label": "Fast, deterministic intent and parameter extraction used as baseline and\u2026",
       "_origin": "ast",
       "community": 4,
@@ -24298,10 +24321,10 @@
       "file_type": "rationale",
       "norm_label": "fast, deterministic intent and parameter extraction used as baseline and...",
       "source_file": "cleo_agent.py",
-      "source_location": "L1602"
+      "source_location": "L1609"
     },
     {
-      "id": "cleo_agent_rationale_1816",
+      "id": "cleo_agent_rationale_1823",
       "label": "LLM-First Request Comprehension & Intent Routing: Prompts the active LLM to\u2026",
       "_origin": "ast",
       "community": 4,
@@ -24309,7 +24332,7 @@
       "file_type": "rationale",
       "norm_label": "llm-first request comprehension & intent routing: prompts the active llm to...",
       "source_file": "cleo_agent.py",
-      "source_location": "L1816"
+      "source_location": "L1823"
     },
     {
       "id": "cleo_agent_rationale_375",
@@ -31964,7 +31987,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1750",
+      "source_location": "L1757",
       "weight": 1.0
     },
     {
@@ -31976,7 +31999,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1757",
+      "source_location": "L1764",
       "weight": 1.0
     },
     {
@@ -31988,7 +32011,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1767",
+      "source_location": "L1774",
       "weight": 1.0
     },
     {
@@ -32000,7 +32023,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1780",
+      "source_location": "L1787",
       "weight": 1.0
     },
     {
@@ -32012,7 +32035,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1793",
+      "source_location": "L1800",
       "weight": 1.0
     },
     {
@@ -32024,7 +32047,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1806",
+      "source_location": "L1813",
       "weight": 1.0
     },
     {
@@ -32036,7 +32059,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1904",
+      "source_location": "L1912",
       "weight": 1.0
     },
     {
@@ -32048,7 +32071,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1910",
+      "source_location": "L1918",
       "weight": 1.0
     },
     {
@@ -32060,7 +32083,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1944",
+      "source_location": "L1952",
       "weight": 1.0
     },
     {
@@ -32072,7 +32095,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1948",
+      "source_location": "L1956",
       "weight": 1.0
     },
     {
@@ -32084,7 +32107,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1949",
+      "source_location": "L1957",
       "weight": 1.0
     },
     {
@@ -32096,7 +32119,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L2024",
+      "source_location": "L2032",
       "weight": 1.0
     },
     {
@@ -32108,7 +32131,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L2044",
+      "source_location": "L2052",
       "weight": 1.0
     },
     {
@@ -32120,7 +32143,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L2092",
+      "source_location": "L2100",
       "weight": 1.0
     },
     {
@@ -32132,7 +32155,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L2145",
+      "source_location": "L2153",
       "weight": 1.0
     },
     {
@@ -32144,7 +32167,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L2408",
+      "source_location": "L2416",
       "weight": 1.0
     },
     {
@@ -32156,7 +32179,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L2412",
+      "source_location": "L2420",
       "weight": 1.0
     },
     {
@@ -32168,7 +32191,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L2425",
+      "source_location": "L2433",
       "weight": 1.0
     },
     {
@@ -32180,7 +32203,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L2495",
+      "source_location": "L2506",
       "weight": 1.0
     },
     {
@@ -32192,7 +32215,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L2810",
+      "source_location": "L2824",
       "weight": 1.0
     },
     {
@@ -32204,7 +32227,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L3037",
+      "source_location": "L3061",
       "weight": 1.0
     },
     {
@@ -32216,7 +32239,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L3043",
+      "source_location": "L3067",
       "weight": 1.0
     },
     {
@@ -32228,7 +32251,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L3174",
+      "source_location": "L3204",
       "weight": 1.0
     },
     {
@@ -32240,7 +32263,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L4034",
+      "source_location": "L4064",
       "weight": 1.0
     },
     {
@@ -32252,7 +32275,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L4677",
+      "source_location": "L4716",
       "weight": 1.0
     },
     {
@@ -32264,7 +32287,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1825",
+      "source_location": "L1832",
       "weight": 1.0
     },
     {
@@ -32276,7 +32299,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1840",
+      "source_location": "L1847",
       "weight": 1.0
     },
     {
@@ -32288,7 +32311,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1875",
+      "source_location": "L1883",
       "weight": 1.0
     },
     {
@@ -32300,7 +32323,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1180",
+      "source_location": "L1185",
       "weight": 1.0
     },
     {
@@ -32396,7 +32419,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1425",
+      "source_location": "L1431",
       "weight": 1.0
     },
     {
@@ -32492,7 +32515,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_agent.py",
-      "source_location": "L1257",
+      "source_location": "L1263",
       "weight": 1.0
     },
     {
@@ -32624,7 +32647,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_memory.py",
-      "source_location": "L131",
+      "source_location": "L141",
       "weight": 1.0
     },
     {
@@ -32636,7 +32659,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_memory.py",
-      "source_location": "L103",
+      "source_location": "L111",
       "weight": 1.0
     },
     {
@@ -32648,7 +32671,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_memory.py",
-      "source_location": "L114",
+      "source_location": "L122",
       "weight": 1.0
     },
     {
@@ -32660,7 +32683,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_memory.py",
-      "source_location": "L120",
+      "source_location": "L128",
       "weight": 1.0
     },
     {
@@ -32700,6 +32723,18 @@
       "weight": 1.0
     },
     {
+      "source": "cleo_memory_cleomemory_record_rule",
+      "target": "cleo_memory_cleomemory_add",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "cleo_memory.py",
+      "source_location": "L101",
+      "weight": 1.0
+    },
+    {
       "source": "cleo_memory_cleomemory_record_sql_fix",
       "target": "cleo_memory_cleomemory_add",
       "relation": "calls",
@@ -32720,7 +32755,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_memory.py",
-      "source_location": "L167",
+      "source_location": "L181",
       "weight": 1.0
     },
     {
@@ -34976,7 +35011,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "cleo_agent.py",
-      "source_location": "L1899",
+      "source_location": "L1907",
       "weight": 1.0
     },
     {
@@ -34988,7 +35023,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "cleo_agent.py",
-      "source_location": "L1927",
+      "source_location": "L1935",
       "weight": 1.0
     },
     {
@@ -35000,7 +35035,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "cleo_agent.py",
-      "source_location": "L1815",
+      "source_location": "L1822",
       "weight": 1.0
     },
     {
@@ -35012,7 +35047,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "cleo_agent.py",
-      "source_location": "L4806",
+      "source_location": "L4845",
       "weight": 1.0
     },
     {
@@ -35024,7 +35059,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "cleo_agent.py",
-      "source_location": "L4806",
+      "source_location": "L4845",
       "weight": 1.0
     },
     {
@@ -59542,7 +59577,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1179",
+      "source_location": "L1184",
       "weight": 1.0
     },
     {
@@ -59564,7 +59599,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1254",
+      "source_location": "L1260",
       "weight": 1.0
     },
     {
@@ -59586,7 +59621,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1400",
+      "source_location": "L1406",
       "weight": 1.0
     },
     {
@@ -59597,18 +59632,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1429",
-      "weight": 1.0
-    },
-    {
-      "source": "cleo_agent",
-      "target": "cleo_agent_parse_query_time_context",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "cleo_agent.py",
-      "source_location": "L1454",
+      "source_location": "L1435",
       "weight": 1.0
     },
     {
@@ -59624,13 +59648,24 @@
     },
     {
       "source": "cleo_agent",
+      "target": "cleo_agent_parse_query_time_context",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "cleo_agent.py",
+      "source_location": "L1460",
+      "weight": 1.0
+    },
+    {
+      "source": "cleo_agent",
       "target": "cleo_agent_deterministic_understand_query",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1601",
+      "source_location": "L1608",
       "weight": 1.0
     },
     {
@@ -59641,7 +59676,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1728",
+      "source_location": "L1735",
       "weight": 1.0
     },
     {
@@ -59696,7 +59731,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L4806",
+      "source_location": "L4845",
       "weight": 1.0
     },
     {
@@ -59707,7 +59742,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L4809",
+      "source_location": "L4848",
       "weight": 1.0
     },
     {
@@ -60004,7 +60039,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_memory.py",
-      "source_location": "L164",
+      "source_location": "L178",
       "weight": 1.0
     },
     {
@@ -60807,7 +60842,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1254",
+      "source_location": "L1260",
       "weight": 1.0
     },
     {
@@ -61027,7 +61062,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1729",
+      "source_location": "L1736",
       "weight": 1.0
     },
     {
@@ -61038,7 +61073,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1742",
+      "source_location": "L1749",
       "weight": 1.0
     },
     {
@@ -61049,7 +61084,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1745",
+      "source_location": "L1752",
       "weight": 1.0
     },
     {
@@ -61060,7 +61095,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1815",
+      "source_location": "L1822",
       "weight": 1.0
     },
     {
@@ -61071,7 +61106,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1899",
+      "source_location": "L1907",
       "weight": 1.0
     },
     {
@@ -61082,7 +61117,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1927",
+      "source_location": "L1935",
       "weight": 1.0
     },
     {
@@ -61225,7 +61260,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1256",
+      "source_location": "L1262",
       "weight": 1.0
     },
     {
@@ -61236,7 +61271,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1258",
+      "source_location": "L1264",
       "weight": 1.0
     },
     {
@@ -61285,7 +61320,7 @@
     },
     {
       "source": "cleo_memory_cleomemory",
-      "target": "cleo_memory_cleomemory_all_entries",
+      "target": "cleo_memory_cleomemory_delete",
       "relation": "method",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -61296,13 +61331,24 @@
     },
     {
       "source": "cleo_memory_cleomemory",
+      "target": "cleo_memory_cleomemory_all_entries",
+      "relation": "method",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "cleo_memory.py",
+      "source_location": "L115",
+      "weight": 1.0
+    },
+    {
+      "source": "cleo_memory_cleomemory",
       "target": "cleo_memory_cleomemory_find_relevant",
       "relation": "method",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_memory.py",
-      "source_location": "L112",
+      "source_location": "L120",
       "weight": 1.0
     },
     {
@@ -61313,7 +61359,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_memory.py",
-      "source_location": "L126",
+      "source_location": "L136",
       "weight": 1.0
     },
     {
@@ -61395,7 +61441,7 @@
     },
     {
       "source": "cleo_memory_cleomemory",
-      "target": "cleo_memory_cleomemory_delete",
+      "target": "cleo_memory_cleomemory_record_rule",
       "relation": "method",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -61537,47 +61583,47 @@
       "weight": 1.0
     },
     {
-      "source": "cleo_agent_rationale_1255",
+      "source": "cleo_agent_rationale_1261",
       "target": "cleo_agent_servicematch",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1255",
+      "source_location": "L1261",
       "weight": 1.0
     },
     {
-      "source": "cleo_agent_rationale_1401",
+      "source": "cleo_agent_rationale_1407",
       "target": "cleo_agent_extract_requested_service",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1401",
+      "source_location": "L1407",
       "weight": 1.0
     },
     {
-      "source": "cleo_agent_rationale_1430",
+      "source": "cleo_agent_rationale_1436",
       "target": "cleo_agent_extract_requested_cloud",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1430",
+      "source_location": "L1436",
       "weight": 1.0
     },
     {
-      "source": "cleo_agent_rationale_1455",
+      "source": "cleo_agent_rationale_1461",
       "target": "cleo_agent_parse_query_time_context",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1455",
+      "source_location": "L1461",
       "weight": 1.0
     },
     {
@@ -61592,36 +61638,36 @@
       "weight": 1.0
     },
     {
-      "source": "cleo_agent_rationale_1602",
+      "source": "cleo_agent_rationale_1609",
       "target": "cleo_agent_deterministic_understand_query",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1602",
+      "source_location": "L1609",
       "weight": 1.0
     },
     {
-      "source": "cleo_agent_rationale_1746",
+      "source": "cleo_agent_rationale_1753",
       "target": "cleo_agent_aiclient_call_active_llm",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1746",
+      "source_location": "L1753",
       "weight": 1.0
     },
     {
-      "source": "cleo_agent_rationale_1816",
+      "source": "cleo_agent_rationale_1823",
       "target": "cleo_agent_aiclient_understand_query",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_agent.py",
-      "source_location": "L1816",
+      "source_location": "L1823",
       "weight": 1.0
     },
     {
@@ -61878,25 +61924,36 @@
       "weight": 1.0
     },
     {
-      "source": "cleo_memory_rationale_113",
+      "source": "cleo_memory_rationale_100",
+      "target": "cleo_memory_cleomemory_record_rule",
+      "relation": "rationale_for",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "cleo_memory.py",
+      "source_location": "L100",
+      "weight": 1.0
+    },
+    {
+      "source": "cleo_memory_rationale_121",
       "target": "cleo_memory_cleomemory_find_relevant",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_memory.py",
-      "source_location": "L113",
+      "source_location": "L121",
       "weight": 1.0
     },
     {
-      "source": "cleo_memory_rationale_127",
+      "source": "cleo_memory_rationale_137",
       "target": "cleo_memory_cleomemory_build_context_block",
       "relation": "rationale_for",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_memory.py",
-      "source_location": "L127",
+      "source_location": "L137",
       "weight": 1.0
     },
     {
@@ -62766,7 +62823,7 @@
       "confidence_score": 0.85,
       "context": "argument",
       "source_file": "cleo_agent.py",
-      "source_location": "L3031",
+      "source_location": "L3055",
       "weight": 1.0
     },
     {
@@ -62778,7 +62835,7 @@
       "confidence_score": 0.85,
       "context": "argument",
       "source_file": "cleo_agent.py",
-      "source_location": "L4190",
+      "source_location": "L4220",
       "weight": 1.0
     },
     {

@@ -1,12 +1,12 @@
 # Graph Report - cleo  (2026-09-20)
 
 ## Corpus Check
-- 123 files · ~340,515 words
+- 123 files · ~340,874 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 7 file(s) not represented in the graph (top: (none) 6, .example 1)
 
 ## Summary
-- 2598 nodes · 2792 edges · 227 communities (221 shown, 6 thin omitted)
+- 2600 nodes · 2795 edges · 227 communities (221 shown, 6 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 7 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
@@ -280,8 +280,8 @@ Cohesion: 0.16
 Nodes (7): OAuth2Helper, Clears stored token files from disk., Exchanges authorization code and PKCE verifier for access token., Generates PKCE verifier, challenge, state, and full authorization URL., Runs the interactive OAuth 2.0 PKCE flow in terminal., A dependency-free OAuth 2.0 helper with PKCE & RFC 7591 Dynamic Client…, Dynamically registers a new confidential OAuth client with CloudHealth via RFC…
 
 ### Community 3 - "CleoMemory"
-Cohesion: 0.14
-Nodes (9): CleoMemory, Return up to top_k entries most relevant to query by token overlap., Returns a formatted string ready to append to the system prompt, or empty…, Lowercase word tokens, 3+ chars, strip punctuation., Auto-called when a SQL query fails and a fix is found., Called when user submits 👎 feedback with a correction text., Called when user gives 👍 — stores the query→answer pattern., _score() (+1 more)
+Cohesion: 0.13
+Nodes (10): CleoMemory, Stores a persistent operational or FinOps rule in memory., Return up to top_k entries most relevant to query by token overlap., Returns a formatted string ready to append to the system prompt, or empty…, Lowercase word tokens, 3+ chars, strip punctuation., Auto-called when a SQL query fails and a fix is found., Called when user submits 👎 feedback with a correction text., Called when user gives 👍 — stores the query→answer pattern. (+2 more)
 
 ### Community 4 - "MCPClient"
 Cohesion: 0.10
@@ -1153,7 +1153,7 @@ Nodes (5): extract_requested_service(), Subclass of tuple supporting both 2-item
 
 ## Knowledge Gaps
 - **1864 isolated node(s):** `Cloud FinOps Expertise`, `graphify`, `BRANDKIT IMAGE GENERATION SKILL`, `REFERENCE STYLE DNA`, `CORE PRINCIPLE` (+1859 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2011 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2012 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **6 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
@@ -1172,4 +1172,4 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `cleo_agent.py` be split into smaller, more focused modules?**
   _Cohesion score 0.06753006475485661 - nodes in this community are weakly interconnected._
 - **Should `CleoMemory` be split into smaller, more focused modules?**
-  _Cohesion score 0.1368421052631579 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.12554112554112554 - nodes in this community are weakly interconnected._

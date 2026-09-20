@@ -30,9 +30,9 @@
     "semantic_hash": ""
   },
   "cleo_server.py": {
-    "mtime": 1789893093.7756774,
-    "seen": 1789893287.6518369,
-    "ast_hash": "610e941e3eafa7a15c52af7af9f70598",
+    "mtime": 1789894140.7027004,
+    "seen": 1789894294.7574039,
+    "ast_hash": "e29a3868d7815104e2e1d85e989e9427",
     "semantic_hash": ""
   },
   "workflows/cleo-v1.json": {
@@ -96,9 +96,9 @@
     "semantic_hash": ""
   },
   "cleo_ui.html": {
-    "mtime": 1789892345.8397105,
-    "seen": 1789892386.8990772,
-    "ast_hash": "385d3dd9a7c9d1c218d8fbf7b51936e3",
+    "mtime": 1789894214.6990807,
+    "seen": 1789894294.757482,
+    "ast_hash": "0fd4f588ff37c74355b61293efe37723",
     "semantic_hash": ""
   },
   "skills-lock.json": {
@@ -747,12 +747,6 @@
     "mtime": 1789893248.701215,
     "seen": 1789893287.651838,
     "ast_hash": "43b84ced49971e7dcb9faf9d99362c9d",
-    "semantic_hash": ""
-  },
-  ".claude/settings.local.json": {
-    "mtime": 1789892398.0315053,
-    "seen": 1789893287.651828,
-    "ast_hash": "07cb8da85144e4089f5ed59cddd9272d",
     "semantic_hash": ""
   }
 }

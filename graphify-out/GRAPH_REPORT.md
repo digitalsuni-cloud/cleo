@@ -1,18 +1,23 @@
 # Graph Report - cleo  (2026-09-20)
 
 ## Corpus Check
-- 123 files · ~340,874 words
+- 122 files · ~341,350 words
 - Verdict: corpus is large enough that graph structure adds value.
-- Unclassified: 7 file(s) not represented in the graph (top: (none) 6, .example 1)
+- Unclassified: 3 file(s) not represented in the graph (top: (none) 2, .example 1)
 
 ## Summary
-- 2600 nodes · 2795 edges · 227 communities (221 shown, 6 thin omitted)
+- 2602 nodes · 2798 edges · 228 communities (222 shown, 6 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 7 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
+## Graph Freshness
+- Built from commit: `e42749f1`
+- Run `git rev-parse HEAD` and compare to check if the graph is stale.
+- Run `graphify update .` after code changes (no API cost).
+
 ## Community Hubs (Navigation)
 - cleo_server.py
-- cleo_agent.py
+- ._generate_impl
 - OAuth2Helper
 - CleoMemory
 - MCPClient
@@ -27,7 +32,7 @@
 - workflows/graphify.md
 - CORE DIRECTIVE: IMAGE-FIRST WEBSITE DESIGN TO CODE
 - CORE DIRECTIVE: PREMIUM MOBILE APP IMAGE DIRECTION
-- cleo_memory.py
+- cleo_finops_refs.py
 - CORE DIRECTIVE: IMAGE-FIRST WEBSITE DESIGN TO CODE
 - CORE DIRECTIVE: PREMIUM MOBILE APP IMAGE DIRECTION
 - GreenOps & Cloud Carbon Optimisation
@@ -209,7 +214,7 @@
 - Category 2: Idle resources
 - Category 3: Overprovisioned resources
 - Category 4: Commitment mismatches
-- init_mcp_if_authenticated
+- AIClient
 - Database cost optimisation
 - SageMaker operational FinOps
 - Agentic FinOps on Azure - Copilot agents and MCP servers
@@ -237,6 +242,7 @@
 - GitHub Copilot and Windsurf (comparison)
 - finops.md
 - ServiceMatch
+- cleo_agent.py
 
 ## God Nodes (most connected - your core abstractions)
 1. `CORE DIRECTIVE: IMAGE-FIRST WEBSITE DESIGN TO CODE` - 39 edges
@@ -259,21 +265,21 @@
   test_cleo_finops_suite.py → cleo_agent.py
 - `init_mcp_if_authenticated()` --calls--> `MCPClient`  [EXTRACTED]
   cleo_server.py → cleo_agent.py
-- `list_engines()` --calls--> `get_installed_mlx_models()`  [EXTRACTED]
-  cleo_server.py → cleo_agent.py
+- `run_suite()` --calls--> `MCPClient`  [EXTRACTED]
+  test_cleo_finops_suite.py → cleo_agent.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (227 total, 6 thin omitted)
+## Communities (228 total, 6 thin omitted)
 
 ### Community 0 - "cleo_server.py"
 Cohesion: 0.07
-Nodes (53): any, BaseModel, estimate_token_count(), get_installed_ollama_models(), _load_config(), Returns list of installed models from local Ollama daemon., Estimates LLM BPE token count for text using word/subword heuristics., _save_config() (+45 more)
+Nodes (58): any, BaseModel, get_installed_ollama_models(), _load_config(), Returns list of installed models from local Ollama daemon., _save_config(), auth_login(), auth_logout() (+50 more)
 
-### Community 1 - "cleo_agent.py"
-Cohesion: 0.07
-Nodes (40): base64, calendar, _build_time_category_stacked_chart(), _build_waterfall_chart(), _chart_block(), _csv_to_markdown(), _detect_chart_type(), extract_requested_cloud() (+32 more)
+### Community 1 - "._generate_impl"
+Cohesion: 0.09
+Nodes (21): _build_time_category_stacked_chart(), _build_waterfall_chart(), _chart_block(), _csv_to_markdown(), _detect_chart_type(), extract_requested_cloud(), _format_time_label(), get_finops_advisory() (+13 more)
 
 ### Community 2 - "OAuth2Helper"
 Cohesion: 0.16
@@ -284,8 +290,8 @@ Cohesion: 0.13
 Nodes (10): CleoMemory, Stores a persistent operational or FinOps rule in memory., Return up to top_k entries most relevant to query by token overlap., Returns a formatted string ready to append to the system prompt, or empty…, Lowercase word tokens, 3+ chars, strip punctuation., Auto-called when a SQL query fails and a fix is found., Called when user submits 👎 feedback with a correction text., Called when user gives 👍 — stores the query→answer pattern. (+2 more)
 
 ### Community 4 - "MCPClient"
-Cohesion: 0.10
-Nodes (17): AIClient, build_system_prompt(), _deterministic_understand_query(), get_memory(), get_realtime_calendar_info(), MCPClient, Returns grounded real-time calendar and billing period details., Fast, deterministic intent and parameter extraction used as baseline and… (+9 more)
+Cohesion: 0.15
+Nodes (7): estimate_token_count(), get_memory(), MCPClient, Robust MCP Client for CloudHealth. Communicates via direct HTTP JSON-RPC to…, Clears all cached MCP tool responses., Estimates LLM BPE token count for text using word/subword heuristics., get_session()
 
 ### Community 5 - "Cleo — CloudHealth FinOps AI Agent"
 Cohesion: 0.18
@@ -319,9 +325,9 @@ Nodes (34): 10. IMAGE-FIRST CODEX WEBSITE WORKFLOW, 11. WHEN TO TRIGGER IMAGE GE
 Cohesion: 0.06
 Nodes (34): 10. DEVICE MOCKUP FRAME RULE, 11. ONBOARDING FLOW RULE, 12. FIRST SCREEN CLEANLINESS RULE, 13. SAFE AREA AND SYSTEM REGION RULE, 14. NAVIGATION RULE, 15. CLEAN LAYOUT RULE, 16. CREATIVE IMAGE DIRECTION RULE, 17. BACKGROUND TEXTURE AND SURFACE RULE (+26 more)
 
-### Community 16 - "cleo_memory.py"
-Cohesion: 0.13
-Nodes (19): _extract_best_sections(), _find_matches(), get_finops_advisory(), get_finops_context(), cleo_finops_refs.py — Dynamic FinOps knowledge injection and advisory engine…, Read and cache a reference or playbook file, stripping YAML frontmatter if…, Finds matching reference/playbook keys scored by specificity and keyword length., Returns a formatted FinOps reference block to inject into the LLM system prompt. (+11 more)
+### Community 16 - "cleo_finops_refs.py"
+Cohesion: 0.20
+Nodes (13): _extract_best_sections(), _find_matches(), get_finops_advisory(), get_finops_context(), cleo_finops_refs.py — Dynamic FinOps knowledge injection and advisory engine…, Read and cache a reference or playbook file, stripping YAML frontmatter if…, Finds matching reference/playbook keys scored by specificity and keyword length., Returns a formatted FinOps reference block to inject into the LLM system prompt. (+5 more)
 
 ### Community 17 - "CORE DIRECTIVE: IMAGE-FIRST WEBSITE DESIGN TO CODE"
 Cohesion: 0.06
@@ -336,8 +342,8 @@ Cohesion: 0.04
 Nodes (45): AI energy per token: declare the meter boundary first, AWS-specific hardware and storage anchors, AWS Sustainability Console - what changed in 2026 and what to watch, AWS Well-Architected Sustainability Pillar - the six areas, Carbon Aware SDK implementation checklist, Climatiq API, Common mistakes, Context and scale (+37 more)
 
 ### Community 20 - "._call_active_llm"
-Cohesion: 0.17
-Nodes (11): call_anthropic_api(), call_gemini_api(), call_mlx_generate(), call_ollama_chat(), call_openai_api(), Invokes local Ollama chat API., Invokes Google Gemini REST API., Invokes OpenAI Chat Completions REST API. (+3 more)
+Cohesion: 0.12
+Nodes (14): call_anthropic_api(), call_gemini_api(), call_mlx_generate(), call_ollama_chat(), call_openai_api(), _deterministic_understand_query(), Invokes local Ollama chat API., Invokes Google Gemini REST API. (+6 more)
 
 ### Community 21 - "High-Agency Frontend Skill"
 Cohesion: 0.06
@@ -1043,9 +1049,9 @@ Nodes (6): Anti-patterns, Category 3: Overprovisioned resources, Common patterns
 Cohesion: 0.33
 Nodes (6): Anti-patterns, Category 4: Commitment mismatches, Common patterns, Detection example (RI utilisation gap), Fix sequence, Pattern shape
 
-### Community 199 - "init_mcp_if_authenticated"
-Cohesion: 0.15
-Nodes (15): get_access_token(), get_installed_mlx_models(), Scans local Hugging Face cache for downloaded MLX models (equivalent to…, auth_submit_code(), CodeSubmission, health(), init_mcp_if_authenticated(), _load_pending_verifiers() (+7 more)
+### Community 199 - "AIClient"
+Cohesion: 0.16
+Nodes (13): AIClient, get_access_token(), get_installed_mlx_models(), Scans local Hugging Face cache for downloaded MLX models (equivalent to…, run_agent_turn(), health(), init_mcp_if_authenticated(), Attempts to connect to CloudHealth MCP with stored access token. (+5 more)
 
 ### Community 200 - "Database cost optimisation"
 Cohesion: 0.40
@@ -1136,8 +1142,8 @@ Cohesion: 0.50
 Nodes (4): Crawl - manual hunt, Crawl / Walk / Run progression, Run - continuous detection, Walk - tool-assisted hunt
 
 ### Community 222 - "cleo_gui.py"
-Cohesion: 0.28
-Nodes (8): argparse, is_port_in_use(), main(), cleo_gui.py — Desktop GUI Application for Cleo FinOps Agent…, start_server(), socket, threading, webbrowser
+Cohesion: 0.32
+Nodes (7): argparse, is_port_in_use(), main(), cleo_gui.py — Desktop GUI Application for Cleo FinOps Agent…, start_server(), socket, threading
 
 ### Community 223 - "OpenAI Codex"
 Cohesion: 0.67
@@ -1151,16 +1157,20 @@ Nodes (3): GitHub Copilot, GitHub Copilot and Windsurf (comparison), Windsurf (n
 Cohesion: 0.29
 Nodes (5): extract_requested_service(), Subclass of tuple supporting both 2-item legacy unpacking (pcode, disp) and…, Extracts cloud service identifier, display label, and provider from query text,…, ServiceMatch, tuple
 
+### Community 227 - "cleo_agent.py"
+Cohesion: 0.10
+Nodes (32): base64, calendar, build_system_prompt(), get_realtime_calendar_info(), Returns grounded real-time calendar and billing period details., ColorFormatter, get_logger(), cleo_logger.py — Centralized Verbose Logging for Cleo FinOps Agent… (+24 more)
+
 ## Knowledge Gaps
 - **1864 isolated node(s):** `Cloud FinOps Expertise`, `graphify`, `BRANDKIT IMAGE GENERATION SKILL`, `REFERENCE STYLE DNA`, `CORE PRINCIPLE` (+1859 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2012 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2013 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **6 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `FinOps on AWS` connect `FinOps on AWS` to `playbooks/README.md`, `AWS cost data foundation`, `CloudFront flat-rate pricing plans`, `S3 Files - filesystem access over S3`, `Database cost optimisation`, `Compute rightsizing`, `SageMaker operational FinOps`, `AWS Multi-Organisation Billing Features`, `AWS billing hierarchy and separate invoices`, `AWS governance tools`?**
-  _High betweenness centrality (0.012) - this node is a cross-community bridge._
+  _High betweenness centrality (0.013) - this node is a cross-community bridge._
 - **Why does `FinOps Waste Detection Playbooks` connect `FinOps Waste Detection Playbooks` to `playbooks/README.md`, `Category 1: Orphaned resources`, `Category 2: Idle resources`, `Category 3: Overprovisioned resources`, `Category 4: Commitment mismatches`, `Category 5: Schedule blindness`, `Category 6: Modernization opportunities`, `Category 7: AI / ML inefficiency`, `Category 8: Egress / data transfer`, `Cross-category detection principles`, `Crawl / Walk / Run progression`?**
   _High betweenness centrality (0.012) - this node is a cross-community bridge._
 - **Why does `FinOps for AI Coding Tools` connect `FinOps for AI Coding Tools` to `GitHub Copilot and Windsurf (comparison)`, `Agent-Loop Flat-Line Burn`, `Claude Code`, `Two billing architectures`, `Cost attribution patterns`, `Cursor (primary deep-dive)`, `OpenAI Codex`?**
@@ -1168,8 +1178,8 @@ _Questions this graph is uniquely positioned to answer:_
 - **What connects `Cloud FinOps Expertise`, `graphify`, `BRANDKIT IMAGE GENERATION SKILL` to the rest of the system?**
   _1864 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `cleo_server.py` be split into smaller, more focused modules?**
-  _Cohesion score 0.07077922077922078 - nodes in this community are weakly interconnected._
-- **Should `cleo_agent.py` be split into smaller, more focused modules?**
-  _Cohesion score 0.06753006475485661 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0655367231638418 - nodes in this community are weakly interconnected._
+- **Should `._generate_impl` be split into smaller, more focused modules?**
+  _Cohesion score 0.09420289855072464 - nodes in this community are weakly interconnected._
 - **Should `CleoMemory` be split into smaller, more focused modules?**
   _Cohesion score 0.12554112554112554 - nodes in this community are weakly interconnected._
