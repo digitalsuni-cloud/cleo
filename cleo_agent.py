@@ -619,13 +619,20 @@ class MCPClient:
 
 def _detect_chart_type(low: str) -> str | None:
     """Return chart type string if user asked for a chart, else None."""
-    if any(w in low for w in ["waterfall chart", "waterfall", "variance chart", "bridge chart"]):
+    # Variance chart → waterfall (must check before generic "waterfall" keyword)
+    if any(w in low for w in ["variance chart", "waterfall chart", "bridge chart"]):
         return "waterfall"
-    if any(w in low for w in ["pie chart", "pie graph", "pie breakdown"]):
-        return "pie"
-    if any(w in low for w in ["doughnut chart", "donut chart", "doughnut graph"]):
+    if "waterfall" in low:
+        return "waterfall"
+    if any(w in low for w in [
+        "doughnut chart", "donut chart", "doughnut graph", "donut graph",
+        "doughnut only", "donut only", "doughnut", "donut"
+    ]):
         return "doughnut"
-    if any(w in low for w in ["line chart", "line graph", "trend line", "trend chart", "over time chart"]):
+    if any(w in low for w in ["pie chart", "pie graph", "pie breakdown", "pie only", "pie"]):
+        return "pie"
+    # Trend → line chart (bare "trend" keyword triggers line, not bar)
+    if any(w in low for w in ["trend", "line chart", "line graph", "trend line", "trend chart", "over time chart", "over time"]):
         return "line"
     if any(w in low for w in ["horizontal bar", "horizontal chart", "sideways bar"]):
         return "horizontal-bar"
@@ -637,6 +644,59 @@ def _detect_chart_type(low: str) -> str | None:
     ]):
         return "bar"
     return None
+
+
+def _detect_wants_variance(low: str) -> bool:
+    """Return True when the query asks for a trend — signals we should also emit a MoM/DoD variance chart."""
+    return any(w in low for w in [
+        "trend", "over time", "mom", "month over month", "month-over-month",
+        "dod", "day over day", "day-over-day", "yoy", "year over year", "year-over-year",
+        "variance", "change over", "how it changed", "how has it changed"
+    ])
+
+
+def _build_mom_variance_chart(
+    title: str,
+    time_labels: list,  # sorted month/day strings
+    period_totals: dict,  # {time_str: total_cost}
+    time_format: str = "month"
+) -> str:
+    """
+    Build a MoM/DoD waterfall variance chart from period totals.
+    Emits waterfall bars showing $ change between consecutive periods.
+    """
+    sorted_times = sorted(period_totals.keys())
+    if len(sorted_times) < 2:
+        return ""
+
+    wf_labels = []
+    wf_values = []
+    prev = period_totals[sorted_times[0]]
+    wf_labels.append(_format_time_label(sorted_times[0], time_format))
+    wf_values.append(round(prev, 2))
+
+    for t in sorted_times[1:]:
+        curr = period_totals[t]
+        delta = curr - prev
+        wf_labels.append(_format_time_label(t, time_format))
+        wf_values.append(round(delta, 2))
+        prev = curr
+
+    return _build_waterfall_chart(title, wf_labels, wf_values, value_label="Cost Change ($)")
+
+
+def _detect_wants_table(low: str) -> bool:
+    """Return False if user explicitly requested no tabular output or chart only."""
+    if any(phrase in low for phrase in [
+        "no tabular", "no table", "without table", "without tables", "no tables",
+        "chart only", "only chart", "only the chart", "donut chart only", "donut only",
+        "doughnut chart only", "doughnut only", "bar chart only", "bar only",
+        "pie chart only", "pie only", "graph only", "only graph", "visual only",
+        "just the chart", "just chart", "just the graph", "hide table", "omit table",
+        "no data table", "skip table", "suppress table"
+    ]):
+        return False
+    return True
 
 
 def _format_time_label(ym_str: str, time_format: str = "month") -> str:
@@ -671,8 +731,9 @@ def _chart_block(chart_type: str, title: str, labels: list, values: list = None,
     import json as _json
     limit = max_labels if max_labels is not None else (366 if (datasets or len(labels) > 30) else 30)
     labels_clean = [str(l)[:40] for l in labels[:limit]]
+    spec_type = "doughnut" if chart_type == "donut" else chart_type
     spec = {
-        "type": chart_type,
+        "type": spec_type,
         "title": title,
         "labels": labels_clean,
         "value_label": value_label,
@@ -2299,11 +2360,9 @@ class AIClient:
             "now show", "and show", "show me", "give me"
         ]) or any(w in low for w in ["for that", "for them", "of that", "of them", "same period", "same customer"])
 
-        has_pronoun_ref = any(w in low for w in [
-            "their", "they", "them", "its", "that customer", "this customer", "same customer",
-            "it", "this", "that", "these", "those", "above", "the above", "above data", "previous",
-            "same data", "this data", "that data", "of it", "of this", "of that", "from above"
-        ])
+        has_cust_pronoun = bool(re.search(r'\b(their|theirs|them|that customer|this customer|same customer|that tenant|this tenant|same tenant|that client|this client|same client)\b', low))
+
+        has_pronoun_ref = bool(re.search(r'\b(their|theirs|they|them|its|it|this|that|these|those|above|the above|previous|same data|this data|that data|of it|of this|of that|from above)\b', low))
 
         is_short_filter_tweak = (word_count <= 6) and (
             curr_t_ctx["is_specific"] or
@@ -2319,23 +2378,10 @@ class AIClient:
 
         is_standalone_request = (
             any(w in low for w in ["recommendation", "recommendations", "optimize", "optimization", "rightsizer", "reduce cost", "save money", "anomal", "spike"]) or
-            any(w in low for w in ["15 days", "15days", "30 days", "7 days", "days usage"]) or
-            (word_count > 6 and not has_continuation_prefix and not is_clarification and not has_pronoun_ref)
+            bool(re.search(r'\b(?:fetch|get|show|give|list|display|find)\b', low)) or
+            bool(re.search(r'\b\d+\s*days?\b', low)) or
+            (word_count > 6 and not has_continuation_prefix and not is_clarification and not has_cust_pronoun)
         )
-
-        # Look backwards through prior user messages for the most recent FinOps query context
-        prior_cost_query = ""
-        for u_msg in reversed(prior_user_msgs):
-            u_low = u_msg.lower()
-            if any(w in u_low for w in ["cost", "spend", "bill", "usage", "trend", "breakdown", "customer", "channel", "tenant", "service", "aws"]):
-                prior_cost_query = u_msg
-                break
-
-        prior_cost_low = prior_cost_query.lower() if prior_cost_query else ""
-        is_prior_cost_query = bool(prior_cost_query)
-        is_prior_cust_query = any(w in prior_cost_low for w in ["customer", "channel", "tenant", "client"])
-
-        is_followup = bool((is_prior_cost_query or has_pronoun_ref) and (has_continuation_prefix or is_short_filter_tweak or is_clarification or has_pronoun_ref) and not is_standalone_request)
 
         # ── Resolve channel customer list (cached) ───────────────────────
         if not hasattr(self, "_cust_map_cache"):
@@ -2349,6 +2395,20 @@ class AIClient:
                 self._cust_map_cache = cust_map
             except Exception as e:
                 logger.warning(f"[Customer CRN Map] Failed: {e}")
+
+        # Look backwards through prior user messages for the most recent FinOps query context
+        prior_cost_query = ""
+        for u_msg in reversed(prior_user_msgs):
+            u_low = u_msg.lower()
+            if any(w in u_low for w in ["cost", "spend", "bill", "usage", "trend", "breakdown", "customer", "channel", "tenant", "service", "aws"]):
+                prior_cost_query = u_msg
+                break
+
+        prior_cost_low = prior_cost_query.lower() if prior_cost_query else ""
+        is_prior_cost_query = bool(prior_cost_query)
+        is_prior_cust_query = any(w in prior_cost_low for w in ["customer", "channel", "tenant", "client"]) or any(c.lower() in prior_cost_low for c in cust_map)
+
+        is_followup = bool((is_prior_cost_query or has_pronoun_ref) and (has_continuation_prefix or is_short_filter_tweak or is_clarification or has_pronoun_ref) and not is_standalone_request)
 
         # ── Check if a specific customer name is in the query or inherited ──
         named_customer = None
@@ -2369,7 +2429,7 @@ class AIClient:
                     break
 
         is_cust_reset = any(w in low for w in ["all customer", "all channel", "partner wide", "overall", "all tenant", "every customer"])
-        if not named_customer and (is_followup or has_pronoun_ref) and not is_cust_reset:
+        if not named_customer and (has_cust_pronoun or (is_followup and not is_standalone_request and is_prior_cust_query)) and not is_cust_reset:
             for u_msg in reversed(prior_user_msgs):
                 u_low = u_msg.lower()
                 for cname, ccrn in cust_map.items():
@@ -2705,8 +2765,21 @@ class AIClient:
                 tenant_suffix = " (Partner Tenant)" if any(w in low for w in ["partner tenant", "tenant"]) else " (Partner-Wide)"
                 cust_label = named_customer or f"All Accounts{tenant_suffix}"
 
-                wants_instance_type = any(w in low for w in ["instance", "instancetype", "instance type", "size", "sku"]) or not any(w in low for w in ["engine", "enginetype"])
-                wants_engine_type = any(w in low for w in ["engine", "enginetype", "engine type", "flavor", "database engine"])
+                wants_table = _detect_wants_table(low)
+                chart_type = _detect_chart_type(low)
+
+                has_engine_kw = any(w in low for w in ["engine", "enginetype", "engine type", "flavor", "database engine", "db engine"])
+                has_instance_kw = any(w in low for w in ["instance type", "instancetype", "instance size", "by instance", "instance breakdown", "instances", "instance"])
+
+                if has_engine_kw and not has_instance_kw:
+                    wants_engine_type = True
+                    wants_instance_type = False
+                elif has_instance_kw and not has_engine_kw:
+                    wants_engine_type = False
+                    wants_instance_type = True
+                else:
+                    wants_engine_type = has_engine_kw
+                    wants_instance_type = True
 
                 if num_days > 0:
                     rds_sql = (
@@ -2820,19 +2893,86 @@ class AIClient:
                             f"| - | *Other ({rem_count} instance types)* | **${rem_cost:,.2f}** | {rem_pct:.1f}% | — | — | — |"
                         )
 
-                    # Instance Type Stacked Chart
-                    chart_it_md = _build_time_category_stacked_chart(
-                        f"RDS Spend by Instance Type ({period_str}) — {cust_label}",
-                        rds_rows,
-                        time_col="month",
-                        cat_col="instance_type",
-                        cost_col="cost",
-                        time_format="day" if num_days > 0 else "month",
-                        max_cats=10
+                    # Instance Type Chart
+                    t_fmt = "day" if num_days > 0 else "month"
+                    if chart_type in ["doughnut", "pie"]:
+                        it_labels = [it for it, _ in sorted_types[:10]]
+                        it_vals = [round(d["cost"], 2) for _, d in sorted_types[:10]]
+                        chart_it_md = _chart_block(
+                            chart_type,
+                            f"RDS Spend by Instance Type ({period_str}) — {cust_label}",
+                            it_labels,
+                            values=it_vals,
+                            value_label="Cost ($)"
+                        )
+                    elif chart_type == "horizontal-bar":
+                        it_labels = [it for it, _ in sorted_types[:10]]
+                        it_vals = [round(d["cost"], 2) for _, d in sorted_types[:10]]
+                        chart_it_md = _chart_block(
+                            "horizontal-bar",
+                            f"RDS Spend by Instance Type ({period_str}) — {cust_label}",
+                            it_labels,
+                            values=it_vals,
+                            value_label="Cost ($)",
+                            horizontal=True
+                        )
+                    elif chart_type == "waterfall":
+                        wf_labels = ["Baseline (Total)"] + [it for it, _ in sorted_types[:7]] + ["Total"]
+                        wf_vals = [round(total_rds_cost, 2)] + [round(d["cost"], 2) for _, d in sorted_types[:7]] + [round(total_rds_cost, 2)]
+                        chart_it_md = _build_waterfall_chart(
+                            f"RDS Instance Type Cost Contribution ({period_str}) — {cust_label}",
+                            wf_labels, wf_vals
+                        )
+                    elif chart_type == "line":
+                        # Trend query: line chart of total spend over time + MoM/DoD variance waterfall
+                        period_totals = {}
+                        for r in rds_rows:
+                            period_totals[r["month"]] = period_totals.get(r["month"], 0.0) + r["cost"]
+                        sorted_p = sorted(period_totals.keys())
+                        line_labels = [_format_time_label(t, t_fmt) for t in sorted_p]
+                        line_vals = [round(period_totals[t], 2) for t in sorted_p]
+                        chart_it_md = _chart_block(
+                            "line",
+                            f"RDS Total Spend Trend ({period_str}) — {cust_label}",
+                            line_labels,
+                            values=line_vals,
+                            value_label="Cost ($)"
+                        )
+                        # MoM/DoD variance waterfall
+                        variance_md = _build_mom_variance_chart(
+                            f"RDS Spend {('DoD' if num_days > 0 else 'MoM')} Variance ({period_str}) — {cust_label}",
+                            sorted_p, period_totals, time_format=t_fmt
+                        )
+                        chart_it_md += f"\n{variance_md}" if variance_md else ""
+                    else:
+                        chart_it_md = _build_time_category_stacked_chart(
+                            f"RDS Spend by Instance Type ({period_str}) — {cust_label}",
+                            rds_rows,
+                            time_col="month",
+                            cat_col="instance_type",
+                            cost_col="cost",
+                            time_format=t_fmt,
+                            max_cats=10
+                        )
+
+                    it_table_block = (
+                        f"| # | Instance Type | Total Spend | % of Total | Avg Instances | Compute Cost | Storage Cost |\n"
+                        f"|:---|:---|:---|:---|:---|:---|:---|\n"
+                        f"{chr(10).join(it_table_lines)}\n"
+                        f"| **Total** | **All Instance Types** | **${total_rds_cost:,.2f}** | **100.0%** | | | |\n\n"
+                    ) if wants_table else ""
+
+                    instance_section_md = (
+                        f"#### 🖥️ Spend by RDS Instance Type\n\n"
+                        f"{it_table_block}"
+                        f"{chart_it_md}\n\n"
                     )
+
 
                     # Query Engine Breakdown via AWS_CUR if requested
                     engine_section_md = ""
+                    engine_total = 0.0
+                    engine_rows = []
                     if wants_engine_type:
                         cur_engine_params = {
                             "queryInput": {
@@ -2852,7 +2992,6 @@ class AIClient:
                         if named_customer_crn:
                             cur_engine_params["channelCustomerId"] = named_customer_crn
 
-                        engine_rows = []
                         try:
                             res_eng = mcp.call_tool("execute_datasource_query", cur_engine_params)
                             txt_eng = res_eng.get("content", [{}])[0].get("text", "{}")
@@ -2883,21 +3022,27 @@ class AIClient:
                                 eng_labels.append(r["engine"])
                                 eng_values.append(round(r["cost"], 2))
 
+                            eng_kind = chart_type if chart_type in ["doughnut", "pie", "bar", "horizontal-bar"] else "doughnut"
                             chart_eng_md = _chart_block(
-                                "doughnut",
+                                eng_kind,
                                 f"RDS Spend by Database Engine ({period_str}) — {cust_label}",
                                 eng_labels,
                                 values=eng_values,
-                                value_label="Cost ($)"
+                                value_label="Cost ($)",
+                                horizontal=(eng_kind == "horizontal-bar")
                             )
 
-                            engine_section_md = (
-                                f"\n#### 🗄️ RDS Database Engine Distribution\n\n"
+                            eng_table_block = (
                                 f"| # | Database Engine | Billed Spend | % of Total |\n"
                                 f"|:---|:---|:---|:---|\n"
                                 f"{chr(10).join(eng_table_lines)}\n"
                                 f"| **Total** | **All Engines** | **${engine_total:,.2f}** | **100.0%** |\n\n"
-                                f"{chart_eng_md}\n"
+                            ) if wants_table else ""
+
+                            engine_section_md = (
+                                f"#### 🗄️ RDS Database Engine Distribution\n\n"
+                                f"{eng_table_block}"
+                                f"{chart_eng_md}\n\n"
                             )
 
                     # FinOps Recommendations
@@ -2928,19 +3073,32 @@ class AIClient:
                         f"yesterday's data (`{yesterday_str}`) is preliminary/partial across all cloud providers due to standard 24–48h billing ingestion latency.\n\n"
                     ) if num_days > 0 else ""
 
+                    if wants_engine_type and not wants_instance_type:
+                        header_title = "Database Engine Breakdown"
+                        disp_total = engine_total if engine_total else total_rds_cost
+                        item_count = len(engine_rows) if engine_rows else len(sorted_types)
+                        item_desc = "active database engines"
+                        body_sections_md = engine_section_md
+                    elif wants_instance_type and not wants_engine_type:
+                        header_title = "Instance Type Breakdown"
+                        disp_total = total_rds_cost
+                        item_count = len(sorted_types)
+                        item_desc = "active database instance types"
+                        body_sections_md = instance_section_md
+                    else:
+                        header_title = "Multi-Breakdown View"
+                        disp_total = total_rds_cost
+                        item_count = len(sorted_types)
+                        item_desc = "active database instance types"
+                        body_sections_md = f"{instance_section_md}{engine_section_md}"
+
                     return (
-                        f"### 🗄️ CloudHealth RDS Spend Analysis: Multi-Breakdown View\n\n"
+                        f"### 🗄️ CloudHealth RDS Spend Analysis: {header_title}\n\n"
                         f"Queried live from standard datasets **`AWS_RDS_COST_AND_USAGE`** and **`AWS_CUR`** for **{cust_label}**:\n\n"
                         f"- **Target Billing Period**: {period_str}\n"
-                        f"- **Total RDS Billed Spend**: **${total_rds_cost:,.2f}** across **{len(sorted_types)}** active database instance types\n\n"
+                        f"- **Total RDS Billed Spend**: **${disp_total:,.2f}** across **{item_count}** {item_desc}\n\n"
                         f"{partial_notice}"
-                        f"#### 🖥️ Spend by RDS Instance Type\n\n"
-                        f"| # | Instance Type | Total Spend | % of Total | Avg Instances | Compute Cost | Storage Cost |\n"
-                        f"|:---|:---|:---|:---|:---|:---|:---|\n"
-                        f"{chr(10).join(it_table_lines)}\n"
-                        f"| **Total** | **All Instance Types** | **${total_rds_cost:,.2f}** | **100.0%** | | | |\n\n"
-                        f"{chart_it_md}\n"
-                        f"{engine_section_md}"
+                        f"{body_sections_md}"
                         f"{insights_block}\n"
                         f"*Source: AWS_RDS_COST_AND_USAGE and AWS_CUR via CloudHealth FlexReports.*"
                     )
@@ -3059,6 +3217,7 @@ class AIClient:
 
                 if ec2_rows:
                     chart_type = _detect_chart_type(low)
+                    wants_table = _detect_wants_table(low)
                     t_format = "quarter" if "quarter" in low else "month"
 
                     if num_days > 0:
@@ -3107,7 +3266,42 @@ class AIClient:
                             )
 
                         chart_md = ""
-                        if chart_type or any(w in low for w in ["chart", "graph", "plot", "visualize"]):
+                        if chart_type in ["doughnut", "pie"]:
+                            chart_md = _chart_block(
+                                chart_type,
+                                f"EC2 Instance Type Spend ({period_header}) — {cust_label}",
+                                [it for it, _ in sorted_types[:10]],
+                                values=[round(d["cost"], 2) for _, d in sorted_types[:10]],
+                                value_label="Cost ($)"
+                            )
+                        elif chart_type == "horizontal-bar":
+                            chart_md = _chart_block(
+                                "horizontal-bar",
+                                f"EC2 Instance Type Spend ({period_header}) — {cust_label}",
+                                [it for it, _ in sorted_types[:10]],
+                                values=[round(d["cost"], 2) for _, d in sorted_types[:10]],
+                                value_label="Cost ($)",
+                                horizontal=True
+                            )
+                        elif chart_type == "line":
+                            # Trend: line chart of daily total + DoD variance waterfall
+                            day_totals: dict = {}
+                            for r in ec2_rows:
+                                day_totals[r["time_val"]] = day_totals.get(r["time_val"], 0.0) + r["cost"]
+                            sorted_days = sorted(day_totals.keys())
+                            line_labels = [_format_time_label(d, "day") for d in sorted_days]
+                            line_vals = [round(day_totals[d], 2) for d in sorted_days]
+                            chart_md = _chart_block(
+                                "line",
+                                f"EC2 Total Spend Trend (Last {num_days} Days) — {cust_label}",
+                                line_labels, values=line_vals, value_label="Cost ($)"
+                            )
+                            variance_md = _build_mom_variance_chart(
+                                f"EC2 Spend DoD Variance (Last {num_days} Days) — {cust_label}",
+                                sorted_days, day_totals, time_format="day"
+                            )
+                            chart_md += f"\n{variance_md}" if variance_md else ""
+                        elif chart_type or any(w in low for w in ["chart", "graph", "plot", "visualize"]):
                             chart_md = _build_time_category_stacked_chart(
                                 f"EC2 Instance Type Spend by Day (Last {num_days} Days) — {cust_label}",
                                 ec2_rows,
@@ -3143,16 +3337,20 @@ class AIClient:
                             f"yesterday's data (`{yesterday_str}`) is preliminary/partial across all cloud providers due to standard 24–48h billing ingestion latency.\n\n"
                         )
 
+                        tbl_block = (
+                            f"| # | Instance Type | Cost | Instance Hours | % of Total |\n"
+                            f"|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(tbl_lines)}\n"
+                            f"| **Total** | **All Instance Types** | **${total_period_cost:,.2f}** | | **100.0%** |\n\n"
+                        ) if wants_table else ""
+
                         return (
                             f"### 🖥️ CloudHealth EC2 Spend Analysis: Instance Type Breakdown\n\n"
                             f"Queried live from standard dataset **`AWS_EC2_COST_AND_USAGE`** for **{cust_label}**:\n\n"
                             f"- **Target Billing Period**: {period_header}\n"
                             f"- **Total EC2 Billed Spend**: **${total_period_cost:,.2f}** across **{len(sorted_types)}** active instance types\n\n"
                             f"{partial_notice}"
-                            f"| # | Instance Type | Cost | Instance Hours | % of Total |\n"
-                            f"|:---|:---|:---|:---|:---|\n"
-                            f"{chr(10).join(tbl_lines)}\n"
-                            f"| **Total** | **All Instance Types** | **${total_period_cost:,.2f}** | | **100.0%** |\n"
+                            f"{tbl_block}"
                             f"{chart_md}"
                             f"{insights_block}\n"
                             f"*Source: AWS_EC2_COST_AND_USAGE via CloudHealth FlexReports.*"
@@ -3198,13 +3396,39 @@ class AIClient:
 
                         # Build chart
                         chart_md = ""
-                        if chart_type == "waterfall":
+                        if chart_type in ["doughnut", "pie"]:
+                            chart_labels = [r["instance_type"] for r in target_m_rows[:10]]
+                            chart_values = [round(r["cost"], 2) for r in target_m_rows[:10]]
+                            chart_md = _chart_block(chart_type, f"EC2 Instance Type Spend ({_format_time_label(target_month, t_format)}) — {cust_label}", chart_labels, values=chart_values, value_label="Cost ($)")
+                        elif chart_type == "horizontal-bar":
+                            chart_labels = [r["instance_type"] for r in target_m_rows[:10]]
+                            chart_values = [round(r["cost"], 2) for r in target_m_rows[:10]]
+                            chart_md = _chart_block("horizontal-bar", f"EC2 Instance Type Spend ({_format_time_label(target_month, t_format)}) — {cust_label}", chart_labels, values=chart_values, value_label="Cost ($)", horizontal=True)
+                        elif chart_type == "waterfall":
                             wf_labels = ["Baseline (Total)"] + [r["instance_type"] for r in target_m_rows[:7]] + ["Total"]
                             wf_vals = [round(month_total, 2)] + [round(r["cost"], 2) for r in target_m_rows[:7]] + [round(month_total, 2)]
                             chart_md = _build_waterfall_chart(
                                 f"EC2 Instance Type Cost Contribution ({_format_time_label(target_month, t_format)})",
                                 wf_labels, wf_vals
                             )
+                        elif chart_type == "line":
+                            # Trend: line chart of monthly total + MoM variance waterfall
+                            mo_totals: dict = {}
+                            for r in ec2_rows:
+                                mo_totals[r["time_val"]] = mo_totals.get(r["time_val"], 0.0) + r["cost"]
+                            sorted_mos = sorted(mo_totals.keys())
+                            line_labels = [_format_time_label(m, t_format) for m in sorted_mos]
+                            line_vals = [round(mo_totals[m], 2) for m in sorted_mos]
+                            chart_md = _chart_block(
+                                "line",
+                                f"EC2 Total Spend Trend ({len(sorted_mos)} Months) — {cust_label}",
+                                line_labels, values=line_vals, value_label="Cost ($)"
+                            )
+                            variance_md = _build_mom_variance_chart(
+                                f"EC2 Spend MoM Variance ({len(sorted_mos)} Months) — {cust_label}",
+                                sorted_mos, mo_totals, time_format=t_format
+                            )
+                            chart_md += f"\n{variance_md}" if variance_md else ""
                         elif chart_type or any(w in low for w in ["chart", "graph", "plot", "visualize"]):
                             chart_md = _build_time_category_stacked_chart(
                                 f"EC2 Instance Type Spend by Month — {cust_label}",
@@ -3236,15 +3460,19 @@ class AIClient:
                         if insights:
                             insights_block = "\n#### 💡 FinOps Optimization Levers & Architecture Recommendations\n\n" + "\n".join(insights) + "\n"
 
+                        tbl_block = (
+                            f"| # | Instance Type | Cost | Instance Hours | % of Total |\n"
+                            f"|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(tbl_lines)}\n"
+                            f"| **Total** | **All Instance Types** | **${month_total:,.2f}** | | **100.0%** |\n\n"
+                        ) if wants_table else ""
+
                         return (
                             f"### 🖥️ CloudHealth EC2 Spend Analysis: Instance Type Breakdown\n\n"
                             f"Queried live from standard dataset **`AWS_EC2_COST_AND_USAGE`** for **{cust_label}**:\n\n"
                             f"- **Target Billing Period**: `{_format_time_label(target_month, t_format)}`\n"
                             f"- **Total EC2 Billed Spend**: **${month_total:,.2f}** across **{len(target_m_rows)}** active instance types\n\n"
-                            f"| # | Instance Type | Cost | Instance Hours | % of Total |\n"
-                            f"|:---|:---|:---|:---|:---|\n"
-                            f"{chr(10).join(tbl_lines)}\n"
-                            f"| **Total** | **All Instance Types** | **${month_total:,.2f}** | | **100.0%** |\n"
+                            f"{tbl_block}"
                             f"{chart_md}"
                             f"{insights_block}\n"
                             f"*Source: AWS_EC2_COST_AND_USAGE via CloudHealth FlexReports.*"
@@ -3353,23 +3581,29 @@ class AIClient:
                     insights_block = "\n#### 💡 FinOps Key Observations & Optimization Levers\n\n" + "\n".join(insights) + "\n"
 
                 chart_type = _detect_chart_type(low)
+                wants_table = _detect_wants_table(low)
                 chart_md = ""
                 if chart_type and ut_rows:
                     chart_labels = [r["usage_type"][:35] for r in ut_rows[:15]]
-                    chart_values = [r["cost"] for r in ut_rows[:15]]
-                    chart_md = _chart_block(chart_type,
+                    chart_values = [round(r["cost"], 2) for r in ut_rows[:15]]
+                    c_kind = chart_type if chart_type in ["doughnut", "pie", "bar", "horizontal-bar"] else "bar"
+                    chart_md = _chart_block(c_kind,
                         f"Usage Type Breakdown ({ut_period_label})",
                         chart_labels, chart_values,
-                        horizontal=False, stacked=True)
+                        horizontal=(c_kind == "horizontal-bar"), stacked=True)
+
+                tbl_block = (
+                    f"| Usage Type | AWS Operation | Item Description | Usage Quantity | Spend | % of Total |\n"
+                    f"|:---|:---|:---|:---|:---|:---|\n"
+                    f"{chr(10).join(table_lines)}\n"
+                    f"| **Total Granular Spend** | | | | **${total_ut_spend:,.2f}** | **100.0%** |\n\n"
+                ) if wants_table else ""
 
                 return (
                     f"### 🔍 Granular UsageType Breakdown: {cust_display} ({svc_title.strip() or 'All Services'})\n\n"
                     f"Showing detailed AWS CUR line items for **{cust_display}** over **{ut_period_label}**:\n\n"
                     f"**Total Granular Line-Item Spend**: **${total_ut_spend:,.2f}** across **{len(ut_rows)}** active usage types.\n\n"
-                    f"| Usage Type | AWS Operation | Item Description | Usage Quantity | Spend | % of Total |\n"
-                    f"|:---|:---|:---|:---|:---|:---|\n"
-                    f"{chr(10).join(table_lines)}\n"
-                    f"| **Total Granular Spend** | | | | **${total_ut_spend:,.2f}** | **100.0%** |\n"
+                    f"{tbl_block}"
                     f"{chart_md}"
                     f"{insights_block}\n"
                     f"*Source: AWS CUR via CloudHealth (channel-scoped line-item telemetry).*"
@@ -4080,10 +4314,32 @@ class AIClient:
                 hist_title = f"{requested_service_disp} Monthly Spend History" if requested_service_disp else "Monthly Spend History"
 
                 chart_type = _detect_chart_type(low)
+                wants_table = _detect_wants_table(low)
                 chart_md = ""
                 if chart_type:
                     t_format = "quarter" if "quarter" in low else "month"
-                    if chart_type == "waterfall":
+                    if chart_type in ["doughnut", "pie"] and top_svcs:
+                        labels = [s for s, _ in top_svcs]
+                        values = [round(c, 2) for _, c in top_svcs]
+                        chart_md = _chart_block(
+                            chart_type,
+                            f"Top AWS Services — {named_customer} ({svc_label})",
+                            labels,
+                            values=values,
+                            value_label="Cost ($)"
+                        )
+                    elif chart_type == "horizontal-bar" and top_svcs:
+                        labels = [s for s, _ in top_svcs]
+                        values = [round(c, 2) for _, c in top_svcs]
+                        chart_md = _chart_block(
+                            "horizontal-bar",
+                            f"Top AWS Services — {named_customer} ({svc_label})",
+                            labels,
+                            values=values,
+                            value_label="Cost ($)",
+                            horizontal=True
+                        )
+                    elif chart_type == "waterfall":
                         wf_months = sorted(tot_by_month.keys())
                         if len(wf_months) >= 2:
                             wf_labels = [_format_time_label(wf_months[0], t_format) + " (Base)"]
@@ -4148,8 +4404,7 @@ class AIClient:
                                 f"Top AWS Services — {named_customer} ({svc_label})",
                                 labels, values=values, horizontal=False, stacked=True)
 
-                return (
-                    f"### 📊 {header_title}\n\n"
+                tbl_block = (
                     f"| Metric | Amount |\n"
                     f"|:---|:---|\n"
                     f"{summary_table}\n"
@@ -4161,6 +4416,11 @@ class AIClient:
                     f"| Service | Cost | % of Total |\n"
                     f"|:---|:---|:---|\n"
                     f"{svc_rows}"
+                ) if wants_table else ""
+
+                return (
+                    f"### 📊 {header_title}\n\n"
+                    f"{tbl_block}"
                     f"{chart_md}"
                     f"{insight_md}\n\n"
                     f"*Source: AWS CUR via CloudHealth (channel-scoped). Numbers match CloudHealth Partner Portal.*"
@@ -4683,10 +4943,12 @@ class AIClient:
                         values = [c for _, _, c in multi_rows[:12]]
                         chart_md = _chart_block(c_kind, f"Top Multi-Cloud Services by Spend ({svc_scope_label})", labels, values=values, horizontal=False, stacked=True)
 
+                wants_table = _detect_wants_table(low)
+                tbl_md = f"{table}\n" if wants_table else ""
                 return (
                     f"### 📊 {svc_hdr}\n\n"
                     f"{partial_notice}"
-                    f"{table}\n"
+                    f"{tbl_md}"
                     f"{chart_md}"
                     f"{insight_md}\n\n"
                     f"💡 *Live FinOps data retrieved from CloudHealth FOCUS & Billing Datasets.*"
@@ -4741,14 +5003,29 @@ class AIClient:
                                 wf_labels.append("Total Spend")
                                 wf_vals.append(round(float(m_rows[-1].get("cost") or 0), 2))
                                 chart_md = _build_waterfall_chart("Month-over-Month Spend Progression", wf_labels, wf_vals)
-                            else:
+                            elif chart_type == "line":
+                                # Trend: line chart of monthly totals + MoM variance waterfall
                                 lbls = [_format_time_label(r["month"], t_format) for r in m_rows]
                                 vals = [round(float(r.get("cost") or 0), 2) for r in m_rows]
-                                chart_md = _chart_block("bar", "Monthly Cloud Spend Trend", lbls, values=vals, horizontal=False, stacked=True)
+                                chart_md = _chart_block("line", "Monthly Cloud Spend Trend", lbls, values=vals, value_label="Cost ($)")
+                                # MoM variance waterfall beneath
+                                mo_totals_g = {r["month"]: float(r.get("cost") or 0) for r in m_rows}
+                                sorted_mos_g = sorted(mo_totals_g.keys())
+                                variance_md = _build_mom_variance_chart(
+                                    "Month-over-Month Spend Variance", sorted_mos_g, mo_totals_g, time_format=t_format
+                                )
+                                chart_md += f"\n{variance_md}" if variance_md else ""
+                            else:
+                                c_kind = chart_type if chart_type in ["pie", "doughnut", "bar", "horizontal-bar"] else "bar"
+                                lbls = [_format_time_label(r["month"], t_format) for r in m_rows]
+                                vals = [round(float(r.get("cost") or 0), 2) for r in m_rows]
+                                chart_md = _chart_block(c_kind, "Monthly Cloud Spend", lbls, values=vals, horizontal=(c_kind == "horizontal-bar"), stacked=True)
 
+                        wants_table = _detect_wants_table(low)
+                        tbl_md = f"{table}\n" if wants_table else ""
                         return (
                             f"### 📊 CloudHealth Spend Analysis: Monthly Breakdown\n\n"
-                            f"{table}\n"
+                            f"{tbl_md}"
                             f"{chart_md}"
                             f"{insight_md}\n\n"
                             f"💡 *Live FinOps data retrieved from CloudHealth.*"
