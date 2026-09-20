@@ -1,6 +1,5 @@
 {
   "0": "cleo_server.py",
-  "1": "cleo_agent.py",
   "2": "OAuth2Helper",
   "3": "CleoMemory",
   "4": "MCPClient",
@@ -8,7 +7,7 @@
   "6": "agent/skills/brandkit/SKILL.md",
   "7": ".agents/skills/brandkit/SKILL.md",
   "8": "Cost History Endpoint",
-  "9": ".__init__",
+  "9": "oauth.py",
   "10": "CloudHealth GraphQL API Guide",
   "11": "CloudHealth FlexReports SQL Guide",
   "12": "rules/graphify.md",
@@ -19,7 +18,6 @@
   "17": "CORE DIRECTIVE: IMAGE-FIRST WEBSITE DESIGN TO CODE",
   "18": "CORE DIRECTIVE: PREMIUM MOBILE APP IMAGE DIRECTION",
   "19": "GreenOps & Cloud Carbon Optimisation",
-  "20": "._call_active_llm",
   "21": "High-Agency Frontend Skill",
   "22": "High-Agency Frontend Skill",
   "23": "Appendix B - Canonical Sources (read these before reinventing)",
@@ -38,7 +36,6 @@
   "36": "Design System: Taste Standard",
   "37": "2. THE COMBINATORIAL VARIATION ENGINE",
   "38": "2. THE COMBINATORIAL VARIATION ENGINE",
-  "39": "get_recent_logs",
   "40": "4. DESIGN ENGINEERING DIRECTIVES (Bias Correction)",
   "41": "4. DESIGN ENGINEERING DIRECTIVES (Bias Correction)",
   "42": "tasteskill: Anti-Slop Frontend Skill",
@@ -198,7 +195,6 @@
   "196": "Category 2: Idle resources",
   "197": "Category 3: Overprovisioned resources",
   "198": "Category 4: Commitment mismatches",
-  "199": "init_mcp_if_authenticated",
   "200": "Database cost optimisation",
   "201": "SageMaker operational FinOps",
   "202": "Agentic FinOps on Azure - Copilot agents and MCP servers",
@@ -221,9 +217,9 @@
   "219": "Azure governance tools - policy patterns and budgets",
   "220": "Cost allocation on Azure",
   "221": "Crawl / Walk / Run progression",
-  "222": "cleo_gui.py",
   "223": "OpenAI Codex",
   "224": "GitHub Copilot and Windsurf (comparison)",
   "225": "finops.md",
-  "226": "ServiceMatch"
+  "226": "ServiceMatch",
+  "227": "cleo_agent.py"
 }
