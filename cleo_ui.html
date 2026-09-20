@@ -4907,6 +4907,41 @@
       document.getElementById('chat-form').dispatchEvent(new Event('submit', { cancelable: true }));
     }
 
+    function getThinkingMessage(text) {
+      const low = (text || '').toLowerCase();
+      if (low.includes('customer') || low.includes('channel') || low.includes('tenant') || low.includes('org') || low.includes('client')) {
+        return 'Analyzing Partner & Channel Customer Consumption...';
+      }
+      if (low.includes('multi-cloud') || low.includes('multicloud') || low.includes('cross-cloud') || (low.includes('azure') && low.includes('gcp')) || low.includes('top cloud') || low.includes('all cloud') || low.includes('all clouds')) {
+        return 'Querying Multi-Cloud FOCUS Datasets (AWS, Azure, GCP, OCI)...';
+      }
+      if (low.includes('azure')) {
+        return 'Querying Azure FOCUS & Cost Datasets...';
+      }
+      if (low.includes('gcp') || low.includes('google')) {
+        return 'Querying GCP Cost & Usage Datasets...';
+      }
+      if (low.includes('oci') || low.includes('oracle')) {
+        return 'Querying Oracle OCI Cost Datasets...';
+      }
+      if (low.includes('rds') || low.includes('database') || low.includes('aurora')) {
+        return 'Analyzing CloudHealth RDS & Database Telemetry...';
+      }
+      if (low.includes('ec2') || low.includes('instance')) {
+        return 'Analyzing CloudHealth EC2 Compute Telemetry...';
+      }
+      if (low.includes('anomal') || low.includes('spike')) {
+        return 'Scanning Cost Anomaly Detection Engine...';
+      }
+      if (low.includes('recommend') || low.includes('saving') || low.includes('optimi')) {
+        return 'Evaluating FinOps Optimization Levers & Playbooks...';
+      }
+      if (low.includes('cur')) {
+        return 'Analyzing AWS CUR & Billing Telemetry...';
+      }
+      return 'Analyzing CloudHealth FinOps Telemetry...';
+    }
+
     async function handleSend(e) {
       if (e) e.preventDefault();
       const input = document.getElementById('prompt-input');
@@ -4927,7 +4962,8 @@
       const sendBtn = document.getElementById('send-btn');
       if (sendBtn) sendBtn.disabled = true;
 
-      const thinkingEl = appendMessage('cleo', '<div class="thinking"><span class="thinking-spinner"></span> Analyzing CloudHealth CUR telemetry...</div>');
+      const thinkingMsg = getThinkingMessage(text);
+      const thinkingEl = appendMessage('cleo', `<div class="thinking"><span class="thinking-spinner"></span> ${thinkingMsg}</div>`);
 
       try {
         const payloadSessionId = (currentSessionId && currentSessionId !== 'new') ? currentSessionId : null;
