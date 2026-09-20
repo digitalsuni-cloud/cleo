@@ -1,6 +1,6 @@
 {
   "0": "cleo_server.py",
-  "1": "cleo_agent.py",
+  "1": "._generate_impl",
   "2": "OAuth2Helper",
   "3": "CleoMemory",
   "4": "MCPClient",
@@ -15,7 +15,7 @@
   "13": "workflows/graphify.md",
   "14": "CORE DIRECTIVE: IMAGE-FIRST WEBSITE DESIGN TO CODE",
   "15": "CORE DIRECTIVE: PREMIUM MOBILE APP IMAGE DIRECTION",
-  "16": "cleo_memory.py",
+  "16": "cleo_finops_refs.py",
   "17": "CORE DIRECTIVE: IMAGE-FIRST WEBSITE DESIGN TO CODE",
   "18": "CORE DIRECTIVE: PREMIUM MOBILE APP IMAGE DIRECTION",
   "19": "GreenOps & Cloud Carbon Optimisation",
@@ -198,7 +198,7 @@
   "196": "Category 2: Idle resources",
   "197": "Category 3: Overprovisioned resources",
   "198": "Category 4: Commitment mismatches",
-  "199": "init_mcp_if_authenticated",
+  "199": "AIClient",
   "200": "Database cost optimisation",
   "201": "SageMaker operational FinOps",
   "202": "Agentic FinOps on Azure - Copilot agents and MCP servers",
@@ -225,5 +225,6 @@
   "223": "OpenAI Codex",
   "224": "GitHub Copilot and Windsurf (comparison)",
   "225": "finops.md",
-  "226": "ServiceMatch"
+  "226": "ServiceMatch",
+  "227": "cleo_agent.py"
 }

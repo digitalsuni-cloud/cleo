@@ -14,7 +14,7 @@
       "file_type": "code",
       "norm_label": "chatrequest",
       "source_file": "cleo_server.py",
-      "source_location": "L821"
+      "source_location": "L849"
     },
     {
       "id": "cleo_server_chatresponse",
@@ -27,7 +27,20 @@
       "file_type": "code",
       "norm_label": "chatresponse",
       "source_file": "cleo_server.py",
-      "source_location": "L831"
+      "source_location": "L859"
+    },
+    {
+      "id": "cleo_server_codesubmission",
+      "label": "CodeSubmission",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "cleo_server.py",
+      "file_type": "code",
+      "norm_label": "codesubmission",
+      "source_file": "cleo_server.py",
+      "source_location": "L410"
     },
     {
       "id": "cleo_server_downloadrequest",
@@ -40,7 +53,7 @@
       "file_type": "code",
       "norm_label": "downloadrequest",
       "source_file": "cleo_server.py",
-      "source_location": "L766"
+      "source_location": "L794"
     },
     {
       "id": "cleo_server_engineselection",
@@ -53,7 +66,7 @@
       "file_type": "code",
       "norm_label": "engineselection",
       "source_file": "cleo_server.py",
-      "source_location": "L734"
+      "source_location": "L762"
     },
     {
       "id": "cleo_server_feedbackrequest",
@@ -66,7 +79,7 @@
       "file_type": "code",
       "norm_label": "feedbackrequest",
       "source_file": "cleo_server.py",
-      "source_location": "L1062"
+      "source_location": "L1090"
     },
     {
       "id": "cleo_server_tokenupdaterequest",
@@ -79,7 +92,7 @@
       "file_type": "code",
       "norm_label": "tokenupdaterequest",
       "source_file": "cleo_server.py",
-      "source_location": "L798"
+      "source_location": "L826"
     },
     {
       "id": "cleo_server_toolcalllog",
@@ -92,20 +105,7 @@
       "file_type": "code",
       "norm_label": "toolcalllog",
       "source_file": "cleo_server.py",
-      "source_location": "L826"
-    },
-    {
-      "id": "cleo_logger_colorformatter",
-      "label": "ColorFormatter",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "file_type": "code",
-      "norm_label": "colorformatter",
-      "source_file": "cleo_logger.py",
-      "source_location": "L22"
+      "source_location": "L854"
     },
     {
       "id": "cleo_agent_cloudhealthdirectengine",
@@ -121,17 +121,17 @@
       "source_location": "L146"
     },
     {
-      "id": "cleo_server_codesubmission",
-      "label": "CodeSubmission",
+      "id": "cleo_agent_aiclient",
+      "label": "AIClient",
       "_callable": true,
       "_callable_class": true,
       "_origin": "ast",
       "community": 199,
-      "community_name": "init_mcp_if_authenticated",
+      "community_name": "AIClient",
       "file_type": "code",
-      "norm_label": "codesubmission",
-      "source_file": "cleo_server.py",
-      "source_location": "L410"
+      "norm_label": "aiclient",
+      "source_file": "cleo_agent.py",
+      "source_location": "L1735"
     },
     {
       "id": "auth_oauth_oauth2helper",
@@ -160,6 +160,19 @@
       "source_location": "L1260"
     },
     {
+      "id": "cleo_logger_colorformatter",
+      "label": "ColorFormatter",
+      "_callable": true,
+      "_callable_class": true,
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "code",
+      "norm_label": "colorformatter",
+      "source_file": "cleo_logger.py",
+      "source_location": "L22"
+    },
+    {
       "id": "cleo_memory_cleomemory",
       "label": "CleoMemory",
       "_callable": true,
@@ -171,19 +184,6 @@
       "norm_label": "cleomemory",
       "source_file": "cleo_memory.py",
       "source_location": "L43"
-    },
-    {
-      "id": "cleo_agent_aiclient",
-      "label": "AIClient",
-      "_callable": true,
-      "_callable_class": true,
-      "_origin": "ast",
-      "community": 4,
-      "community_name": "MCPClient",
-      "file_type": "code",
-      "norm_label": "aiclient",
-      "source_file": "cleo_agent.py",
-      "source_location": "L1735"
     },
     {
       "id": "cleo_agent_mcpclient",
@@ -223,30 +223,6 @@
       "norm_label": "ringbufferhandler",
       "source_file": "cleo_logger.py",
       "source_location": "L42"
-    },
-    {
-      "id": "cleo_agent_aiclient_generate",
-      "label": ".generate()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "cleo_server.py",
-      "file_type": "code",
-      "norm_label": ".generate()",
-      "source_file": "cleo_agent.py",
-      "source_location": "L1907"
-    },
-    {
-      "id": "cleo_agent_estimate_token_count",
-      "label": "estimate_token_count()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "cleo_server.py",
-      "file_type": "code",
-      "norm_label": "estimate_token_count()",
-      "source_file": "cleo_agent.py",
-      "source_location": "L967"
     },
     {
       "id": "cleo_agent_get_installed_ollama_models",
@@ -309,6 +285,18 @@
       "source_location": "L479"
     },
     {
+      "id": "cleo_server_auth_submit_code",
+      "label": "auth_submit_code()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "cleo_server.py",
+      "file_type": "code",
+      "norm_label": "auth_submit_code()",
+      "source_file": "cleo_server.py",
+      "source_location": "L414"
+    },
+    {
       "id": "cleo_server_bg_pull_mlx_model",
       "label": "_bg_pull_mlx_model()",
       "_callable": true,
@@ -342,7 +330,7 @@
       "file_type": "code",
       "norm_label": "chat()",
       "source_file": "cleo_server.py",
-      "source_location": "L841"
+      "source_location": "L869"
     },
     {
       "id": "cleo_server_chat_tracked_call_tool",
@@ -354,7 +342,7 @@
       "file_type": "code",
       "norm_label": "tracked_call_tool()",
       "source_file": "cleo_server.py",
-      "source_location": "L905"
+      "source_location": "L933"
     },
     {
       "id": "cleo_server_check_ollama_alive",
@@ -378,7 +366,7 @@
       "file_type": "code",
       "norm_label": "clear_all_sessions()",
       "source_file": "cleo_server.py",
-      "source_location": "L1053"
+      "source_location": "L1081"
     },
     {
       "id": "cleo_server_clear_session",
@@ -390,7 +378,7 @@
       "file_type": "code",
       "norm_label": "clear_session()",
       "source_file": "cleo_server.py",
-      "source_location": "L1046"
+      "source_location": "L1074"
     },
     {
       "id": "cleo_server_delete_memory_entry",
@@ -402,7 +390,7 @@
       "file_type": "code",
       "norm_label": "delete_memory_entry()",
       "source_file": "cleo_server.py",
-      "source_location": "L1098"
+      "source_location": "L1126"
     },
     {
       "id": "cleo_server_download_model",
@@ -414,7 +402,7 @@
       "file_type": "code",
       "norm_label": "download_model()",
       "source_file": "cleo_server.py",
-      "source_location": "L770"
+      "source_location": "L798"
     },
     {
       "id": "cleo_server_ensure",
@@ -453,6 +441,18 @@
       "source_location": "L110"
     },
     {
+      "id": "cleo_server_get_channel_customers",
+      "label": "get_channel_customers()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "cleo_server.py",
+      "file_type": "code",
+      "norm_label": "get_channel_customers()",
+      "source_file": "cleo_server.py",
+      "source_location": "L626"
+    },
+    {
       "id": "cleo_server_get_download_status",
       "label": "get_download_status()",
       "_callable": true,
@@ -462,7 +462,7 @@
       "file_type": "code",
       "norm_label": "get_download_status()",
       "source_file": "cleo_server.py",
-      "source_location": "L795"
+      "source_location": "L823"
     },
     {
       "id": "cleo_server_get_memory_entries",
@@ -474,19 +474,7 @@
       "file_type": "code",
       "norm_label": "get_memory_entries()",
       "source_file": "cleo_server.py",
-      "source_location": "L1094"
-    },
-    {
-      "id": "cleo_server_get_session",
-      "label": "get_session()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "cleo_server.py",
-      "file_type": "code",
-      "norm_label": "get_session()",
-      "source_file": "cleo_server.py",
-      "source_location": "L995"
+      "source_location": "L1122"
     },
     {
       "id": "cleo_server_get_tools",
@@ -510,7 +498,7 @@
       "file_type": "code",
       "norm_label": "list_engines()",
       "source_file": "cleo_server.py",
-      "source_location": "L624"
+      "source_location": "L652"
     },
     {
       "id": "cleo_server_list_sessions",
@@ -522,7 +510,19 @@
       "file_type": "code",
       "norm_label": "list_sessions()",
       "source_file": "cleo_server.py",
-      "source_location": "L962"
+      "source_location": "L990"
+    },
+    {
+      "id": "cleo_server_load_pending_verifiers",
+      "label": "_load_pending_verifiers()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "cleo_server.py",
+      "file_type": "code",
+      "norm_label": "_load_pending_verifiers()",
+      "source_file": "cleo_server.py",
+      "source_location": "L271"
     },
     {
       "id": "cleo_server_load_sessions",
@@ -547,6 +547,18 @@
       "norm_label": "_normalize_session()",
       "source_file": "cleo_server.py",
       "source_location": "L120"
+    },
+    {
+      "id": "cleo_server_oauth_callback",
+      "label": "oauth_callback()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "cleo_server.py",
+      "file_type": "code",
+      "norm_label": "oauth_callback()",
+      "source_file": "cleo_server.py",
+      "source_location": "L497"
     },
     {
       "id": "cleo_server_save_pending_verifier",
@@ -582,7 +594,7 @@
       "file_type": "code",
       "norm_label": "save_token()",
       "source_file": "cleo_server.py",
-      "source_location": "L803"
+      "source_location": "L831"
     },
     {
       "id": "cleo_server_serve_gui",
@@ -594,7 +606,7 @@
       "file_type": "code",
       "norm_label": "serve_gui()",
       "source_file": "cleo_server.py",
-      "source_location": "L1107"
+      "source_location": "L1135"
     },
     {
       "id": "cleo_server_set_engine",
@@ -606,7 +618,7 @@
       "file_type": "code",
       "norm_label": "set_engine()",
       "source_file": "cleo_server.py",
-      "source_location": "L738"
+      "source_location": "L766"
     },
     {
       "id": "cleo_server_submit_feedback",
@@ -618,7 +630,7 @@
       "file_type": "code",
       "norm_label": "submit_feedback()",
       "source_file": "cleo_server.py",
-      "source_location": "L1069"
+      "source_location": "L1097"
     },
     {
       "id": "cleo_server_toggle_pin_session",
@@ -630,7 +642,7 @@
       "file_type": "code",
       "norm_label": "toggle_pin_session()",
       "source_file": "cleo_server.py",
-      "source_location": "L1033"
+      "source_location": "L1061"
     },
     {
       "id": "cleo_agent_aiclient_generate_impl",
@@ -638,7 +650,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "._generate_impl()",
       "source_file": "cleo_agent.py",
@@ -650,7 +662,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "_fetch_cust_spend()",
       "source_file": "cleo_agent.py",
@@ -662,7 +674,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "_fetch_ec2_chunk()",
       "source_file": "cleo_agent.py",
@@ -674,7 +686,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "_build_time_category_stacked_chart()",
       "source_file": "cleo_agent.py",
@@ -686,7 +698,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "_build_waterfall_chart()",
       "source_file": "cleo_agent.py",
@@ -698,7 +710,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "_chart_block()",
       "source_file": "cleo_agent.py",
@@ -710,7 +722,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "_csv_to_markdown()",
       "source_file": "cleo_agent.py",
@@ -722,7 +734,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "_detect_chart_type()",
       "source_file": "cleo_agent.py",
@@ -734,7 +746,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "extract_requested_cloud()",
       "source_file": "cleo_agent.py",
@@ -746,7 +758,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "_format_time_label()",
       "source_file": "cleo_agent.py",
@@ -758,7 +770,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "get_finops_advisory()",
       "source_file": "cleo_agent.py",
@@ -770,7 +782,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "get_finops_context()",
       "source_file": "cleo_agent.py",
@@ -782,7 +794,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "parse_query_time_context()",
       "source_file": "cleo_agent.py",
@@ -794,7 +806,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "_parse_table_data_from_assistant_markdown()",
       "source_file": "cleo_agent.py",
@@ -806,35 +818,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "code",
       "norm_label": "_sanitize_finops_bullet_titles()",
       "source_file": "cleo_agent.py",
       "source_location": "L767"
-    },
-    {
-      "id": "cleo_logger_colorformatter_format",
-      "label": ".format()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "file_type": "code",
-      "norm_label": ".format()",
-      "source_file": "cleo_logger.py",
-      "source_location": "L32"
-    },
-    {
-      "id": "cleo_logger_get_logger",
-      "label": "get_logger()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "file_type": "code",
-      "norm_label": "get_logger()",
-      "source_file": "cleo_logger.py",
-      "source_location": "L89"
     },
     {
       "id": "cleo_finops_refs_extract_best_sections",
@@ -842,7 +830,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 16,
-      "community_name": "cleo_memory.py",
+      "community_name": "cleo_finops_refs.py",
       "file_type": "code",
       "norm_label": "_extract_best_sections()",
       "source_file": "cleo_finops_refs.py",
@@ -854,7 +842,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 16,
-      "community_name": "cleo_memory.py",
+      "community_name": "cleo_finops_refs.py",
       "file_type": "code",
       "norm_label": "_find_matches()",
       "source_file": "cleo_finops_refs.py",
@@ -866,7 +854,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 16,
-      "community_name": "cleo_memory.py",
+      "community_name": "cleo_finops_refs.py",
       "file_type": "code",
       "norm_label": "get_finops_advisory()",
       "source_file": "cleo_finops_refs.py",
@@ -878,7 +866,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 16,
-      "community_name": "cleo_memory.py",
+      "community_name": "cleo_finops_refs.py",
       "file_type": "code",
       "norm_label": "get_finops_context()",
       "source_file": "cleo_finops_refs.py",
@@ -890,23 +878,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 16,
-      "community_name": "cleo_memory.py",
+      "community_name": "cleo_finops_refs.py",
       "file_type": "code",
       "norm_label": "_read_target()",
       "source_file": "cleo_finops_refs.py",
       "source_location": "L122"
-    },
-    {
-      "id": "cleo_memory_get_memory",
-      "label": "get_memory()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 16,
-      "community_name": "cleo_memory.py",
-      "file_type": "code",
-      "norm_label": "get_memory()",
-      "source_file": "cleo_memory.py",
-      "source_location": "L178"
     },
     {
       "id": "cleo_agent_cloudhealthdirectengine_execute_datasource_query",
@@ -981,12 +957,36 @@
       "source_location": "L381"
     },
     {
+      "id": "cleo_agent_aiclient_get_last_stats",
+      "label": ".get_last_stats()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 199,
+      "community_name": "AIClient",
+      "file_type": "code",
+      "norm_label": ".get_last_stats()",
+      "source_file": "cleo_agent.py",
+      "source_location": "L1749"
+    },
+    {
+      "id": "cleo_agent_aiclient_init",
+      "label": ".__init__()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 199,
+      "community_name": "AIClient",
+      "file_type": "code",
+      "norm_label": ".__init__()",
+      "source_file": "cleo_agent.py",
+      "source_location": "L1736"
+    },
+    {
       "id": "cleo_agent_get_access_token",
       "label": "get_access_token()",
       "_callable": true,
       "_origin": "ast",
       "community": 199,
-      "community_name": "init_mcp_if_authenticated",
+      "community_name": "AIClient",
       "file_type": "code",
       "norm_label": "get_access_token()",
       "source_file": "cleo_agent.py",
@@ -998,23 +998,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 199,
-      "community_name": "init_mcp_if_authenticated",
+      "community_name": "AIClient",
       "file_type": "code",
       "norm_label": "get_installed_mlx_models()",
       "source_file": "cleo_agent.py",
       "source_location": "L924"
     },
     {
-      "id": "cleo_server_auth_submit_code",
-      "label": "auth_submit_code()",
+      "id": "cleo_agent_run_agent_turn",
+      "label": "run_agent_turn()",
       "_callable": true,
       "_origin": "ast",
       "community": 199,
-      "community_name": "init_mcp_if_authenticated",
+      "community_name": "AIClient",
       "file_type": "code",
-      "norm_label": "auth_submit_code()",
-      "source_file": "cleo_server.py",
-      "source_location": "L414"
+      "norm_label": "run_agent_turn()",
+      "source_file": "cleo_agent.py",
+      "source_location": "L4845"
     },
     {
       "id": "cleo_server_health",
@@ -1022,7 +1022,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 199,
-      "community_name": "init_mcp_if_authenticated",
+      "community_name": "AIClient",
       "file_type": "code",
       "norm_label": "health()",
       "source_file": "cleo_server.py",
@@ -1034,35 +1034,11 @@
       "_callable": true,
       "_origin": "ast",
       "community": 199,
-      "community_name": "init_mcp_if_authenticated",
+      "community_name": "AIClient",
       "file_type": "code",
       "norm_label": "init_mcp_if_authenticated()",
       "source_file": "cleo_server.py",
       "source_location": "L322"
-    },
-    {
-      "id": "cleo_server_load_pending_verifiers",
-      "label": "_load_pending_verifiers()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 199,
-      "community_name": "init_mcp_if_authenticated",
-      "file_type": "code",
-      "norm_label": "_load_pending_verifiers()",
-      "source_file": "cleo_server.py",
-      "source_location": "L271"
-    },
-    {
-      "id": "cleo_server_oauth_callback",
-      "label": "oauth_callback()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 199,
-      "community_name": "init_mcp_if_authenticated",
-      "file_type": "code",
-      "norm_label": "oauth_callback()",
-      "source_file": "cleo_server.py",
-      "source_location": "L497"
     },
     {
       "id": "cleo_server_shutdown",
@@ -1070,7 +1046,7 @@
       "_callable": true,
       "_origin": "ast",
       "community": 199,
-      "community_name": "init_mcp_if_authenticated",
+      "community_name": "AIClient",
       "file_type": "code",
       "norm_label": "shutdown()",
       "source_file": "cleo_server.py",
@@ -1082,11 +1058,23 @@
       "_callable": true,
       "_origin": "ast",
       "community": 199,
-      "community_name": "init_mcp_if_authenticated",
+      "community_name": "AIClient",
       "file_type": "code",
       "norm_label": "startup()",
       "source_file": "cleo_server.py",
       "source_location": "L371"
+    },
+    {
+      "id": "test_cleo_finops_suite_run_suite",
+      "label": "run_suite()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 199,
+      "community_name": "AIClient",
+      "file_type": "code",
+      "norm_label": "run_suite()",
+      "source_file": "test_cleo_finops_suite.py",
+      "source_location": "L933"
     },
     {
       "id": "auth_oauth_oauth2helper_authenticate",
@@ -1233,6 +1221,18 @@
       "source_location": "L1752"
     },
     {
+      "id": "cleo_agent_aiclient_understand_query",
+      "label": "._understand_query()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 20,
+      "community_name": "._call_active_llm",
+      "file_type": "code",
+      "norm_label": "._understand_query()",
+      "source_file": "cleo_agent.py",
+      "source_location": "L1822"
+    },
+    {
       "id": "cleo_agent_call_anthropic_api",
       "label": "call_anthropic_api()",
       "_callable": true,
@@ -1291,6 +1291,18 @@
       "norm_label": "call_openai_api()",
       "source_file": "cleo_agent.py",
       "source_location": "L1088"
+    },
+    {
+      "id": "cleo_agent_deterministic_understand_query",
+      "label": "_deterministic_understand_query()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 20,
+      "community_name": "._call_active_llm",
+      "file_type": "code",
+      "norm_label": "_deterministic_understand_query()",
+      "source_file": "cleo_agent.py",
+      "source_location": "L1608"
     },
     {
       "id": "cleo_gui_is_port_in_use",
@@ -1363,6 +1375,66 @@
       "norm_label": ".__new__()",
       "source_file": "cleo_agent.py",
       "source_location": "L1262"
+    },
+    {
+      "id": "cleo_agent_build_system_prompt",
+      "label": "build_system_prompt()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "code",
+      "norm_label": "build_system_prompt()",
+      "source_file": "cleo_agent.py",
+      "source_location": "L1184"
+    },
+    {
+      "id": "cleo_agent_get_realtime_calendar_info",
+      "label": "get_realtime_calendar_info()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "code",
+      "norm_label": "get_realtime_calendar_info()",
+      "source_file": "cleo_agent.py",
+      "source_location": "L1153"
+    },
+    {
+      "id": "cleo_logger_colorformatter_format",
+      "label": ".format()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "code",
+      "norm_label": ".format()",
+      "source_file": "cleo_logger.py",
+      "source_location": "L32"
+    },
+    {
+      "id": "cleo_logger_get_logger",
+      "label": "get_logger()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "code",
+      "norm_label": "get_logger()",
+      "source_file": "cleo_logger.py",
+      "source_location": "L89"
+    },
+    {
+      "id": "cleo_memory_get_memory",
+      "label": "get_memory()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "code",
+      "norm_label": "get_memory()",
+      "source_file": "cleo_memory.py",
+      "source_location": "L178"
     },
     {
       "id": "cleo_memory_cleomemory_add",
@@ -1557,64 +1629,28 @@
       "source_location": "L586"
     },
     {
-      "id": "cleo_agent_aiclient_get_last_stats",
-      "label": ".get_last_stats()",
+      "id": "cleo_agent_aiclient_generate",
+      "label": ".generate()",
       "_callable": true,
       "_origin": "ast",
       "community": 4,
       "community_name": "MCPClient",
       "file_type": "code",
-      "norm_label": ".get_last_stats()",
+      "norm_label": ".generate()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1749"
+      "source_location": "L1907"
     },
     {
-      "id": "cleo_agent_aiclient_init",
-      "label": ".__init__()",
+      "id": "cleo_agent_estimate_token_count",
+      "label": "estimate_token_count()",
       "_callable": true,
       "_origin": "ast",
       "community": 4,
       "community_name": "MCPClient",
       "file_type": "code",
-      "norm_label": ".__init__()",
+      "norm_label": "estimate_token_count()",
       "source_file": "cleo_agent.py",
-      "source_location": "L1736"
-    },
-    {
-      "id": "cleo_agent_aiclient_understand_query",
-      "label": "._understand_query()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 4,
-      "community_name": "MCPClient",
-      "file_type": "code",
-      "norm_label": "._understand_query()",
-      "source_file": "cleo_agent.py",
-      "source_location": "L1822"
-    },
-    {
-      "id": "cleo_agent_build_system_prompt",
-      "label": "build_system_prompt()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 4,
-      "community_name": "MCPClient",
-      "file_type": "code",
-      "norm_label": "build_system_prompt()",
-      "source_file": "cleo_agent.py",
-      "source_location": "L1184"
-    },
-    {
-      "id": "cleo_agent_deterministic_understand_query",
-      "label": "_deterministic_understand_query()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 4,
-      "community_name": "MCPClient",
-      "file_type": "code",
-      "norm_label": "_deterministic_understand_query()",
-      "source_file": "cleo_agent.py",
-      "source_location": "L1608"
+      "source_location": "L967"
     },
     {
       "id": "cleo_agent_get_memory",
@@ -1651,18 +1687,6 @@
       "norm_label": "record_sql_fix()",
       "source_file": "cleo_agent.py",
       "source_location": "L46"
-    },
-    {
-      "id": "cleo_agent_get_realtime_calendar_info",
-      "label": "get_realtime_calendar_info()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 4,
-      "community_name": "MCPClient",
-      "file_type": "code",
-      "norm_label": "get_realtime_calendar_info()",
-      "source_file": "cleo_agent.py",
-      "source_location": "L1153"
     },
     {
       "id": "cleo_agent_mcpclient_call_tool",
@@ -1737,28 +1761,16 @@
       "source_location": "L500"
     },
     {
-      "id": "cleo_agent_run_agent_turn",
-      "label": "run_agent_turn()",
+      "id": "cleo_server_get_session",
+      "label": "get_session()",
       "_callable": true,
       "_origin": "ast",
       "community": 4,
       "community_name": "MCPClient",
       "file_type": "code",
-      "norm_label": "run_agent_turn()",
-      "source_file": "cleo_agent.py",
-      "source_location": "L4845"
-    },
-    {
-      "id": "test_cleo_finops_suite_run_suite",
-      "label": "run_suite()",
-      "_callable": true,
-      "_origin": "ast",
-      "community": 4,
-      "community_name": "MCPClient",
-      "file_type": "code",
-      "norm_label": "run_suite()",
-      "source_file": "test_cleo_finops_suite.py",
-      "source_location": "L933"
+      "norm_label": "get_session()",
+      "source_file": "cleo_server.py",
+      "source_location": "L1023"
     },
     {
       "id": "cleo_server_csrf_protection",
@@ -1898,17 +1910,6 @@
       "source_location": "L1015"
     },
     {
-      "id": "cleo_agent_rationale_968",
-      "label": "Estimates LLM BPE token count for text using word/subword heuristics.",
-      "_origin": "ast",
-      "community": 0,
-      "community_name": "cleo_server.py",
-      "file_type": "rationale",
-      "norm_label": "estimates llm bpe token count for text using word/subword heuristics.",
-      "source_file": "cleo_agent.py",
-      "source_location": "L968"
-    },
-    {
       "id": "cleo_server_rationale_2",
       "label": "cleo_server.py \u2014 High-Performance GUI & HTTP API Server for Cleo FinOps Agent\u2026",
       "_origin": "ast",
@@ -1931,6 +1932,17 @@
       "source_location": "L389"
     },
     {
+      "id": "cleo_server_rationale_415",
+      "label": "Exchanges an authorization code (or full callback URL) for access token.",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "cleo_server.py",
+      "file_type": "rationale",
+      "norm_label": "exchanges an authorization code (or full callback url) for access token.",
+      "source_file": "cleo_server.py",
+      "source_location": "L415"
+    },
+    {
       "id": "cleo_server_rationale_480",
       "label": "Disconnects CloudHealth session and purges stored tokens.",
       "_origin": "ast",
@@ -1942,55 +1954,33 @@
       "source_location": "L480"
     },
     {
-      "id": "auth_oauth",
-      "label": "oauth.py",
+      "id": "cleo_server_rationale_498",
+      "label": "Handles automatic callback from CloudHealth.",
       "_origin": "ast",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "file_type": "code",
-      "norm_label": "oauth.py",
-      "source_file": "auth/oauth.py",
-      "source_location": "L1"
+      "community": 0,
+      "community_name": "cleo_server.py",
+      "file_type": "rationale",
+      "norm_label": "handles automatic callback from cloudhealth.",
+      "source_file": "cleo_server.py",
+      "source_location": "L498"
     },
     {
-      "id": "cleo_agent",
-      "label": "cleo_agent.py",
+      "id": "cleo_server_rationale_627",
+      "label": "Returns dynamic list of active partner channel customers.",
       "_origin": "ast",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "file_type": "code",
-      "norm_label": "cleo_agent.py",
-      "source_file": "cleo_agent.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "cleo_logger",
-      "label": "cleo_logger.py",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "file_type": "code",
-      "norm_label": "cleo_logger.py",
-      "source_file": "cleo_logger.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "logger",
-      "label": "Logger",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "file_type": "code",
-      "norm_label": "logger",
-      "source_file": "",
-      "source_location": ""
+      "community": 0,
+      "community_name": "cleo_server.py",
+      "file_type": "rationale",
+      "norm_label": "returns dynamic list of active partner channel customers.",
+      "source_file": "cleo_server.py",
+      "source_location": "L627"
     },
     {
       "id": "cleo_agent_rationale_1436",
       "label": "Detects if user specifically asks for a cloud provider: aws, azure, gcp, oci,\u2026",
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "rationale",
       "norm_label": "detects if user specifically asks for a cloud provider: aws, azure, gcp, oci,...",
       "source_file": "cleo_agent.py",
@@ -2001,7 +1991,7 @@
       "label": "Extracts time context, target month, limit, and sort direction from user\u2026",
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "rationale",
       "norm_label": "extracts time context, target month, limit, and sort direction from user...",
       "source_file": "cleo_agent.py",
@@ -2012,7 +2002,7 @@
       "label": "Return chart type string if user asked for a chart, else None.",
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "rationale",
       "norm_label": "return chart type string if user asked for a chart, else none.",
       "source_file": "cleo_agent.py",
@@ -2023,7 +2013,7 @@
       "label": "Format '2026-03' into 'Mar 2026', '2026-08-20' into 'Aug 20', or 'Q1 2026'.",
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "rationale",
       "norm_label": "format '2026-03' into 'mar 2026', '2026-08-20' into 'aug 20', or 'q1 2026'.",
       "source_file": "cleo_agent.py",
@@ -2034,7 +2024,7 @@
       "label": "Emit a fenced chart code-block for the UI to render via Chart.js. Supports\u2026",
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "rationale",
       "norm_label": "emit a fenced chart code-block for the ui to render via chart.js. supports...",
       "source_file": "cleo_agent.py",
@@ -2045,7 +2035,7 @@
       "label": "Build a multi-dataset vertical stacked bar chart where: X-axis = Time periods\u2026",
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "rationale",
       "norm_label": "build a multi-dataset vertical stacked bar chart where: x-axis = time periods...",
       "source_file": "cleo_agent.py",
@@ -2056,7 +2046,7 @@
       "label": "Sanitizes LLM-generated FinOps insight bullet headers to ensure the title\u2026",
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "rationale",
       "norm_label": "sanitizes llm-generated finops insight bullet headers to ensure the title...",
       "source_file": "cleo_agent.py",
@@ -2067,7 +2057,7 @@
       "label": "Emit a waterfall chart specification block.",
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "rationale",
       "norm_label": "emit a waterfall chart specification block.",
       "source_file": "cleo_agent.py",
@@ -2078,33 +2068,11 @@
       "label": "Parses structured tabular data from a previously generated assistant markdown\u2026",
       "_origin": "ast",
       "community": 1,
-      "community_name": "cleo_agent.py",
+      "community_name": "._generate_impl",
       "file_type": "rationale",
       "norm_label": "parses structured tabular data from a previously generated assistant markdown...",
       "source_file": "cleo_agent.py",
       "source_location": "L836"
-    },
-    {
-      "id": "cleo_logger_rationale_1",
-      "label": "cleo_logger.py \u2014 Centralized Verbose Logging for Cleo FinOps Agent\u2026",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "file_type": "rationale",
-      "norm_label": "cleo_logger.py \u2014 centralized verbose logging for cleo finops agent...",
-      "source_file": "cleo_logger.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "cleo_logger_rationale_90",
-      "label": "Returns a child logger under the 'cleo' namespace.",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "file_type": "rationale",
-      "norm_label": "returns a child logger under the 'cleo' namespace.",
-      "source_file": "cleo_logger.py",
-      "source_location": "L90"
     },
     {
       "id": "docs_graphql_api_guide",
@@ -13590,21 +13558,10 @@
       "label": "cleo_finops_refs.py",
       "_origin": "ast",
       "community": 16,
-      "community_name": "cleo_memory.py",
+      "community_name": "cleo_finops_refs.py",
       "file_type": "code",
       "norm_label": "cleo_finops_refs.py",
       "source_file": "cleo_finops_refs.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "cleo_memory",
-      "label": "cleo_memory.py",
-      "_origin": "ast",
-      "community": 16,
-      "community_name": "cleo_memory.py",
-      "file_type": "code",
-      "norm_label": "cleo_memory.py",
-      "source_file": "cleo_memory.py",
       "source_location": "L1"
     },
     {
@@ -13612,7 +13569,7 @@
       "label": "cleo_finops_refs.py \u2014 Dynamic FinOps knowledge injection and advisory engine\u2026",
       "_origin": "ast",
       "community": 16,
-      "community_name": "cleo_memory.py",
+      "community_name": "cleo_finops_refs.py",
       "file_type": "rationale",
       "norm_label": "cleo_finops_refs.py \u2014 dynamic finops knowledge injection and advisory engine...",
       "source_file": "cleo_finops_refs.py",
@@ -13623,7 +13580,7 @@
       "label": "Read and cache a reference or playbook file, stripping YAML frontmatter if\u2026",
       "_origin": "ast",
       "community": 16,
-      "community_name": "cleo_memory.py",
+      "community_name": "cleo_finops_refs.py",
       "file_type": "rationale",
       "norm_label": "read and cache a reference or playbook file, stripping yaml frontmatter if...",
       "source_file": "cleo_finops_refs.py",
@@ -13634,7 +13591,7 @@
       "label": "Finds matching reference/playbook keys scored by specificity and keyword length.",
       "_origin": "ast",
       "community": 16,
-      "community_name": "cleo_memory.py",
+      "community_name": "cleo_finops_refs.py",
       "file_type": "rationale",
       "norm_label": "finds matching reference/playbook keys scored by specificity and keyword length.",
       "source_file": "cleo_finops_refs.py",
@@ -13645,7 +13602,7 @@
       "label": "Returns a formatted FinOps reference block to inject into the LLM system prompt.",
       "_origin": "ast",
       "community": 16,
-      "community_name": "cleo_memory.py",
+      "community_name": "cleo_finops_refs.py",
       "file_type": "rationale",
       "norm_label": "returns a formatted finops reference block to inject into the llm system prompt.",
       "source_file": "cleo_finops_refs.py",
@@ -13656,7 +13613,7 @@
       "label": "Extracts the most relevant markdown sections (by heading or named pattern) for\u2026",
       "_origin": "ast",
       "community": 16,
-      "community_name": "cleo_memory.py",
+      "community_name": "cleo_finops_refs.py",
       "file_type": "rationale",
       "norm_label": "extracts the most relevant markdown sections (by heading or named pattern) for...",
       "source_file": "cleo_finops_refs.py",
@@ -13667,22 +13624,11 @@
       "label": "Direct advisory engine for Cleo. Synthesizes and returns an authoritative,\u2026",
       "_origin": "ast",
       "community": 16,
-      "community_name": "cleo_memory.py",
+      "community_name": "cleo_finops_refs.py",
       "file_type": "rationale",
       "norm_label": "direct advisory engine for cleo. synthesizes and returns an authoritative,...",
       "source_file": "cleo_finops_refs.py",
       "source_location": "L327"
-    },
-    {
-      "id": "cleo_memory_rationale_1",
-      "label": "cleo_memory.py \u2014 Self-learning memory for Cleo. Backed by a single\u2026",
-      "_origin": "ast",
-      "community": 16,
-      "community_name": "cleo_memory.py",
-      "file_type": "rationale",
-      "norm_label": "cleo_memory.py \u2014 self-learning memory for cleo. backed by a single...",
-      "source_file": "cleo_memory.py",
-      "source_location": "L1"
     },
     {
       "id": "agents_skills_cloud_finops_playbooks_azure_orphan_disks",
@@ -18447,7 +18393,7 @@
       "label": "on_event",
       "_origin": "ast",
       "community": 199,
-      "community_name": "init_mcp_if_authenticated",
+      "community_name": "AIClient",
       "file_type": "code",
       "norm_label": "on_event",
       "source_file": "",
@@ -18458,7 +18404,7 @@
       "label": "Scans local Hugging Face cache for downloaded MLX models (equivalent to\u2026",
       "_origin": "ast",
       "community": 199,
-      "community_name": "init_mcp_if_authenticated",
+      "community_name": "AIClient",
       "file_type": "rationale",
       "norm_label": "scans local hugging face cache for downloaded mlx models (equivalent to...",
       "source_file": "cleo_agent.py",
@@ -18469,33 +18415,22 @@
       "label": "Attempts to connect to CloudHealth MCP with stored access token.",
       "_origin": "ast",
       "community": 199,
-      "community_name": "init_mcp_if_authenticated",
+      "community_name": "AIClient",
       "file_type": "rationale",
       "norm_label": "attempts to connect to cloudhealth mcp with stored access token.",
       "source_file": "cleo_server.py",
       "source_location": "L323"
     },
     {
-      "id": "cleo_server_rationale_415",
-      "label": "Exchanges an authorization code (or full callback URL) for access token.",
+      "id": "test_cleo_finops_suite_rationale_934",
+      "label": "Runs the test suite and returns detailed results.",
       "_origin": "ast",
       "community": 199,
-      "community_name": "init_mcp_if_authenticated",
+      "community_name": "AIClient",
       "file_type": "rationale",
-      "norm_label": "exchanges an authorization code (or full callback url) for access token.",
-      "source_file": "cleo_server.py",
-      "source_location": "L415"
-    },
-    {
-      "id": "cleo_server_rationale_498",
-      "label": "Handles automatic callback from CloudHealth.",
-      "_origin": "ast",
-      "community": 199,
-      "community_name": "init_mcp_if_authenticated",
-      "file_type": "rationale",
-      "norm_label": "handles automatic callback from cloudhealth.",
-      "source_file": "cleo_server.py",
-      "source_location": "L498"
+      "norm_label": "runs the test suite and returns detailed results.",
+      "source_file": "test_cleo_finops_suite.py",
+      "source_location": "L934"
     },
     {
       "id": "auth_init",
@@ -18619,6 +18554,17 @@
       "source_location": "L1114"
     },
     {
+      "id": "cleo_agent_rationale_1609",
+      "label": "Fast, deterministic intent and parameter extraction used as baseline and\u2026",
+      "_origin": "ast",
+      "community": 20,
+      "community_name": "._call_active_llm",
+      "file_type": "rationale",
+      "norm_label": "fast, deterministic intent and parameter extraction used as baseline and...",
+      "source_file": "cleo_agent.py",
+      "source_location": "L1609"
+    },
+    {
       "id": "cleo_agent_rationale_1753",
       "label": "Attempts to call the configured LLM engine. Returns (response_text,\u2026",
       "_origin": "ast",
@@ -18628,6 +18574,17 @@
       "norm_label": "attempts to call the configured llm engine. returns (response_text,...",
       "source_file": "cleo_agent.py",
       "source_location": "L1753"
+    },
+    {
+      "id": "cleo_agent_rationale_1823",
+      "label": "LLM-First Request Comprehension & Intent Routing: Prompts the active LLM to\u2026",
+      "_origin": "ast",
+      "community": 20,
+      "community_name": "._call_active_llm",
+      "file_type": "rationale",
+      "norm_label": "llm-first request comprehension & intent routing: prompts the active llm to...",
+      "source_file": "cleo_agent.py",
+      "source_location": "L1823"
     },
     {
       "id": "cleo_agent_rationale_975",
@@ -20734,6 +20691,127 @@
       "norm_label": "extracts cloud service identifier, display label, and provider from query text,...",
       "source_file": "cleo_agent.py",
       "source_location": "L1407"
+    },
+    {
+      "id": "auth_oauth",
+      "label": "oauth.py",
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "code",
+      "norm_label": "oauth.py",
+      "source_file": "auth/oauth.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "cleo_agent",
+      "label": "cleo_agent.py",
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "code",
+      "norm_label": "cleo_agent.py",
+      "source_file": "cleo_agent.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "cleo_logger",
+      "label": "cleo_logger.py",
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "code",
+      "norm_label": "cleo_logger.py",
+      "source_file": "cleo_logger.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "cleo_memory",
+      "label": "cleo_memory.py",
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "code",
+      "norm_label": "cleo_memory.py",
+      "source_file": "cleo_memory.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "logger",
+      "label": "Logger",
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "code",
+      "norm_label": "logger",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "test_cleo_finops_suite",
+      "label": "test_cleo_finops_suite.py",
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "code",
+      "norm_label": "test_cleo_finops_suite.py",
+      "source_file": "test_cleo_finops_suite.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "cleo_agent_rationale_1154",
+      "label": "Returns grounded real-time calendar and billing period details.",
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "rationale",
+      "norm_label": "returns grounded real-time calendar and billing period details.",
+      "source_file": "cleo_agent.py",
+      "source_location": "L1154"
+    },
+    {
+      "id": "cleo_logger_rationale_1",
+      "label": "cleo_logger.py \u2014 Centralized Verbose Logging for Cleo FinOps Agent\u2026",
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "rationale",
+      "norm_label": "cleo_logger.py \u2014 centralized verbose logging for cleo finops agent...",
+      "source_file": "cleo_logger.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "cleo_logger_rationale_90",
+      "label": "Returns a child logger under the 'cleo' namespace.",
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "rationale",
+      "norm_label": "returns a child logger under the 'cleo' namespace.",
+      "source_file": "cleo_logger.py",
+      "source_location": "L90"
+    },
+    {
+      "id": "cleo_memory_rationale_1",
+      "label": "cleo_memory.py \u2014 Self-learning memory for Cleo. Backed by a single\u2026",
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "rationale",
+      "norm_label": "cleo_memory.py \u2014 self-learning memory for cleo. backed by a single...",
+      "source_file": "cleo_memory.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "test_cleo_finops_suite_rationale_1",
+      "label": "test_cleo_finops_suite.py \u2014 Automated 110-test-case probe suite for Cleo FinOps\u2026",
+      "_origin": "ast",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "file_type": "rationale",
+      "norm_label": "test_cleo_finops_suite.py \u2014 automated 110-test-case probe suite for cleo finops...",
+      "source_file": "test_cleo_finops_suite.py",
+      "source_location": "L1"
     },
     {
       "id": "agent_skills_design_taste_frontend_skill",
@@ -24291,50 +24369,6 @@
       "source_location": "L587"
     },
     {
-      "id": "test_cleo_finops_suite",
-      "label": "test_cleo_finops_suite.py",
-      "_origin": "ast",
-      "community": 4,
-      "community_name": "MCPClient",
-      "file_type": "code",
-      "norm_label": "test_cleo_finops_suite.py",
-      "source_file": "test_cleo_finops_suite.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "cleo_agent_rationale_1154",
-      "label": "Returns grounded real-time calendar and billing period details.",
-      "_origin": "ast",
-      "community": 4,
-      "community_name": "MCPClient",
-      "file_type": "rationale",
-      "norm_label": "returns grounded real-time calendar and billing period details.",
-      "source_file": "cleo_agent.py",
-      "source_location": "L1154"
-    },
-    {
-      "id": "cleo_agent_rationale_1609",
-      "label": "Fast, deterministic intent and parameter extraction used as baseline and\u2026",
-      "_origin": "ast",
-      "community": 4,
-      "community_name": "MCPClient",
-      "file_type": "rationale",
-      "norm_label": "fast, deterministic intent and parameter extraction used as baseline and...",
-      "source_file": "cleo_agent.py",
-      "source_location": "L1609"
-    },
-    {
-      "id": "cleo_agent_rationale_1823",
-      "label": "LLM-First Request Comprehension & Intent Routing: Prompts the active LLM to\u2026",
-      "_origin": "ast",
-      "community": 4,
-      "community_name": "MCPClient",
-      "file_type": "rationale",
-      "norm_label": "llm-first request comprehension & intent routing: prompts the active llm to...",
-      "source_file": "cleo_agent.py",
-      "source_location": "L1823"
-    },
-    {
       "id": "cleo_agent_rationale_375",
       "label": "Robust MCP Client for CloudHealth. Communicates via direct HTTP JSON-RPC to\u2026",
       "_origin": "ast",
@@ -24357,26 +24391,15 @@
       "source_location": "L394"
     },
     {
-      "id": "test_cleo_finops_suite_rationale_1",
-      "label": "test_cleo_finops_suite.py \u2014 Automated 110-test-case probe suite for Cleo FinOps\u2026",
+      "id": "cleo_agent_rationale_968",
+      "label": "Estimates LLM BPE token count for text using word/subword heuristics.",
       "_origin": "ast",
       "community": 4,
       "community_name": "MCPClient",
       "file_type": "rationale",
-      "norm_label": "test_cleo_finops_suite.py \u2014 automated 110-test-case probe suite for cleo finops...",
-      "source_file": "test_cleo_finops_suite.py",
-      "source_location": "L1"
-    },
-    {
-      "id": "test_cleo_finops_suite_rationale_934",
-      "label": "Runs the test suite and returns detailed results.",
-      "_origin": "ast",
-      "community": 4,
-      "community_name": "MCPClient",
-      "file_type": "rationale",
-      "norm_label": "runs the test suite and returns detailed results.",
-      "source_file": "test_cleo_finops_suite.py",
-      "source_location": "L934"
+      "norm_label": "estimates llm bpe token count for text using word/subword heuristics.",
+      "source_file": "cleo_agent.py",
+      "source_location": "L968"
     },
     {
       "id": "agent_skills_design_taste_frontend_skill_4_10_quotes_testimonials",
@@ -31557,206 +31580,14 @@
       "type": "external"
     },
     {
-      "id": "base64",
-      "label": "base64",
-      "_origin": "semantic",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "base64",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "calendar",
-      "label": "calendar",
-      "_origin": "semantic",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "calendar",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "collections",
-      "label": "collections",
-      "_origin": "semantic",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "collections",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "concurrent_futures",
-      "label": "concurrent_futures",
-      "_origin": "semantic",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "concurrent_futures",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "csv",
-      "label": "csv",
-      "_origin": "semantic",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "csv",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "datetime",
-      "label": "datetime",
-      "_origin": "semantic",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "datetime",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "hashlib",
-      "label": "hashlib",
-      "_origin": "semantic",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "hashlib",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "io",
-      "label": "io",
-      "_origin": "semantic",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "io",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "logging",
-      "label": "logging",
-      "_origin": "semantic",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "logging",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "subprocess",
-      "label": "subprocess",
-      "_origin": "semantic",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "subprocess",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "sys",
-      "label": "sys",
-      "_origin": "semantic",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "sys",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "urllib_error",
-      "label": "urllib_error",
-      "_origin": "semantic",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "urllib_error",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "urllib_parse",
-      "label": "urllib_parse",
-      "_origin": "semantic",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "urllib_parse",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "urllib_request",
-      "label": "urllib_request",
-      "_origin": "semantic",
-      "community": 1,
-      "community_name": "cleo_agent.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "urllib_request",
-      "source_file": "",
-      "type": "external"
-    },
-    {
       "id": "functools",
       "label": "functools",
       "_origin": "semantic",
       "community": 16,
-      "community_name": "cleo_memory.py",
+      "community_name": "cleo_finops_refs.py",
       "external": true,
       "file_type": "concept",
       "norm_label": "functools",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "os",
-      "label": "os",
-      "_origin": "semantic",
-      "community": 16,
-      "community_name": "cleo_memory.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "os",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "pathlib",
-      "label": "pathlib",
-      "_origin": "semantic",
-      "community": 16,
-      "community_name": "cleo_memory.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "pathlib",
       "source_file": "",
       "type": "external"
     },
@@ -31765,34 +31596,10 @@
       "label": "re",
       "_origin": "semantic",
       "community": 16,
-      "community_name": "cleo_memory.py",
+      "community_name": "cleo_finops_refs.py",
       "external": true,
       "file_type": "concept",
       "norm_label": "re",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "typing",
-      "label": "typing",
-      "_origin": "semantic",
-      "community": 16,
-      "community_name": "cleo_memory.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "typing",
-      "source_file": "",
-      "type": "external"
-    },
-    {
-      "id": "uuid",
-      "label": "uuid",
-      "_origin": "semantic",
-      "community": 16,
-      "community_name": "cleo_memory.py",
-      "external": true,
-      "file_type": "concept",
-      "norm_label": "uuid",
       "source_file": "",
       "type": "external"
     },
@@ -31833,14 +31640,98 @@
       "type": "external"
     },
     {
-      "id": "webbrowser",
-      "label": "webbrowser",
+      "id": "base64",
+      "label": "base64",
       "_origin": "semantic",
-      "community": 222,
-      "community_name": "cleo_gui.py",
+      "community": 227,
+      "community_name": "cleo_agent.py",
       "external": true,
       "file_type": "concept",
-      "norm_label": "webbrowser",
+      "norm_label": "base64",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "calendar",
+      "label": "calendar",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "calendar",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "collections",
+      "label": "collections",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "collections",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "concurrent_futures",
+      "label": "concurrent_futures",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "concurrent_futures",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "csv",
+      "label": "csv",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "csv",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "datetime",
+      "label": "datetime",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "datetime",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "hashlib",
+      "label": "hashlib",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "hashlib",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "io",
+      "label": "io",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "io",
       "source_file": "",
       "type": "external"
     },
@@ -31848,8 +31739,8 @@
       "id": "json",
       "label": "json",
       "_origin": "semantic",
-      "community": 4,
-      "community_name": "MCPClient",
+      "community": 227,
+      "community_name": "cleo_agent.py",
       "external": true,
       "file_type": "concept",
       "norm_label": "json",
@@ -31857,14 +31748,146 @@
       "type": "external"
     },
     {
+      "id": "logging",
+      "label": "logging",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "logging",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "os",
+      "label": "os",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "os",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "pathlib",
+      "label": "pathlib",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "pathlib",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "subprocess",
+      "label": "subprocess",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "subprocess",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "sys",
+      "label": "sys",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "sys",
+      "source_file": "",
+      "type": "external"
+    },
+    {
       "id": "time",
       "label": "time",
       "_origin": "semantic",
-      "community": 4,
-      "community_name": "MCPClient",
+      "community": 227,
+      "community_name": "cleo_agent.py",
       "external": true,
       "file_type": "concept",
       "norm_label": "time",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "typing",
+      "label": "typing",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "typing",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "urllib_error",
+      "label": "urllib_error",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "urllib_error",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "urllib_parse",
+      "label": "urllib_parse",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "urllib_parse",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "urllib_request",
+      "label": "urllib_request",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "urllib_request",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "uuid",
+      "label": "uuid",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "uuid",
+      "source_file": "",
+      "type": "external"
+    },
+    {
+      "id": "webbrowser",
+      "label": "webbrowser",
+      "_origin": "semantic",
+      "community": 227,
+      "community_name": "cleo_agent.py",
+      "external": true,
+      "file_type": "concept",
+      "norm_label": "webbrowser",
       "source_file": "",
       "type": "external"
     }
@@ -32803,7 +32826,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L844",
+      "source_location": "L872",
       "weight": 1.0
     },
     {
@@ -32815,7 +32838,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L862",
+      "source_location": "L890",
       "weight": 1.0
     },
     {
@@ -32827,7 +32850,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L869",
+      "source_location": "L897",
       "weight": 1.0
     },
     {
@@ -32839,7 +32862,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L876",
+      "source_location": "L904",
       "weight": 1.0
     },
     {
@@ -32851,7 +32874,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L886",
+      "source_location": "L914",
       "weight": 1.0
     },
     {
@@ -32863,7 +32886,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L917",
+      "source_location": "L945",
       "weight": 1.0
     },
     {
@@ -32875,7 +32898,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L925",
+      "source_location": "L953",
       "weight": 1.0
     },
     {
@@ -32887,7 +32910,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L949",
+      "source_location": "L977",
       "weight": 1.0
     },
     {
@@ -32899,7 +32922,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L951",
+      "source_location": "L979",
       "weight": 1.0
     },
     {
@@ -32911,7 +32934,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L907",
+      "source_location": "L935",
       "weight": 1.0
     },
     {
@@ -32923,7 +32946,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L1055",
+      "source_location": "L1083",
       "weight": 1.0
     },
     {
@@ -32935,7 +32958,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L1049",
+      "source_location": "L1077",
       "weight": 1.0
     },
     {
@@ -32947,7 +32970,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L781",
+      "source_location": "L809",
       "weight": 1.0
     },
     {
@@ -32971,7 +32994,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L1000",
+      "source_location": "L1028",
       "weight": 1.0
     },
     {
@@ -32983,7 +33006,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L1017",
+      "source_location": "L1045",
       "weight": 1.0
     },
     {
@@ -33079,7 +33102,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L625",
+      "source_location": "L653",
       "weight": 1.0
     },
     {
@@ -33091,7 +33114,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L628",
+      "source_location": "L656",
       "weight": 1.0
     },
     {
@@ -33103,7 +33126,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L667",
+      "source_location": "L695",
       "weight": 1.0
     },
     {
@@ -33115,7 +33138,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L668",
+      "source_location": "L696",
       "weight": 1.0
     },
     {
@@ -33127,7 +33150,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L974",
+      "source_location": "L1002",
       "weight": 1.0
     },
     {
@@ -33187,7 +33210,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L814",
+      "source_location": "L842",
       "weight": 1.0
     },
     {
@@ -33199,7 +33222,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L815",
+      "source_location": "L843",
       "weight": 1.0
     },
     {
@@ -33211,7 +33234,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L760",
+      "source_location": "L788",
       "weight": 1.0
     },
     {
@@ -33223,7 +33246,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L761",
+      "source_location": "L789",
       "weight": 1.0
     },
     {
@@ -33247,7 +33270,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L1038",
+      "source_location": "L1066",
       "weight": 1.0
     },
     {
@@ -33259,7 +33282,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "cleo_server.py",
-      "source_location": "L1041",
+      "source_location": "L1069",
       "weight": 1.0
     },
     {
@@ -33379,7 +33402,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L840",
+      "source_location": "L868",
       "weight": 1.0
     },
     {
@@ -33391,7 +33414,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L1052",
+      "source_location": "L1080",
       "weight": 1.0
     },
     {
@@ -33403,7 +33426,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L1045",
+      "source_location": "L1073",
       "weight": 1.0
     },
     {
@@ -33427,7 +33450,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L1097",
+      "source_location": "L1125",
       "weight": 1.0
     },
     {
@@ -33439,7 +33462,19 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L769",
+      "source_location": "L797",
+      "weight": 1.0
+    },
+    {
+      "source": "cleo_server_get_channel_customers",
+      "target": "get",
+      "relation": "references",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "decorator",
+      "source_file": "cleo_server.py",
+      "source_location": "L625",
       "weight": 1.0
     },
     {
@@ -33451,7 +33486,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L794",
+      "source_location": "L822",
       "weight": 1.0
     },
     {
@@ -33475,7 +33510,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L1093",
+      "source_location": "L1121",
       "weight": 1.0
     },
     {
@@ -33487,7 +33522,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L994",
+      "source_location": "L1022",
       "weight": 1.0
     },
     {
@@ -33523,7 +33558,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L623",
+      "source_location": "L651",
       "weight": 1.0
     },
     {
@@ -33535,7 +33570,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L961",
+      "source_location": "L989",
       "weight": 1.0
     },
     {
@@ -33571,7 +33606,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L802",
+      "source_location": "L830",
       "weight": 1.0
     },
     {
@@ -33583,7 +33618,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L1106",
+      "source_location": "L1134",
       "weight": 1.0
     },
     {
@@ -33595,7 +33630,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L737",
+      "source_location": "L765",
       "weight": 1.0
     },
     {
@@ -33631,7 +33666,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L1068",
+      "source_location": "L1096",
       "weight": 1.0
     },
     {
@@ -33643,7 +33678,7 @@
       "confidence_score": 1.0,
       "context": "decorator",
       "source_file": "cleo_server.py",
-      "source_location": "L1032",
+      "source_location": "L1060",
       "weight": 1.0
     },
     {
@@ -34327,7 +34362,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "cleo_server.py",
-      "source_location": "L1060",
+      "source_location": "L1088",
       "weight": 1.0
     },
     {
@@ -34903,7 +34938,7 @@
       "confidence_score": 1.0,
       "context": "import",
       "source_file": "cleo_server.py",
-      "source_location": "L1060",
+      "source_location": "L1088",
       "weight": 1.0
     },
     {
@@ -35083,7 +35118,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "cleo_server.py",
-      "source_location": "L841",
+      "source_location": "L869",
       "weight": 1.0
     },
     {
@@ -35107,7 +35142,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "cleo_server.py",
-      "source_location": "L770",
+      "source_location": "L798",
       "weight": 1.0
     },
     {
@@ -35143,7 +35178,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "cleo_server.py",
-      "source_location": "L803",
+      "source_location": "L831",
       "weight": 1.0
     },
     {
@@ -35155,7 +35190,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "cleo_server.py",
-      "source_location": "L738",
+      "source_location": "L766",
       "weight": 1.0
     },
     {
@@ -35167,7 +35202,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "cleo_server.py",
-      "source_location": "L1069",
+      "source_location": "L1097",
       "weight": 1.0
     },
     {
@@ -60077,13 +60112,24 @@
     },
     {
       "source": "cleo_server",
+      "target": "cleo_server_get_session",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "cleo_server.py",
+      "source_location": "L1023",
+      "weight": 1.0
+    },
+    {
+      "source": "cleo_server",
       "target": "cleo_server_toggle_pin_session",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L1033",
+      "source_location": "L1061",
       "weight": 1.0
     },
     {
@@ -60094,7 +60140,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L1046",
+      "source_location": "L1074",
       "weight": 1.0
     },
     {
@@ -60105,7 +60151,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L1053",
+      "source_location": "L1081",
       "weight": 1.0
     },
     {
@@ -60116,7 +60162,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L1062",
+      "source_location": "L1090",
       "weight": 1.0
     },
     {
@@ -60127,29 +60173,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L1069",
-      "weight": 1.0
-    },
-    {
-      "source": "cleo_server",
-      "target": "cleo_server_get_memory_entries",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "cleo_server.py",
-      "source_location": "L1094",
-      "weight": 1.0
-    },
-    {
-      "source": "cleo_server",
-      "target": "cleo_server_delete_memory_entry",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "cleo_server.py",
-      "source_location": "L1098",
+      "source_location": "L1097",
       "weight": 1.0
     },
     {
@@ -60165,13 +60189,35 @@
     },
     {
       "source": "cleo_server",
+      "target": "cleo_server_get_memory_entries",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "cleo_server.py",
+      "source_location": "L1122",
+      "weight": 1.0
+    },
+    {
+      "source": "cleo_server",
+      "target": "cleo_server_delete_memory_entry",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "cleo_server.py",
+      "source_location": "L1126",
+      "weight": 1.0
+    },
+    {
+      "source": "cleo_server",
       "target": "cleo_server_serve_gui",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L1107",
+      "source_location": "L1135",
       "weight": 1.0
     },
     {
@@ -60418,13 +60464,24 @@
     },
     {
       "source": "cleo_server",
+      "target": "cleo_server_get_channel_customers",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "cleo_server.py",
+      "source_location": "L626",
+      "weight": 1.0
+    },
+    {
+      "source": "cleo_server",
       "target": "cleo_server_list_engines",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L624",
+      "source_location": "L652",
       "weight": 1.0
     },
     {
@@ -60435,7 +60492,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L734",
+      "source_location": "L762",
       "weight": 1.0
     },
     {
@@ -60446,7 +60503,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L738",
+      "source_location": "L766",
       "weight": 1.0
     },
     {
@@ -60457,7 +60514,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L766",
+      "source_location": "L794",
       "weight": 1.0
     },
     {
@@ -60468,7 +60525,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L770",
+      "source_location": "L798",
       "weight": 1.0
     },
     {
@@ -60479,7 +60536,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L795",
+      "source_location": "L823",
       "weight": 1.0
     },
     {
@@ -60490,7 +60547,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L798",
+      "source_location": "L826",
       "weight": 1.0
     },
     {
@@ -60501,7 +60558,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L803",
+      "source_location": "L831",
       "weight": 1.0
     },
     {
@@ -60512,7 +60569,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L821",
+      "source_location": "L849",
       "weight": 1.0
     },
     {
@@ -60523,7 +60580,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L826",
+      "source_location": "L854",
       "weight": 1.0
     },
     {
@@ -60534,7 +60591,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L831",
+      "source_location": "L859",
       "weight": 1.0
     },
     {
@@ -60545,7 +60602,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L841",
+      "source_location": "L869",
       "weight": 1.0
     },
     {
@@ -60567,18 +60624,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L962",
-      "weight": 1.0
-    },
-    {
-      "source": "cleo_server",
-      "target": "cleo_server_get_session",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "cleo_server.py",
-      "source_location": "L995",
+      "source_location": "L990",
       "weight": 1.0
     },
     {
@@ -60853,7 +60899,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L821",
+      "source_location": "L849",
       "weight": 1.0
     },
     {
@@ -60864,7 +60910,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L831",
+      "source_location": "L859",
       "weight": 1.0
     },
     {
@@ -60886,7 +60932,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L766",
+      "source_location": "L794",
       "weight": 1.0
     },
     {
@@ -60897,7 +60943,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L734",
+      "source_location": "L762",
       "weight": 1.0
     },
     {
@@ -60908,7 +60954,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L1062",
+      "source_location": "L1090",
       "weight": 1.0
     },
     {
@@ -60919,7 +60965,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L798",
+      "source_location": "L826",
       "weight": 1.0
     },
     {
@@ -60930,7 +60976,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "cleo_server.py",
-      "source_location": "L826",
+      "source_location": "L854",
       "weight": 1.0
     },
     {
@@ -62078,6 +62124,17 @@
       "weight": 1.0
     },
     {
+      "source": "cleo_server_rationale_627",
+      "target": "cleo_server_get_channel_customers",
+      "relation": "rationale_for",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "cleo_server.py",
+      "source_location": "L627",
+      "weight": 1.0
+    },
+    {
       "source": "test_cleo_finops_suite_rationale_1",
       "target": "test_cleo_finops_suite",
       "relation": "rationale_for",
@@ -62859,7 +62916,7 @@
       "confidence_score": 0.85,
       "context": "argument",
       "source_file": "cleo_server.py",
-      "source_location": "L777",
+      "source_location": "L805",
       "weight": 1.0
     },
     {
@@ -62871,7 +62928,7 @@
       "confidence_score": 0.85,
       "context": "argument",
       "source_file": "cleo_server.py",
-      "source_location": "L790",
+      "source_location": "L818",
       "weight": 1.0
     },
     {
@@ -62883,7 +62940,7 @@
       "confidence_score": 0.85,
       "context": "assignment",
       "source_file": "cleo_server.py",
-      "source_location": "L914",
+      "source_location": "L942",
       "weight": 1.0
     },
     {
@@ -62894,9 +62951,10 @@
       "confidence": "INFERRED",
       "confidence_score": 0.95,
       "source_file": "cleo_server.py",
-      "source_location": "L762",
+      "source_location": "L790",
       "weight": 0.8
     }
   ],
-  "hyperedges": []
+  "hyperedges": [],
+  "built_at_commit": "e42749f1fdb5c6297255232660165bf2f4920e47"
 }
