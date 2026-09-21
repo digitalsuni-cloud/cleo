@@ -18,7 +18,12 @@ RUN pip install --no-cache-dir \
       fastapi "uvicorn[standard]"
 
 # Copy application code
-COPY cleo_agent.py cleo_server.py ./
+COPY cleo_agent.py cleo_server.py cleo_logger.py cleo_memory.py cleo_finops_refs.py cleo_ui.html ./
+COPY auth/ ./auth/
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
 
 # ── Runtime configuration ─────────────────────────────────────────────────────
 # OAuth token: mount your ~/.cleo/oauth_tokens.json as a K8s Secret at this path

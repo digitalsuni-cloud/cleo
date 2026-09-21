@@ -163,7 +163,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const mcpResponse = $input.first().json;\nlet orgs = [];\ntry {\n  const content = (mcpResponse.result || mcpResponse).content || [];\n  for (const item of content) {\n    if (item.type === 'text') {\n      const parsed = JSON.parse(item.text);\n      orgs = Array.isArray(parsed) ? parsed : (parsed.organizations || parsed.data || []);\n    }\n  }\n} catch(e) {}\nif (orgs.length === 0) {\n  orgs = [{ name: 'Thespina test', id: 'crn:573:organization/137438953498' }];\n}\nlet menu = '👋 **Welcome to Cleo — Cloud Efficiency Optimizer!**\\n\\nPlease type the **number** of the tenant you want to query:\\n\\n';\norgs.forEach((org, i) => {\n  const name = org.name || org.orgName || org.displayName || `Org ${i+1}`;\n  const id = org.id || org.crn || org.orgId || '';\n  menu += `**${i+1}.** ${name}`;\n  if (id) menu += ` \\`${id}\\``;\n  menu += '\\n';\n});\nmenu += '\\n_Type `/reset` at any time to switch tenants._';\nreturn [{ json: { orgList: orgs, menuMessage: menu, awaitingOrgSelection: true } }];"
+        "jsCode": "const mcpResponse = $input.first().json;\nlet orgs = [];\nlet isAuthError = false;\ntry {\n  if (mcpResponse.result && mcpResponse.result.isError) {\n    isAuthError = true;\n  }\n  const content = (mcpResponse.result || mcpResponse).content || [];\n  for (const item of content) {\n    if (item.type === 'text') {\n      if (item.text.includes('not authenticated') || item.text.includes('unauthorized') || item.text.includes('-32001')) {\n        isAuthError = true;\n      }\n      const parsed = JSON.parse(item.text);\n      orgs = Array.isArray(parsed) ? parsed : (parsed.organizations || parsed.data || []);\n    }\n  }\n} catch(e) {}\n\nif (isAuthError || orgs.length === 0) {\n  const msg = '⚠️ **CloudHealth is not authenticated**\\n\\nPlease connect your CloudHealth account via the Cleo Web UI at **http://127.0.0.1:8080** first.\\n\\nOnce authenticated, type `/reset` to load your live tenants.';\n  return [{ json: { orgList: [], menuMessage: msg, awaitingOrgSelection: false } }];\n}\n\nlet menu = '👋 **Welcome to Cleo — Cloud Efficiency Optimizer!**\\n\\nPlease type the **number** of the tenant you want to query:\\n\\n';\norgs.forEach((org, i) => {\n  const name = org.name || org.orgName || org.displayName || `Org ${i+1}`;\n  const id = org.id || org.crn || org.orgId || '';\n  menu += `**${i+1}.** ${name}`;\n  if (id) menu += ` \\`${id}\\``;\n  menu += '\\n';\n});\nmenu += '\\n_Type `/reset` at any time to switch tenants._';\nreturn [{ json: { orgList: orgs, menuMessage: menu, awaitingOrgSelection: true } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -189,7 +189,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const userInput = $('Extract Input').first().json.chatInput.trim();\nconst sessionData = $('Load Session State').first().json;\nconst orgList = sessionData.orgList || [];\nconst selection = parseInt(userInput, 10);\nif (isNaN(selection) || selection < 1 || selection > orgList.length) {\n  return [{ json: { valid: false, message: `\u26a0\ufe0f Please type a number between 1 and ${orgList.length} to select a tenant.`, orgList, awaitingOrgSelection: true } }];\n}\nconst selected = orgList[selection - 1];\nconst orgName = selected.name || selected.orgName || selected.displayName || `Org ${selection}`;\nconst orgId = selected.id || selected.crn || selected.orgId || 'crn:573:organization/137438953498';\nreturn [{ json: { valid: true, orgId, orgName, orgList, awaitingOrgSelection: false, confirmMessage: `\u2705 **Connected to: ${orgName}**\\n\\nI'm ready to answer your CloudHealth cost questions. What would you like to know?\\n\\n_Examples:_\\n- What are my top 5 AWS services by cost this month?\\n- Show me Azure spending trends for the last 3 months?\\n- Which region had the highest EC2 spend in August?` } }];"
+        "jsCode": "const userInput = $('Extract Input').first().json.chatInput.trim();\nconst sessionData = $('Load Session State').first().json;\nconst orgList = sessionData.orgList || [];\nconst selection = parseInt(userInput, 10);\nif (isNaN(selection) || selection < 1 || selection > orgList.length) {\n  return [{ json: { valid: false, message: `⚠️ Please type a number between 1 and ${orgList.length} to select a tenant.`, orgList, awaitingOrgSelection: true } }];\n}\nconst selected = orgList[selection - 1];\nconst orgName = selected.name || selected.orgName || selected.displayName || `Org ${selection}`;\nconst orgId = selected.id || selected.crn || selected.orgId;\nreturn [{ json: { valid: true, orgId, orgName, orgList, awaitingOrgSelection: false, confirmMessage: `✅ **Connected to: ${orgName}**\\n\\nI'm ready to answer your CloudHealth cost questions. What would you like to know?\\n\\n_Examples:_\\n- What are my top 5 AWS services by cost this month?\\n- Show me Azure spending trends for the last 3 months?\\n- Which region had the highest EC2 spend in August?` } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -233,14 +233,14 @@
     },
     {
       "parameters": {
-        "url": "http://127.0.0.1:8080/start?model=gemma",
+        "url": "http://127.0.0.1:8080/start?model=qwen-3b",
         "options": { "timeout": 90000 }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [620, -100],
-      "id": "start-gemma",
-      "name": "Start Gemma"
+      "id": "start-qwen-3b",
+      "name": "Start Qwen 3B"
     },
     {
       "parameters": {
@@ -256,15 +256,15 @@
     },
     {
       "parameters": {
-        "model": { "__rl": true, "value": "mlx-community/gemma-2-9b-it-4bit", "mode": "id" },
+        "model": { "__rl": true, "value": "mlx-community/Qwen2.5-3B-Instruct-4bit", "mode": "id" },
         "options": { "maxTokens": 5, "temperature": 0 }
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
       "position": [840, 200],
       "id": "3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f",
-      "name": "LLM Classifier (gemma-2-9b)",
-      "credentials": { "openAiApi": { "id": "cleo-fast-003", "name": "Cleo Fast (gemma-2-9b)" } }
+      "name": "LLM Classifier (Qwen2.5-3B)",
+      "credentials": { "openAiApi": { "id": "cleo-fast-003", "name": "Cleo Fast (Qwen2.5-3B)" } }
     },
     {
       "parameters": {
@@ -302,26 +302,26 @@
     },
     {
       "parameters": {
-        "model": { "__rl": true, "value": "mlx-community/gemma-2-9b-it-4bit", "mode": "id" },
+        "model": { "__rl": true, "value": "mlx-community/Qwen2.5-3B-Instruct-4bit", "mode": "id" },
         "options": { "temperature": 0.1 }
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
       "position": [1300, 40],
       "id": "6f7a8b9c-0d1e-2f3a-4b5c-6d7e8f9a0b1c",
-      "name": "LLM Fast (gemma-2-9b)",
-      "credentials": { "openAiApi": { "id": "cleo-fast-003", "name": "Cleo Fast (gemma-2-9b)" } }
+      "name": "LLM Fast (Qwen2.5-3B)",
+      "credentials": { "openAiApi": { "id": "cleo-fast-003", "name": "Cleo Fast (Qwen2.5-3B)" } }
     },
     {
       "parameters": {
-        "url": "http://127.0.0.1:8080/stop?model=gemma",
+        "url": "http://127.0.0.1:8080/stop?model=qwen-3b",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [1540, -160],
-      "id": "stop-gemma-fast",
-      "name": "Stop Gemma (Fast)"
+      "id": "stop-qwen-3b-fast",
+      "name": "Stop Qwen 3B (Fast)"
     },
     {
       "parameters": {
@@ -369,14 +369,14 @@
     },
     {
       "parameters": {
-        "url": "http://127.0.0.1:8080/start?model=qwen",
+        "url": "http://127.0.0.1:8080/start?model=qwen-7b",
         "options": { "timeout": 90000 }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [1300, 240],
-      "id": "start-qwen",
-      "name": "Start Qwen"
+      "id": "start-qwen-7b",
+      "name": "Start Qwen 7B"
     },
     {
       "parameters": {
@@ -396,15 +396,15 @@
     },
     {
       "parameters": {
-        "model": { "__rl": true, "value": "mlx-community/Qwen3-VL-32B-Instruct-8bit", "mode": "id" },
+        "model": { "__rl": true, "value": "mlx-community/Qwen2.5-7B-Instruct-4bit", "mode": "id" },
         "options": { "temperature": 0.1 }
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
       "position": [1540, 560],
       "id": "1e2f3a4b-5c6d-7e8f-9a0b-1c2d3e4f5a6b",
-      "name": "LLM Deep (Qwen3-VL-32B)",
-      "credentials": { "openAiApi": { "id": "cleo-deep-004", "name": "Cleo Deep (Qwen3-VL-32B)" } }
+      "name": "LLM Deep (Qwen2.5-7B)",
+      "credentials": { "openAiApi": { "id": "cleo-deep-004", "name": "Cleo Deep (Qwen2.5-7B)" } }
     },
     {
       "parameters": {
@@ -475,7 +475,7 @@
     "Reset Session": { "main": [[{"node": "List Orgs & Customers", "type": "main", "index": 0}]] },
     "Has Session?": {
       "main": [
-        [{"node": "Start Gemma", "type": "main", "index": 0}],
+        [{"node": "Start Qwen 3B", "type": "main", "index": 0}],
         [{"node": "Awaiting Org Selection?", "type": "main", "index": 0}]
       ]
     },
@@ -494,29 +494,29 @@
         [{"node": "Store Pending Session", "type": "main", "index": 0}]
       ]
     },
-    "Store Confirmed Session": { "main": [[{"node": "Start Gemma", "type": "main", "index": 0}]] },
-    "Start Gemma": { "main": [[{"node": "Query Classifier", "type": "main", "index": 0}]] },
+    "Store Confirmed Session": { "main": [[{"node": "Start Qwen 3B", "type": "main", "index": 0}]] },
+    "Start Qwen 3B": { "main": [[{"node": "Query Classifier", "type": "main", "index": 0}]] },
     "Query Classifier": { "main": [[{"node": "Simple or Complex?", "type": "main", "index": 0}]] },
     "Simple or Complex?": {
       "main": [
         [{"node": "Cleo Fast Agent", "type": "main", "index": 0}],
-        [{"node": "Start Qwen", "type": "main", "index": 0}]
+        [{"node": "Start Qwen 7B", "type": "main", "index": 0}]
       ]
     },
-    "Cleo Fast Agent": { "main": [[{"node": "Stop Gemma (Fast)", "type": "main", "index": 0}]] },
-    "Stop Gemma (Fast)": { "main": [[{"node": "Restore Answer (Fast)", "type": "main", "index": 0}]] },
+    "Cleo Fast Agent": { "main": [[{"node": "Stop Qwen 3B (Fast)", "type": "main", "index": 0}]] },
+    "Stop Qwen 3B (Fast)": { "main": [[{"node": "Restore Answer (Fast)", "type": "main", "index": 0}]] },
     
-    "Start Qwen": { "main": [[{"node": "Cleo Deep Agent", "type": "main", "index": 0}]] },
+    "Start Qwen 7B": { "main": [[{"node": "Cleo Deep Agent", "type": "main", "index": 0}]] },
     "Cleo Deep Agent": { "main": [[{"node": "Stop Models (Deep)", "type": "main", "index": 0}]] },
     "Stop Models (Deep)": { "main": [[{"node": "Restore Answer (Deep)", "type": "main", "index": 0}]] },
     
-    "LLM Classifier (gemma-2-9b)": { "ai_languageModel": [[{"node": "Query Classifier", "type": "ai_languageModel", "index": 0}]] },
-    "LLM Fast (gemma-2-9b)": { "ai_languageModel": [[{"node": "Cleo Fast Agent", "type": "ai_languageModel", "index": 0}]] },
+    "LLM Classifier (Qwen2.5-3B)": { "ai_languageModel": [[{"node": "Query Classifier", "type": "ai_languageModel", "index": 0}]] },
+    "LLM Fast (Qwen2.5-3B)": { "ai_languageModel": [[{"node": "Cleo Fast Agent", "type": "ai_languageModel", "index": 0}]] },
     "CloudHealth MCP (Fast)": { "ai_tool": [[{"node": "Cleo Fast Agent", "type": "ai_tool", "index": 0}]] },
     "Think (Fast)": { "ai_tool": [[{"node": "Cleo Fast Agent", "type": "ai_tool", "index": 0}]] },
     "Calculator (Fast)": { "ai_tool": [[{"node": "Cleo Fast Agent", "type": "ai_tool", "index": 0}]] },
     
-    "LLM Deep (Qwen3-VL-32B)": { "ai_languageModel": [[{"node": "Cleo Deep Agent", "type": "ai_languageModel", "index": 0}]] },
+    "LLM Deep (Qwen2.5-7B)": { "ai_languageModel": [[{"node": "Cleo Deep Agent", "type": "ai_languageModel", "index": 0}]] },
     "CloudHealth MCP (Deep)": { "ai_tool": [[{"node": "Cleo Deep Agent", "type": "ai_tool", "index": 0}]] },
     "Think (Deep)": { "ai_tool": [[{"node": "Cleo Deep Agent", "type": "ai_tool", "index": 0}]] },
     "Calculator (Deep)": { "ai_tool": [[{"node": "Cleo Deep Agent", "type": "ai_tool", "index": 0}]] }

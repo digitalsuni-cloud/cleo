@@ -19,13 +19,33 @@ except ImportError:
     logger = logging.getLogger("cleo.oauth")
     logger.setLevel(logging.INFO)
 
+def _load_dotenv_safe():
+    """Lightweight stdlib loader for local .env file without external dependencies."""
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env_p = os.path.join(base, ".env")
+    if os.path.isfile(env_p):
+        try:
+            with open(env_p, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip("'\"")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+        except Exception:
+            pass
+
+_load_dotenv_safe()
+
 # Known CloudHealth OAuth Client configurations
 ANTIGRAVITY_CLIENT_ID     = "https://antigravity.google/oauth/client-metadata.json"
 ANTIGRAVITY_REDIRECT_URI  = "https://antigravity.google/oauth-callback"
 
-LOCAL_CLIENT_ID           = "BQf6HFF5XNHyCYDvW6zXN_JnZvNrq4uSQrLkbbG9sbM"
-LOCAL_CLIENT_SECRET       = "dfIvQbP6mVn6prSh8pN6kp0gIqaAKhBv-5k-jkSqw2mMg32KfqLAnQv6hUurab0A"
-LOCAL_REDIRECT_URI        = "http://127.0.0.1:8080/oauth-callback"
+LOCAL_CLIENT_ID           = os.environ.get("CLOUDHEALTH_CLIENT_ID", "BQf6HFF5XNHyCYDvW6zXN_JnZvNrq4uSQrLkbbG9sbM")
+LOCAL_CLIENT_SECRET       = os.environ.get("CLOUDHEALTH_CLIENT_SECRET", "")
+LOCAL_REDIRECT_URI        = os.environ.get("CLOUDHEALTH_REDIRECT_URI", "http://127.0.0.1:8080/oauth-callback")
 
 # Default to Cleo's local independent OAuth client (no third-party/Antigravity redirect needed)
 DEFAULT_CLIENT_ID         = LOCAL_CLIENT_ID
