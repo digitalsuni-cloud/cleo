@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cleo — CloudHealth FinOps AI Command Center</title>
+  <title>Cleo (Beta) — CloudHealth FinOps AI Command Center</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpolygon points='24,4 42,14 24,24 6,14' fill='%2338bdf8'/%3E%3Cpolygon points='6,14 24,24 24,44 6,34' fill='%23818cf8'/%3E%3Cpolygon points='42,14 42,34 24,44 24,24' fill='%2334d399'/%3E%3Ccircle cx='24' cy='24' r='5' fill='%23ffffff'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -150,6 +150,20 @@
       border: 1px solid rgba(255, 255, 255, 0.12);
       color: #94a3b8;
     }
+    .brand-beta {
+      font-size: 0.58rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      color: #fbbf24;
+      display: inline-flex;
+      align-items: center;
+      line-height: 1;
+    }
     .brand-subtitle {
       font-size: 0.65rem;
       font-weight: 500;
@@ -163,6 +177,46 @@
       gap: 8px;
       flex-wrap: nowrap;
     }
+
+    /* ── Update Notification Banner ────────────────────────────────────────── */
+    #update-banner {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: linear-gradient(90deg, #78350f 0%, #92400e 100%);
+      color: #fde68a;
+      font-size: 0.76rem;
+      font-weight: 500;
+      padding: 6px 16px;
+      letter-spacing: 0.02em;
+      border-bottom: 1px solid #b45309;
+      position: sticky;
+      top: 0;
+      z-index: 900;
+    }
+    #update-banner.visible { display: flex; }
+    #update-banner .update-msg { flex: 1; text-align: center; }
+    #update-banner .update-actions { display: flex; gap: 6px; }
+    #update-banner button {
+      background: #fbbf24;
+      color: #1c1917;
+      border: none;
+      border-radius: 5px;
+      padding: 3px 10px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    #update-banner button:hover { background: #f59e0b; }
+    #update-banner .dismiss-btn {
+      background: transparent;
+      color: #fde68a;
+      border: 1px solid #b45309;
+      font-weight: 500;
+    }
+    #update-banner .dismiss-btn:hover { background: rgba(255,255,255,.08); }
     .badge {
       display: flex;
       align-items: center;
@@ -1074,8 +1128,8 @@
     .cleo-toast {
       position: fixed;
       bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%) translateY(8px);
+      right: 24px;
+      transform: translateY(8px);
       background: #1e293b;
       border: 1px solid rgba(255,255,255,0.1);
       border-radius: 8px;
@@ -1087,7 +1141,7 @@
       transition: opacity 0.2s ease, transform 0.2s ease;
       z-index: 9999;
     }
-    .cleo-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .cleo-toast.show { opacity: 1; transform: translateY(0); }
     .cleo-toast.toast-error {
       background: #281519 !important;
       border-color: rgba(248, 113, 113, 0.4) !important;
@@ -1487,7 +1541,7 @@
       font-size: 0.8rem;
     }
 
-    /* ── Cloud Service & Region Badges (Multi-Cloud: AWS, Azure, GCP, OCI) ── */
+    /* ── Cloud Service & Region Badges (Multi-Cloud: AWS, Azure, GCP) ── */
     .cloud-service-badge, .cloud-region-badge {
       display: inline-flex;
       align-items: center;
@@ -1565,16 +1619,6 @@
       color: #4285f4;
     }
 
-    /* OCI: Oracle Red / Coral */
-    .cloud-service-badge.oci {
-      background: rgba(248, 0, 0, 0.08);
-      border: 1px solid rgba(248, 0, 0, 0.28);
-      color: #fca5a5;
-    }
-    .cloud-service-badge.oci .cloud-icon {
-      color: #f87171;
-    }
-
     /* Multi-Cloud: Indigo / Violet */
     .cloud-service-badge.multicloud {
       background: rgba(129, 140, 248, 0.08);
@@ -1610,6 +1654,14 @@
       background: var(--bg-surface);
       border-top: 1px solid var(--border);
       align-items: center;
+      /* Smoothly shrink padding on mouseleave to naturally push scroll back */
+      transition: padding-right 0.9s cubic-bezier(0.25, 1, 0.35, 1);
+      /* Hide scrollbar */
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* IE/Edge */
+    }
+    .chips-row::-webkit-scrollbar {
+      display: none; /* Chrome, Safari, Edge */
     }
     .chip {
       display: inline-flex;
@@ -1644,34 +1696,10 @@
     .chip:hover .chip-icon {
       opacity: 1;
     }
-    /* Inline auto-expand: a real max-width transition on the chip's own detail text reads as
-       "the chip grew", which a satellite tooltip box below it does not. It can't run in-flow
-       though — .chips-row's overflow-x:auto forces overflow-y to compute as auto too (not
-       visible), so anything that grows past the row's own box gets clipped there, and normal
-       flex layout can only grow a item's box toward the right (toward the row's end), which
-       runs the last chips off the visible edge.
-       Fix: a single reusable "shadow" chip, fixed-positioned (escapes the row's clipping
-       entirely), cloned from whichever real chip is hovered and placed exactly over it, that
-       does the actual expanding. For chips near the right edge it's anchored via `right`
-       instead of `left`, so growing wider pushes its own left edge further left instead of
-       running past the window's edge. The real chip underneath never moves, so nothing else
-       in the row shifts.  */
-    .chip-shadow {
-      display: none;
-      position: fixed;
-      z-index: 70;
-      pointer-events: none;
-      /* Must be fully opaque, not the translucent rgba() .chip:hover normally uses — this sits
-         on top of whatever real chips it overlaps while expanded, and a see-through background
-         let their text show through and garble together with the shadow's own text. */
-      background: #1e293b;
-      border-color: rgba(255, 255, 255, 0.18);
-      color: #f8fafc;
-    }
-    .chip-shadow.visible {
-      display: inline-flex;
-    }
-    .chip-shadow .chip-detail {
+    /* Inline auto-expand in-flow (pushes sibling chips) */
+    .chip::after {
+      content: attr(data-detail);
+      display: inline-block;
       max-width: 0;
       margin-left: 0;
       opacity: 0;
@@ -1679,9 +1707,11 @@
       white-space: nowrap;
       font-weight: 400;
       color: var(--text-dim);
-      transition: max-width 0.35s ease, opacity 0.25s ease, margin-left 0.35s ease;
+      /* Smoother, slightly slower expansion animation */
+      transition: max-width 0.9s cubic-bezier(0.25, 1, 0.35, 1), opacity 0.5s ease, margin-left 0.9s cubic-bezier(0.25, 1, 0.35, 1);
+      vertical-align: middle;
     }
-    .chip-shadow.expanded .chip-detail {
+    .chip:hover::after {
       max-width: 420px;
       margin-left: 6px;
       opacity: 0.85;
@@ -1694,11 +1724,7 @@
       position: fixed;
       z-index: 200;
       width: 240px;
-      background: #12151f;
-      border: 1px solid rgba(239, 68, 68, 0.35);
-      border-radius: 10px;
-      padding: 12px 14px;
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 24px rgba(239, 68, 68, 0.15);
+      perspective: 800px;
       opacity: 0;
       visibility: hidden;
       transform: scale(0.92) translateY(6px);
@@ -1709,6 +1735,35 @@
       opacity: 1;
       visibility: visible;
       transform: scale(1) translateY(0);
+    }
+    .clear-confirm-flip {
+      position: relative;
+      width: 100%;
+      transform-style: preserve-3d;
+      transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .clear-confirm-popover.flipped .clear-confirm-flip {
+      transform: rotateY(180deg);
+    }
+    .clear-confirm-face {
+      background: #12151f;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      border-radius: 10px;
+      padding: 12px 14px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 24px rgba(239, 68, 68, 0.15);
+      backface-visibility: hidden;
+    }
+    .clear-confirm-face-back {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      transform: rotateY(180deg);
+      border-color: rgba(52, 211, 153, 0.4);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 24px rgba(16, 185, 129, 0.2);
+    }
+    .clear-confirm-header-success {
+      color: #6ee7b7 !important;
     }
     .clear-confirm-header {
       display: flex;
@@ -2221,6 +2276,7 @@
           <div class="brand-title-row">
             <span class="brand-name">CLEO</span>
             <span class="brand-tag">FINOPS AI</span>
+            <span class="brand-beta">BETA</span>
           </div>
           <div class="brand-subtitle">CloudHealth Autonomous Intelligence</div>
         </div>
@@ -2271,6 +2327,15 @@
     </div>
   </header>
 
+  <!-- Update Notification Banner (hidden until server signals update_available) -->
+  <div id="update-banner" role="alert">
+    <span class="update-msg" id="update-banner-msg">🚀 A new version of Cleo is available.</span>
+    <div class="update-actions">
+      <button onclick="applyUpdate()" title="Pull latest code from GitHub">Update now</button>
+      <button class="dismiss-btn" onclick="document.getElementById('update-banner').classList.remove('visible')" title="Dismiss">Dismiss</button>
+    </div>
+  </div>
+
   <!-- Main 3-Pane Container -->
   <div class="main-container">
 
@@ -2319,16 +2384,28 @@
       </div>
 
       <!-- Compact anchored confirm for "Clear history" — see clearAllHistories() comment for
-           why this doesn't use the shared appConfirm() modal. -->
+           why this doesn't use the shared appConfirm() modal. Flips in place (front = confirm,
+           back = success) instead of closing and popping a toast elsewhere on the page. -->
       <div class="clear-confirm-popover" id="clear-confirm-popover">
-        <div class="clear-confirm-header">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-          <span>Clear all histories?</span>
-        </div>
-        <div class="clear-confirm-text">This deletes every saved chat from disk. Cannot be undone.</div>
-        <div class="clear-confirm-actions">
-          <button class="clear-confirm-btn" onclick="hideClearConfirm()">Cancel</button>
-          <button class="clear-confirm-btn clear-confirm-btn-danger" onclick="confirmClearAllHistories()">Clear All</button>
+        <div class="clear-confirm-flip">
+          <div class="clear-confirm-face clear-confirm-face-front">
+            <div class="clear-confirm-header">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              <span>Clear all histories?</span>
+            </div>
+            <div class="clear-confirm-text">This deletes every saved chat from disk. Cannot be undone.</div>
+            <div class="clear-confirm-actions">
+              <button class="clear-confirm-btn" onclick="hideClearConfirm()">Cancel</button>
+              <button class="clear-confirm-btn clear-confirm-btn-danger" onclick="confirmClearAllHistories()">Clear All</button>
+            </div>
+          </div>
+          <div class="clear-confirm-face clear-confirm-face-back">
+            <div class="clear-confirm-header clear-confirm-header-success">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"></path></svg>
+              <span>All chat histories cleared</span>
+            </div>
+            <div class="clear-confirm-text">Every saved chat was removed from disk.</div>
+          </div>
         </div>
       </div>
 
@@ -2392,7 +2469,7 @@
               <circle cx="24" cy="24" r="4" fill="#ffffff" />
             </svg>
             <div>
-              <div class="welcome-hero-title">Cleo FinOps Command Center</div>
+              <div class="welcome-hero-title">Cleo FinOps Command Center <span class="brand-beta" style="vertical-align: middle; margin-left: 6px;">BETA</span></div>
               <div style="font-size:0.75rem; color:#38bdf8; font-weight:500;">CloudHealth Autonomous Intelligence & Waste Reclamation</div>
             </div>
           </div>
@@ -2400,9 +2477,9 @@
             Directly connected to live CloudHealth FlexReports, tenant CRNs, and consumption billing datasets. Analyze infrastructure spend, projected run-rates, customer anomalies, and waste reclamation.
           </p>
           <div class="welcome-grid">
-            <div class="welcome-card" onclick="sendPrompt('Show our top cloud services across AWS, Azure, GCP, and OCI this month')">
+            <div class="welcome-card" onclick="sendPrompt('Show our top cloud services across AWS, Azure, and GCP this month')">
               <div class="welcome-card-title">Top Cloud Services (All Clouds)</div>
-              <div class="welcome-card-desc">Ranked monthly spend across AWS, Azure, GCP, and OCI with MoM variance.</div>
+              <div class="welcome-card-desc">Ranked monthly spend across AWS, Azure, and GCP with MoM variance.</div>
             </div>
             <div class="welcome-card" id="card-channel-customers" onclick="sendPrompt('Find channel customers and show multi-cloud spend this month')">
               <div class="welcome-card-title">Channel Customers</div>
@@ -2414,15 +2491,15 @@
             </div>
             <div class="welcome-card" onclick="sendPrompt('What are our top cost optimization recommendations across all cloud providers?')">
               <div class="welcome-card-title">Waste Reclamation</div>
-              <div class="welcome-card-desc">Actionable savings opportunities across AWS, Azure, GCP, and OCI.</div>
+              <div class="welcome-card-desc">Actionable savings opportunities across AWS, Azure, and GCP.</div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Quick Chips Bar (Multi-Cloud: AWS, Azure, GCP, OCI) -->
+      <!-- Quick Chips Bar (Multi-Cloud: AWS, Azure, GCP) -->
       <div class="chips-row">
-        <div class="chip" data-detail="Show our top cloud services across AWS, Azure, GCP, and OCI this month" onclick="sendPrompt('Show our top cloud services across AWS, Azure, GCP, and OCI this month')">
+        <div class="chip" data-detail="Show our top cloud services across AWS, Azure, and GCP this month" onclick="sendPrompt('Show our top cloud services across AWS, Azure, and GCP this month')">
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
           <span>All Clouds Spend</span>
         </div>
@@ -2434,9 +2511,7 @@
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
           <span>GCP Spend</span>
         </div>
-        <!-- OCI Spend chip intentionally omitted: this account's CloudHealth data has zero OCI
-             telemetry right now (no dedicated OCI dataset, no rows in the multicloud rollup) —
-             re-add once real OCI support/data exists. -->
+
         <div class="chip" data-detail="Show our top 5 most expensive AWS services this month" onclick="sendPrompt('Show our top 5 most expensive AWS services this month')">
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14c3.5 3 9.5 3.5 14 .5"></path><path d="M16.5 12.5l2.5 2.5-2.5 2.5"></path><path d="M7 8h10M9 4h6"></path></svg>
           <span>AWS Spend</span>
@@ -2454,7 +2529,6 @@
           <span>3-Month Trend</span>
         </div>
       </div>
-      <div class="chip chip-shadow" id="chip-shadow"></div>
 
       <!-- Command Bar Input -->
       <footer>
@@ -2610,6 +2684,22 @@
           </p>
           <div id="local-models-list" class="model-list">
             <div style="font-size: 0.78rem; color: #64748b;">Loading local models...</div>
+          </div>
+        </div>
+
+        <!-- LLMs Already Available in the System Section -->
+        <div id="system-models-section" class="engine-section" style="display: none;">
+          <div class="engine-section-header">
+            <div class="engine-section-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+              <span>LLMs Already Available in the System</span>
+            </div>
+            <span class="engine-pill" style="border-color: rgba(56, 189, 248, 0.3); color: #38bdf8;">Detected On-Device</span>
+          </div>
+          <p class="engine-section-desc">
+            Additional local model weights detected on this machine (Apple MLX cache &amp; local Ollama service). Ready for immediate execution.
+          </p>
+          <div id="system-models-list" class="model-list">
           </div>
         </div>
 
@@ -3219,7 +3309,12 @@
     }
     function hideClearConfirm() {
       const popover = document.getElementById('clear-confirm-popover');
-      if (popover) popover.classList.remove('visible');
+      if (popover) {
+        popover.classList.remove('visible');
+        // Wait for the fade-out to finish before resetting the flip, so the back
+        // (success) face doesn't visibly snap back to the front face mid-fade.
+        setTimeout(() => popover.classList.remove('flipped'), 200);
+      }
       document.removeEventListener('mousedown', _clearConfirmOutsideHandler);
     }
     function clearAllHistories() {
@@ -3231,19 +3326,25 @@
       const rect = btn.getBoundingClientRect();
       popover.style.bottom = `${window.innerHeight - rect.top + 8}px`;
       popover.style.left = `${rect.left}px`;
+      popover.classList.remove('flipped');
       popover.classList.add('visible');
       setTimeout(() => document.addEventListener('mousedown', _clearConfirmOutsideHandler), 0);
     }
     async function confirmClearAllHistories() {
-      hideClearConfirm();
+      // Don't hideClearConfirm() here — flip the same box to its success face in place
+      // instead of closing it and showing feedback somewhere else on the page.
+      document.removeEventListener('mousedown', _clearConfirmOutsideHandler);
+      const popover = document.getElementById('clear-confirm-popover');
       try {
         const res = await fetch('/api/sessions', { method: 'DELETE' });
         if (res.ok) {
           newSession();
           await loadHistoryList();
-          showToast("All chat histories cleared", "info");
+          if (popover) popover.classList.add('flipped');
+          setTimeout(hideClearConfirm, 1800);
         }
       } catch (err) {
+        hideClearConfirm();
         showToast(`Clear failed: ${err.message}`, "error");
       }
     }
@@ -3689,17 +3790,25 @@
             `;
           }
 
-          const tierLabel = m.tier === 'default' ? 'Recommended' : (m.tier === 'smaller' ? 'Lightweight' : (m.tier === 'bigger' ? 'High Capacity' : 'Installed'));
-          const tierTag = m.tier === 'default'
-            ? `<span class="tier-tag tier-tag-rec">Recommended</span>`
-            : `<span class="tier-tag tier-tag-subtle">${tierLabel}</span>`;
+          let tierBadge = '';
+          if (m.tier === 'default') {
+            tierBadge = `<span class="tier-tag tier-tag-rec">Recommended</span>`;
+          } else if (m.tier === 'smaller') {
+            tierBadge = `<span class="tier-tag tier-tag-subtle">Lightweight</span>`;
+          } else if (m.tier === 'bigger') {
+            tierBadge = `<span class="tier-tag tier-tag-subtle">High Capacity</span>`;
+          } else if (m.framework) {
+            tierBadge = `<span class="tier-tag tier-tag-subtle">${escapeHtml(m.framework)}</span>`;
+          } else {
+            tierBadge = `<span class="tier-tag tier-tag-subtle">Installed</span>`;
+          }
 
           return `
             <div class="model-row ${isActive ? 'active' : ''}">
               <div style="flex:1;">
                 <div class="model-meta-row">
                   <span class="model-name">${escapeHtml(m.name)}</span>
-                  ${tierTag}
+                  ${tierBadge}
                   <span class="model-size-badge">${m.size}</span>
                 </div>
                 <div class="model-desc-text">
@@ -3733,6 +3842,17 @@
               : '<span class="status-indicator-pill offline"><span class="indicator-dot"></span>Offline</span>';
           }
           localList.innerHTML = data.local_models.map(m => renderModelCard(m, true)).join('');
+        }
+
+        const sysSection = document.getElementById('system-models-section');
+        const sysList = document.getElementById('system-models-list');
+        if (sysSection && sysList) {
+          if (data.system_models && data.system_models.length > 0) {
+            sysSection.style.display = 'block';
+            sysList.innerHTML = data.system_models.map(m => renderModelCard(m, m.framework === 'Ollama')).join('');
+          } else {
+            sysSection.style.display = 'none';
+          }
         }
 
         const pubList = document.getElementById('public-engines-list');
@@ -4211,7 +4331,7 @@
         .replace(/`([^`]+)`/g, '<code>$1</code>');
     }
 
-    /* ── Multi-Cloud Service & Region Vector Icons (AWS, Azure, GCP, OCI) ── */
+    /* ── Multi-Cloud Service & Region Vector Icons (AWS, Azure, GCP) ── */
     const CLOUD_ICONS = {
       aws: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14c3.5 3 9.5 3.5 14 .5"/><path d="M16.5 12.5l2.5 2.5-2.5 2.5"/><path d="M7 8h10M9 4h6"/></svg>`,
       ec2: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/><path d="M12 10v4"/><path d="M10 12h4"/></svg>`,
@@ -4247,10 +4367,7 @@
       gcp_vertex: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
       gcp_gke: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/></svg>`,
 
-      oci: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="10" ry="6"/></svg>`,
-      oci_compute: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
-      oci_db: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><line x1="12" y1="8" x2="12" y2="22"/></svg>`,
-      oci_storage: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`,
+
 
       region: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
       multicloud: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20M2 12h20"/></svg>`
@@ -4266,7 +4383,7 @@
         return { type: "service", provider: "multicloud", icon: CLOUD_ICONS.multicloud, label: str, title: "Multi-Cloud Infrastructure" };
       }
 
-      // Cloud Regions (AWS, Azure, GCP, OCI)
+      // Cloud Regions (AWS, Azure, GCP)
       const regionRegex = /^(?:us|eu|ap|sa|ca|me|af|il|mx)-(?:east|west|central|south|north|northeast|southeast|southwest|northwest)-\d+[a-z]?$/i;
       if (regionRegex.test(str)) {
         return { type: "region", provider: "region", icon: CLOUD_ICONS.region, label: str, title: "Cloud Region: " + str };
@@ -4437,30 +4554,7 @@
         return { type: "service", provider: "gcp", icon: CLOUD_ICONS.gcp, label: str, title: "Google Cloud Platform (GCP)" };
       }
 
-      // OCI Compute
-      if (/^(?:OCI\s*Compute|Oracle\s*Compute|Compute\s*Cloud|Compute)$/i.test(str)) {
-        return { type: "service", provider: "oci", icon: CLOUD_ICONS.oci_compute, label: str, title: "OCI Compute" };
-      }
 
-      // OCI Autonomous Database
-      if (/^(?:Autonomous\s*Database|Autonomous\s*Data\s*Warehouse|Autonomous\s*Transaction\s*Processing|OCI\s*Database|Oracle\s*Database)$/i.test(str)) {
-        return { type: "service", provider: "oci", icon: CLOUD_ICONS.oci_db, label: str, title: "Oracle Autonomous Database" };
-      }
-
-      // OCI Storage & Volumes
-      if (/^(?:OCI\s*Object\s*Storage|Oracle\s*Storage|OCI\s*Storage|Object\s*Storage|Block\s*Volumes?|OCI\s*Block\s*Volumes?)$/i.test(str)) {
-        return { type: "service", provider: "oci", icon: CLOUD_ICONS.oci_storage, label: str, title: "Oracle Cloud Storage" };
-      }
-
-      // OCI Networking & Containers
-      if (/^(?:Virtual\s*Cloud\s*Network|OCI\s*VCN|VCN|Container\s*Engine\s*for\s*Kubernetes|OKE|OCI\s*OKE)$/i.test(str)) {
-        return { type: "service", provider: "oci", icon: CLOUD_ICONS.oci, label: str, title: "Oracle Cloud Infrastructure Service" };
-      }
-
-      // General OCI
-      if (/^(?:Oracle\s*Cloud|Oracle\s*Cloud\s*Infrastructure|OCI\b)/i.test(str)) {
-        return { type: "service", provider: "oci", icon: CLOUD_ICONS.oci, label: str, title: "Oracle Cloud Infrastructure (OCI)" };
-      }
 
       return null;
     }
@@ -5363,7 +5457,7 @@
         return 'Analyzing Partner & Channel Customer Consumption...';
       }
       if (low.includes('multi-cloud') || low.includes('multicloud') || low.includes('cross-cloud') || (low.includes('azure') && low.includes('gcp')) || low.includes('top cloud') || low.includes('all cloud') || low.includes('all clouds')) {
-        return 'Querying Multi-Cloud FOCUS Datasets (AWS, Azure, GCP, OCI)...';
+        return 'Querying Multi-Cloud FOCUS Datasets (AWS, Azure, GCP)...';
       }
       if (low.includes('azure')) {
         return 'Querying Azure FOCUS & Cost Datasets...';
@@ -5371,9 +5465,7 @@
       if (low.includes('gcp') || low.includes('google')) {
         return 'Querying GCP Cost & Usage Datasets...';
       }
-      if (low.includes('oci') || low.includes('oracle')) {
-        return 'Querying Oracle OCI Cost Datasets...';
-      }
+
       if (low.includes('rds') || low.includes('database') || low.includes('aurora')) {
         return 'Analyzing CloudHealth RDS & Database Telemetry...';
       }
@@ -5531,44 +5623,39 @@
       }
     }
 
-    // ── Chip suggestion auto-expand ──
-    // See the .chip-shadow CSS comment for why this is a fixed-position clone rather than an
-    // in-flow expansion or a separate tooltip box.
-    function showChipExpand(chip) {
-      const text = chip.dataset.detail;
-      const shadow = document.getElementById('chip-shadow');
-      if (!text || !shadow) return;
-
-      const rect = chip.getBoundingClientRect();
-      shadow.innerHTML = chip.innerHTML + `<span class="chip-detail">${escapeHtml(text)}</span>`;
-      shadow.style.top = `${rect.top}px`;
-      shadow.style.height = `${rect.height}px`;
-      shadow.style.padding = getComputedStyle(chip).padding;
-      shadow.style.fontSize = getComputedStyle(chip).fontSize;
-      shadow.style.borderRadius = getComputedStyle(chip).borderRadius;
-
-      const estimatedExpandedWidth = rect.width + 420; // matches .chip-shadow.expanded max-width
-      const growLeft = rect.left + estimatedExpandedWidth > window.innerWidth - 16;
-      if (growLeft) {
-        shadow.style.right = `${window.innerWidth - rect.right}px`;
-        shadow.style.left = 'auto';
-      } else {
-        shadow.style.left = `${rect.left}px`;
-        shadow.style.right = 'auto';
-      }
-
-      shadow.classList.add('visible');
-      // Add .expanded on the next frame so the max-width transition actually animates instead
-      // of jumping straight to its end state.
-      requestAnimationFrame(() => shadow.classList.add('expanded'));
-    }
-    function hideChipExpand() {
-      const shadow = document.getElementById('chip-shadow');
-      if (shadow) shadow.classList.remove('expanded', 'visible');
-    }
-    document.querySelectorAll('.chips-row .chip[data-detail]').forEach(chip => {
-      chip.addEventListener('mouseenter', () => showChipExpand(chip));
-      chip.addEventListener('mouseleave', hideChipExpand);
+    // ── Chip Auto-Scroll ──
+    // Scrolls the container when right-side chips expand to prevent them from clipping.
+    document.querySelectorAll('.chips-row .chip').forEach(chip => {
+      chip.addEventListener('mouseenter', () => {
+        const row = chip.closest('.chips-row');
+        if (!row || !chip.dataset.detail) return;
+        
+        // Estimate the expanded text width (roughly 7px per char + padding)
+        const estimatedExpansion = Math.min(420, chip.dataset.detail.length * 7 + 24);
+        const rect = chip.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        
+        const projectedRight = rect.right + estimatedExpansion;
+        if (projectedRight > rowRect.right) {
+          // Instantly add scrollable space to the row so scrollBy can work immediately
+          row.style.transition = 'none';
+          row.style.paddingRight = `${estimatedExpansion + 32}px`;
+          
+          // Scroll right just enough so the expanded chip fits within the view
+          const scrollAmount = projectedRight - rowRect.right + 32;
+          row.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+        }
+      });
+      
+      chip.addEventListener('mouseleave', () => {
+        const row = chip.closest('.chips-row');
+        if (row) {
+          // Restore CSS transition and remove inline padding, causing the scroll space
+          // to smoothly shrink. The browser automatically smooth-scrolls back to clamp it!
+          row.style.transition = '';
+          row.style.paddingRight = '';
+        }
+      });
     });
 
     // ── Initialize ──
@@ -5579,6 +5666,48 @@
     fetchChannelCustomers();
 
     setInterval(checkHealth, 5000);
+
+    // Check for updates once, 7 s after page load (server background check fires at 5 s)
+    setTimeout(checkForUpdate, 7000);
+  </script>
+
+  <script>
+    // ── Update Check & Apply ─────────────────────────────────────────────────
+
+    async function checkForUpdate() {
+      try {
+        const r = await fetch('/api/update/check');
+        if (!r.ok) return;
+        const data = await r.json();
+        if (data.update_available) {
+          const banner = document.getElementById('update-banner');
+          const msg = document.getElementById('update-banner-msg');
+          msg.textContent = `🚀 Cleo update available (${data.current_sha} → ${data.latest_sha}). ${data.message}`;
+          banner.classList.add('visible');
+        }
+      } catch (e) {
+        // network error — silently ignore, update check is best-effort
+      }
+    }
+
+    async function applyUpdate() {
+      const banner = document.getElementById('update-banner');
+      const msg = document.getElementById('update-banner-msg');
+      msg.textContent = '⏳ Pulling update from GitHub…';
+      try {
+        const r = await fetch('/api/update/apply', { method: 'POST' });
+        const data = await r.json();
+        if (r.ok) {
+          msg.textContent = `✅ ${data.message}`;
+          // Remove the "Update now" button, keep dismiss
+          banner.querySelector('button:first-child').remove();
+        } else {
+          msg.textContent = `❌ Update failed: ${data.detail || 'unknown error'}`;
+        }
+      } catch (e) {
+        msg.textContent = `❌ Update request failed: ${e.message}`;
+      }
+    }
   </script>
 </body>
 </html>

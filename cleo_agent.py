@@ -80,16 +80,12 @@ if os.path.isdir(_venv_lib):
 # ── Local & Public Model Catalogs ──────────────────────────────────────────────
 MLX_MODELS = [
     {"id": "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit", "repo_id": "mlx-community/Qwen2.5-7B-Instruct-4bit", "name": "Qwen2.5-7B-Instruct-4bit (MLX)", "size": "4.3 GB", "tier": "default", "desc": "Default recommended Apple Silicon Metal model (~4.3 GB RAM)"},
-    {"id": "mlx:mlx-community/Qwen2.5-Coder-32B-Instruct-4bit", "repo_id": "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit", "name": "Qwen2.5-Coder-32B-Instruct-4bit (MLX)", "size": "18.4 GB", "tier": "bigger", "desc": "Flagship 32B coding & reasoning model on Apple Silicon (~18.4 GB RAM)"},
     {"id": "mlx:mlx-community/Qwen2.5-3B-Instruct-4bit", "repo_id": "mlx-community/Qwen2.5-3B-Instruct-4bit", "name": "Qwen2.5-3B-Instruct-4bit (MLX)", "size": "1.8 GB", "tier": "smaller", "desc": "Ultra-fast lightweight model for Apple Silicon (~1.8 GB RAM)"},
-    {"id": "mlx:mlx-community/Qwen2.5-14B-Instruct-4bit", "repo_id": "mlx-community/Qwen2.5-14B-Instruct-4bit", "name": "Qwen2.5-14B-Instruct-4bit (MLX)", "size": "8.5 GB", "tier": "bigger", "desc": "High accuracy reasoning on Apple Silicon (~8.5 GB RAM)"},
 ]
 
 LOCAL_MODELS = [
     {"id": "qwen2.5:7b", "name": "Qwen2.5-7B-Instruct-4bit", "size": "4.7 GB", "tier": "default", "desc": "Default recommended local model for FinOps (~5 GB RAM)"},
-    {"id": "qwen2.5:3b", "name": "Qwen2.5-3B-Instruct", "size": "1.9 GB", "tier": "smaller", "desc": "Lightweight & ultra-fast local model (~2 GB RAM)"},
-    {"id": "qwen2.5:14b", "name": "Qwen2.5-14B-Instruct", "size": "9.0 GB", "tier": "bigger", "desc": "High accuracy reasoning & analytics (~10 GB RAM)"},
-    {"id": "qwen2.5:32b", "name": "Qwen2.5-32B-Instruct", "size": "20.0 GB", "tier": "bigger", "desc": "Flagship local reasoning model (~22 GB RAM)"},
+    {"id": "qwen2.5:3b", "name": "Qwen2.5-3B-Instruct-4bit", "size": "1.9 GB", "tier": "smaller", "desc": "Lightweight & ultra-fast local model (~2 GB RAM)"},
 ]
 
 PUBLIC_ENGINES = [
@@ -101,13 +97,9 @@ PUBLIC_ENGINES = [
 AI_ENGINES = {
     "direct": ("Direct FinOps Router", "direct"),
     "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit": ("Qwen2.5-7B-Instruct-4bit (MLX Default)", "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit"),
-    "mlx:mlx-community/Qwen2.5-Coder-32B-Instruct-4bit": ("Qwen2.5-Coder-32B-Instruct-4bit (MLX)", "mlx:mlx-community/Qwen2.5-Coder-32B-Instruct-4bit"),
     "mlx:mlx-community/Qwen2.5-3B-Instruct-4bit": ("Qwen2.5-3B-Instruct-4bit (MLX)", "mlx:mlx-community/Qwen2.5-3B-Instruct-4bit"),
-    "mlx:mlx-community/Qwen2.5-14B-Instruct-4bit": ("Qwen2.5-14B-Instruct-4bit (MLX)", "mlx:mlx-community/Qwen2.5-14B-Instruct-4bit"),
     "ollama:qwen2.5:7b": ("Qwen2.5-7B-Instruct-4bit (Ollama)", "ollama:qwen2.5:7b"),
-    "ollama:qwen2.5:3b": ("Qwen2.5-3B-Instruct (Ollama)", "ollama:qwen2.5:3b"),
-    "ollama:qwen2.5:14b": ("Qwen2.5-14B-Instruct (Ollama)", "ollama:qwen2.5:14b"),
-    "ollama:qwen2.5:32b": ("Qwen2.5-32B-Instruct (Ollama)", "ollama:qwen2.5:32b"),
+    "ollama:qwen2.5:3b": ("Qwen2.5-3B-Instruct-4bit (Ollama)", "ollama:qwen2.5:3b"),
     "gemini": ("Google Gemini", "gemini"),
     "openai": ("OpenAI", "openai"),
     "anthropic": ("Anthropic Claude", "anthropic"),
@@ -233,50 +225,18 @@ class CloudHealthDirectEngine:
                         pass
                 svc_breakdown.sort(key=lambda x: x[1], reverse=True)
 
-                # Fetch managed organizations for customer breakdown
-                orgs = self.list_managed_orgs()
-                cust_breakdown = []
-                # ponytail: Direct OLAP endpoint returns wholesale partner totals; per-tenant channel billing is queried via MCP execute_datasource_query
-                for idx, o in enumerate(orgs):
-                    org_cost = total_month_cost if idx == 0 else 0.0
-                    cust_breakdown.append({
-                        "name": o.get("name"),
-                        "id": o.get("id"),
-                        "cost": org_cost
-                    })
-
-                # Check if query requests filter (e.g. exclude < $1)
-                user_q = (requestInfo.get("userQuery", "") if requestInfo else "") or sql
-                min_thresh = 0.0
-                if "less than" in user_q.lower() or "<" in user_q:
-                    import re
-                    m = re.search(r'(?:less than|<)\s*\$?(\d+(?:\.\d+)?)', user_q.lower())
-                    if m:
-                        min_thresh = float(m.group(1))
-
-                filtered_custs = [c for c in cust_breakdown if c["cost"] >= min_thresh]
-
-                # Format clean Markdown
-                cust_rows = "\n".join([f"| **{c['name']}** | `{c['id']}` | **${c['cost']:.2f}** |" for c in filtered_custs])
                 svc_rows = "\n".join([f"| {s[0]} | ${s[1]:.2f} | {((s[1]/total_month_cost)*100 if total_month_cost else 0):.1f}% |" for s in svc_breakdown[:6]])
 
                 md = (
-                    f"### 📊 CloudHealth Monthly Cost & Customer Breakdown ({month_name})\n\n"
-                    f"**Total Month Spend**: **${total_month_cost:.2f}**\n\n"
-                )
-                if min_thresh > 0:
-                    md += f"> ℹ️ *Filtering active: Excluded customer organizations with total spend < ${min_thresh:.2f}.*\n\n"
-
-                md += (
-                    f"#### 🏢 Breakdown by Channel Customer / Organization\n\n"
-                    f"| Customer / Organization | CRN Identifier | Total Cost ({month_name}) |\n"
-                    f"|:---|:---|:---|\n"
-                    f"{cust_rows}\n\n"
+                    f"### 📊 CloudHealth Monthly Cost Breakdown ({month_name})\n\n"
+                    f"**Total Partner Spend**: **${total_month_cost:.2f}**\n\n"
+                    f"> ⚠️ *Per-tenant cost breakdown is only available when CloudHealth MCP is connected. "
+                    f"This summary shows partner-wide totals from the OLAP engine.*\n\n"
                     f"#### ☁️ Top Cloud Services Breakdown ({month_name})\n\n"
                     f"| Service Category | Cost | % of Total |\n"
                     f"|:---|:---|:---|\n"
                     f"{svc_rows}\n\n"
-                    f"*Data retrieved live from CloudHealth OLAP engine.*"
+                    f"*Source: CloudHealth OLAP engine (partner-level totals only).*"
                 )
 
                 logger.debug(f"[Direct Engine] Formatted cost report generated for {month_name}")
@@ -559,21 +519,61 @@ class MCPClient:
                 d_res = self._direct_engine.execute_datasource_query(**args)
                 res = {"content": [{"type": "text", "text": json.dumps(d_res, indent=2)}]}
             elif name == "list_standard_datasources":
+                # ponytail: MCP offline — return known datasets with explicit caveat; full list (40+) requires live MCP
                 ds = [
-                    {"name": "CLOUDHEALTH_CONSUMPTION_BREAKDOWN", "description": "Detailed billing and consumption breakdown"},
+                    {"name": "MULTICLOUD_FOCUS_COST_AND_USAGE", "description": "AWS + Azure combined. Key columns: provider, ServiceCategory, Month, EffectiveCost, BilledCost"},
+                    {"name": "AWS_FOCUS_COST_AND_USAGE", "description": "AWS only FOCUS dataset. Key columns: ServiceName, Month, EffectiveCost, BilledCost"},
+                    {"name": "AZURE_FOCUS_COST_AND_USAGE", "description": "Azure only FOCUS dataset. Key columns: ServiceName, Month, EffectiveCost, BilledCost"},
+                    {"name": "CLOUDHEALTH_CONSUMPTION_BREAKDOWN", "description": "Partner billing. Key columns: CustomerName, ServiceName, timeInterval_Month, ConfiguredUsageAtPartner"},
+                    {"name": "AWS_COST_ANOMALY", "description": "AWS cost anomaly detection. Key columns: Service, CostImpact, CostImpactPercentage, CostImpactType, Status, Region"},
+                    {"name": "AWS_CUR", "description": "AWS Cost & Usage Report. Key columns: lineItem_ProductCode, lineItem_UnblendedCost, timeInterval_Month, lineItem_UsageAccountId"},
                     {"name": "AWS_ASSET_INVENTORY", "description": "AWS asset inventory including EC2, EBS, RDS"},
-                    {"name": "COST_HISTORY", "description": "Historical cost trends by month and service"}
                 ]
-                res = {"content": [{"type": "text", "text": json.dumps(ds, indent=2)}]}
+                warning = "\n\n⚠️ **CloudHealth MCP is offline** — this is a partial dataset list. Connect CloudHealth for the full catalogue (40+ datasets)."
+                res = {"content": [{"type": "text", "text": json.dumps(ds, indent=2) + warning}]}
             elif name == "get_datasource_metadata":
-                meta = {
-                    "dataset": args.get("dataset", "CLOUDHEALTH_CONSUMPTION_BREAKDOWN"),
-                    "columns": [
+                # ponytail: MCP offline — return known columns for common datasets; always partial; real schema via MCP
+                dataset = args.get("dataset", "CLOUDHEALTH_CONSUMPTION_BREAKDOWN")
+                known_columns = {
+                    "CLOUDHEALTH_CONSUMPTION_BREAKDOWN": [
                         {"name": "timeInterval_Month", "type": "string"},
                         {"name": "CustomerName", "type": "string"},
                         {"name": "ServiceName", "type": "string"},
-                        {"name": "ChannelBillableUsage", "type": "number"}
-                    ]
+                        {"name": "ConfiguredUsageAtPartner", "type": "number"},
+                        {"name": "ChannelBillableUsage", "type": "number"},
+                    ],
+                    "MULTICLOUD_FOCUS_COST_AND_USAGE": [
+                        {"name": "Month", "type": "string"},
+                        {"name": "ServiceCategory", "type": "string"},
+                        {"name": "provider", "type": "string"},
+                        {"name": "EffectiveCost", "type": "number"},
+                        {"name": "BilledCost", "type": "number"},
+                    ],
+                    "AWS_FOCUS_COST_AND_USAGE": [
+                        {"name": "Month", "type": "string"},
+                        {"name": "ServiceName", "type": "string"},
+                        {"name": "EffectiveCost", "type": "number"},
+                        {"name": "BilledCost", "type": "number"},
+                    ],
+                    "AZURE_FOCUS_COST_AND_USAGE": [
+                        {"name": "Month", "type": "string"},
+                        {"name": "ServiceName", "type": "string"},
+                        {"name": "EffectiveCost", "type": "number"},
+                        {"name": "BilledCost", "type": "number"},
+                    ],
+                    "AWS_CUR": [
+                        {"name": "timeInterval_Month", "type": "string"},
+                        {"name": "lineItem_ProductCode", "type": "string"},
+                        {"name": "lineItem_UnblendedCost", "type": "number"},
+                        {"name": "lineItem_UsageAccountId", "type": "string"},
+                        {"name": "lineItem_UsageType", "type": "string"},
+                    ],
+                }
+                columns = known_columns.get(dataset, [{"name": "unknown", "type": "string"}])
+                meta = {
+                    "dataset": dataset,
+                    "columns": columns,
+                    "_warning": "CloudHealth MCP is offline — column list is partial. Connect CloudHealth for the full schema.",
                 }
                 res = {"content": [{"type": "text", "text": json.dumps(meta, indent=2)}]}
             else:
@@ -887,7 +887,7 @@ def _sanitize_finops_bullet_titles(text: str) -> str:
             elif "rds" in title_low and "ec2" in body_low:
                 new_title = "Compute & Database Concentration (EC2 & RDS)"
             # Case 3: Title mentions only AWS but body covers multi-cloud (Azure, GCP, OCI)
-            elif "aws" in title_low and any(w in body_low for w in ["azure", "gcp", "oci", "multi-cloud"]):
+            elif "aws" in title_low and any(w in body_low for w in ["azure", "gcp", "multi-cloud"]):
                 new_title = "Multi-Cloud Infrastructure Distribution"
             # Case 4: Replaces inaccurate 'utilization' on spend-only tables
             if "utilization" in new_title.lower() and ("spend" in body_low or "cost" in body_low):
@@ -1201,7 +1201,7 @@ def _parse_table_data_from_assistant_markdown(text: str) -> Optional[dict]:
             else:
                 cleaned = c.replace("*", "").replace("`", "").strip()
                 if cleaned and not re.match(r"^\d+$", cleaned) and not label:
-                    if cleaned not in ["AWS", "Azure", "GCP", "OCI"]:
+                    if cleaned not in ["AWS", "Azure", "GCP"]:
                         label = cleaned
 
         if label and cost > 0:
@@ -1570,7 +1570,7 @@ def build_system_prompt(tools: list[dict]) -> str:
     )
     return prompt
 
-# ── Multi-Cloud Service Mapping & Extraction (AWS, Azure, GCP, OCI) ────────
+# ── Multi-Cloud Service Mapping & Extraction (AWS, Azure, GCP) ────────
 class ServiceMatch(tuple):
     """Subclass of tuple supporting both 2-item legacy unpacking (pcode, disp) and .provider property."""
     def __new__(cls, pcode, disp, provider):
@@ -1761,22 +1761,7 @@ CLOUD_SERVICES_MAP = {
     "backup and dr": ("Backup and DR Service", "Backup and DR Service", "gcp"),
     "backup and dr service": ("Backup and DR Service", "Backup and DR Service", "gcp"),
 
-    # ── Oracle Cloud (OCI) ──
-    "oci compute": ("OCI Compute", "OCI Compute", "oci"),
-    "oracle compute": ("OCI Compute", "OCI Compute", "oci"),
-    "autonomous database": ("Autonomous Database", "Autonomous Database", "oci"),
-    "oci database": ("Autonomous Database", "OCI Database", "oci"),
-    "oracle database": ("Autonomous Database", "Oracle Database", "oci"),
-    "oci storage": ("OCI Object Storage", "OCI Object Storage", "oci"),
-    "oci object storage": ("OCI Object Storage", "Object Storage", "oci"),
-    "oracle object storage": ("OCI Object Storage", "Object Storage", "oci"),
-    "block volume": ("OCI Block Volumes", "Block Volume", "oci"),
-    "oci block volume": ("OCI Block Volumes", "Block Volume", "oci"),
-    "oci block volumes": ("OCI Block Volumes", "Block Volumes", "oci"),
-    "vcn": ("Virtual Cloud Network", "OCI VCN", "oci"),
-    "oci vcn": ("Virtual Cloud Network", "OCI VCN", "oci"),
-    "oke": ("Container Engine for Kubernetes", "OKE", "oci"),
-    "oci oke": ("Container Engine for Kubernetes", "OKE", "oci")
+
 }
 
 # Backward-compatibility alias
@@ -1789,7 +1774,7 @@ SERVICE_DISPLAY_NAMES = {v[0]: v[1] for v in CLOUD_SERVICES_MAP.values()}
 PCODE_TO_PROVIDER = {v[0]: v[2] for v in CLOUD_SERVICES_MAP.values()}
 
 def _friendly_service_name(pcode: str) -> str:
-    """Real AWS/Azure/GCP/OCI service codes are always mixed/PascalCase (AmazonEC2, Virtual
+    """Real AWS/Azure/GCP service codes are always mixed/PascalCase (AmazonEC2, Virtual
     Machines). AWS Marketplace line items instead carry an opaque lowercase+digit product
     code (e.g. '7zgyu5r4uonlsrnaq20qq63eo') with no reliable way to resolve the real product
     name from CloudHealth's billing data, so label it honestly rather than guessing."""
@@ -1848,14 +1833,14 @@ def extract_requested_service(query_text: str):
     return None, None
 
 def extract_requested_cloud(query_text: str) -> Optional[str]:
-    """Detects if user specifically asks for a cloud provider: aws, azure, gcp, oci, or all/multi-cloud."""
+    """Detects if user specifically asks for a cloud provider: aws, azure, gcp, or all/multi-cloud."""
     low = query_text.lower()
     # If multiple clouds are mentioned in the query, it is multi-cloud
     cloud_mentions = 0
     if "aws" in low or "amazon" in low: cloud_mentions += 1
     if "azure" in low or "microsoft" in low: cloud_mentions += 1
     if "gcp" in low or "google cloud" in low or "google" in low: cloud_mentions += 1
-    if "oci" in low or "oracle cloud" in low or "oracle" in low: cloud_mentions += 1
+    if False and ("oci" in low or "oracle cloud" in low or "oracle" in low): cloud_mentions += 1
 
     if cloud_mentions >= 2:
         return "all"
@@ -1866,7 +1851,7 @@ def extract_requested_cloud(query_text: str) -> Optional[str]:
         return "azure"
     if any(w in low for w in ["gcp", "google cloud", "google"]):
         return "gcp"
-    if any(w in low for w in ["oci", "oracle cloud", "oracle"]):
+    if False and any(w in low for w in ["oci", "oracle cloud", "oracle"]):
         return "oci"
     if any(w in low for w in ["aws", "amazon"]):
         return "aws"
@@ -2052,7 +2037,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         service = "Azure"
     elif any(w in low for w in ["gcp", "google cloud", "bigquery"]):
         service = "GCP"
-    elif any(w in low for w in ["oci", "oracle cloud"]):
+    elif False and any(w in low for w in ["oci", "oracle cloud"]):
         service = "OCI"
 
     # Timeframe detection
@@ -2272,7 +2257,7 @@ class AIClient:
             "Output ONLY a raw JSON object (no markdown, no code fencing, no explanation) with this schema:\n"
             "{\n"
             '  "intent": "fetch_data" | "reformat_previous" | "history_qa" | "finops_recommendations" | "anomalies" | "general_chat",\n'
-            '  "service": "AmazonRDS" | "AmazonEC2" | "AmazonS3" | "Azure" | "GCP" | "OCI" | "all" | null,\n'
+            '  "service": "AmazonRDS" | "AmazonEC2" | "AmazonS3" | "Azure" | "GCP" | "all" | null,\n'
             '  "customer": string or null,\n'
             '  "timeframe_months": integer or null,\n'
             '  "timeframe_days": integer or null,\n'
@@ -2325,6 +2310,32 @@ class AIClient:
         resp = ""
         try:
             resp = self._generate_impl(messages, mcp=mcp)
+            
+            # Universal LLM Insight Pass for any data response lacking insights
+            if "💡 FinOps Insights:" not in resp and "###" in resp and self.engine != "direct":
+                # Ensure it's a data response by checking for tables or lists, ignoring simple text errors
+                if "|" in resp or "-" in resp:
+                    try:
+                        last_msg = messages[-1]["content"] if messages else ""
+                        sys_msg = {
+                            "role": "system",
+                            "content": (
+                                "You are Cleo, an expert FinOps AI. Analyze the following data presentation returned to the user. "
+                                "Provide 2 concise, actionable FinOps insights explaining the data, the biggest cost drivers or anomalies, "
+                                "and exactly what the user can do with this information to optimize spend. "
+                                "CRITICAL 1: If you see massive Month-over-Month spikes or 100% drops in third-party software, SaaS, or security platforms (e.g., WIZ, Reltio, IBM, Datadog, Snowflake), DO NOT classify them as 'discontinued' or 'unexpected usage spikes'. Correctly identify them as likely one-time or annual Cloud Marketplace commitments/renewals. "
+                                "CRITICAL 2: If 'ComputeSavingsPlans', 'SavingsPlans', or 'Reserved Instances' dominate the spend, explicitly identify them as upfront/partial-upfront commitment fees rather than standard run-rate compute usage."
+                            )
+                        }
+                        # Strip raw HTML canvas tags to avoid confusing the LLM and wasting tokens
+                        clean_resp = re.sub(r'<canvas.*?</canvas>', '', resp, flags=re.DOTALL)
+                        user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{clean_resp}"}
+                        llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
+                        if llm_ans:
+                            resp += f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
+                    except Exception as e:
+                        logger.debug(f"[Universal LLM Insights] {e}")
+
             return resp
         finally:
             dur = max(0.01, round(time.perf_counter() - t0, 2))
@@ -2514,7 +2525,7 @@ class AIClient:
         # also require the CURRENT message itself not contain an explicit new timeframe or
         # provider — a redundant, always-on safety net independent of that classification.
         has_new_scope_signal = bool(re.search(r'\d+\s*(months?|days?|years?|weeks?)\b', low)) or any(
-            w in low for w in ["azure", "aws", "gcp", "oci", "last month", "this month", "last year",
+            w in low for w in ["azure", "aws", "gcp", "last month", "this month", "last year",
                                 "this year", "last quarter", "this quarter", "q1", "q2", "q3", "q4"]
         )
         is_pure_reformat = (intent_info.get("intent") == "reformat_previous" or is_chart_transform) and not intent_info.get("is_new_data_fetch") and not has_new_scope_signal
@@ -2854,7 +2865,7 @@ class AIClient:
         is_explicit_telemetry_table = any(w in low for w in [
             "top 5 customer", "top customer", "top channel customer", "highest spend",
             "top aws services", "top services", "top cloud services", "multi-cloud spend",
-            "services across", "across aws", "across all", "across azure", "across gcp", "across oci",
+            "services across", "across aws", "across all", "across azure", "across gcp",
             "show monthly spend", "monthly spend breakdown", "monthly spend trend", "cloud spend trend",
             "waterfall chart", "show as waterfall", "show as bar chart", "bar chart",
             "cost anomalies detected", "detected by cloudhealth", "anomalies detected by cloudhealth",
@@ -2964,7 +2975,7 @@ class AIClient:
                         requested_service, requested_service_disp = pcode, disp
                         break
 
-            # ── Extract or inherit requested cloud provider (aws, azure, gcp, oci, all) ──
+            # ── Extract or inherit requested cloud provider (aws, azure, gcp, all) ──
             active_cloud = extract_requested_cloud(last_msg)
             if not active_cloud and is_followup:
                 for u_msg in reversed(prior_user_msgs):
@@ -4636,7 +4647,7 @@ class AIClient:
 
                 storage_cost = _match_cost(["ebs", "s3", "blob", "disk", "storage"])
                 db_cost = _match_cost(["rds", "sql", "cosmos", "autonomous database", "cloud sql", "spanner"])
-                compute_cost = _match_cost(["ec2", "virtual machine", "compute engine", "oci compute"])
+                compute_cost = _match_cost(["ec2", "virtual machine", "compute engine"])
                 ai_cost = _match_cost(["bedrock", "openai", "vertex ai", "sonnet", "claude", "titan"])
 
                 # Levers are only included when real matched spend exists; savings are a
@@ -4648,7 +4659,7 @@ class AIClient:
                      "Upgrade AWS EBS/RDS `gp2` volumes to `gp3`, remove orphaned/unattached Azure managed disks, and apply Azure/GCP storage lifecycle tiering (Hot→Cool/Archive, Standard→Nearline/Coldline)."),
                     ("Commercial Database Modernization & Licensing Rightsizing", "Database Licensing & Architecture Modernization (Strategic)",
                      "🔴 High", db_cost, 0.30,
-                     "Modernize proprietary commercial database engines (Oracle/SQL Server on RDS) to Amazon Aurora PostgreSQL, rightsize Azure SQL DTU/vCore allocations, and schedule off-peak pausing for OCI Autonomous Database."),
+                     "Modernize proprietary commercial database engines (Oracle/SQL Server on RDS) to Amazon Aurora PostgreSQL, rightsize Azure SQL DTU/vCore allocations."),
                     ("Architecture & Silicon Modernization (ARM64/Graviton)", "Hardware Efficiency & Silicon Modernization (Strategic)",
                      "🟡 Medium", compute_cost, 0.18,
                      "Transition stateless compute to ARM64/Graviton-class instances (AWS Graviton, GCP Tau, Azure Ampere) for better price-performance with minimal application changes."),
@@ -4712,7 +4723,7 @@ class AIClient:
                     f"| Total Projected Savings Opportunity | % of Analyzed Spend |\n",
                     f"|:---|:---|\n",
                     f"| **${total_savings:,.2f} / month** | **{savings_pct:.1f}%** |\n\n",
-                    f"*Source: CloudHealth FOCUS & Multi-Cloud Billing Datasets (AWS CUR, Azure Cost Management, GCP BigQuery, OCI Cost Reports). "
+                    f"*Source: CloudHealth FOCUS & Multi-Cloud Billing Datasets (AWS CUR, Azure Cost Management, GCP BigQuery). "
                     f"Savings figures are estimates based on documented industry-standard optimization percentages applied to live matched spend, not guarantees.*"
                 ]
 
@@ -4730,7 +4741,7 @@ class AIClient:
                 elif provider_key == "gcp":
                     monthly_sql = "SELECT Month AS month, SUM(EffectiveCost) AS cost FROM GCP_FOCUS_COST_AND_USAGE GROUP BY Month ORDER BY month DESC"
                     scope_name = "GCP"
-                elif provider_key == "oci":
+                elif False and provider_key == "oci":
                     monthly_sql = "SELECT Month AS month, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider IN ('OCI', 'Oracle Cloud') GROUP BY Month ORDER BY month DESC"
                     scope_name = "OCI"
                 elif provider_key == "all":
@@ -4865,7 +4876,7 @@ class AIClient:
                     _mentioned_clouds.append("azure")
                 if re.search(r'\b(gcp|google cloud|google)\b', low):
                     _mentioned_clouds.append("gcp")
-                if re.search(r'\b(oci|oracle cloud|oracle)\b', low):
+                if False and re.search(r'\b(oci|oracle cloud|oracle)\b', low):
                     _mentioned_clouds.append("oci")
                 if _mentioned_clouds:
                     # "similar data for X and Y" carries no timeframe of its own — without this,
@@ -5163,7 +5174,13 @@ class AIClient:
                 insight_md = ""
                 if self.engine != "direct":
                     try:
-                        sys_m = {"role": "system", "content": "You are Cleo, an expert FinOps AI. Provide 2–3 concise bullet FinOps insights. Be specific and actionable."}
+                        sys_m = {
+                            "role": "system",
+                            "content": (
+                                "You are Cleo, an expert FinOps AI. Provide 2–3 concise bullet FinOps insights. Be specific and actionable. "
+                                "CRITICAL: If 'ComputeSavingsPlans', 'SavingsPlans', or 'Reserved Instances' dominate the spend, explicitly identify them as upfront/partial-upfront commitment fees rather than standard run-rate compute usage."
+                            )
+                        }
                         svc_context_str = f"Specific Service: {requested_service_disp} ({requested_service})\n" if requested_service else ""
                         user_m = {"role": "user", "content": f"Customer: {named_customer}\n{svc_context_str}Target Month ({target_label}): ${target_cost:,.2f}\nLast Month ({last_ym}): ${lm_cost:,.2f}\nMTD ({current_ym}): ${mtd_cost:,.2f}\nTop Services ({svc_label}): {dict(top_svcs[:5])}"}
                         llm_ans, _ = self._call_active_llm([sys_m, user_m])
@@ -5446,7 +5463,125 @@ class AIClient:
                     f"*Source: CloudHealth FOCUS & Partner Billing Datasets (channel-scoped per customer). Numbers match CloudHealth Partner Portal.*"
                 )
 
-            # 3c. Multi-Cloud & Provider Service Spend Breakdown (AWS, Azure, GCP, OCI)
+            # 3c-1. Service Cost Comparison (MoM)
+            elif any(w in low for w in ["compare", "comparison"]) and (requested_service or active_cloud or any(w in low for w in [
+                "service", "product", "ec2", "s3", "rds", "bigquery", "vertex", "blob",
+                "azure", "gcp", "aws", "cloud", "breakdown"
+            ])):
+                prov_filter = ""
+                cloud_target = active_cloud
+                if not cloud_target:
+                    if "azure" in low: cloud_target = "azure"
+                    elif "gcp" in low or "google" in low: cloud_target = "gcp"
+                    elif "aws" in low: cloud_target = "aws"
+                    else: cloud_target = "multi-cloud"
+                
+                if cloud_target == "azure":
+                    prov_filter = "WHERE provider = 'Azure'"
+                elif cloud_target == "gcp":
+                    prov_filter = "WHERE provider IN ('GCP', 'Google Cloud')"
+                elif cloud_target == "aws":
+                    prov_filter = "WHERE provider = 'AWS'"
+                
+                # Fetch Last Month & Current Month (MTD) in a single query
+                sql = f"SELECT Month AS Month, ServiceCategory AS ServiceCategory, SUM(BilledCost) AS SUM_BilledCost, SUM(EffectiveCost) AS SUM_EffectiveCost FROM MULTICLOUD_FOCUS_COST_AND_USAGE {prov_filter} GROUP BY Month, ServiceCategory ORDER BY ServiceCategory ASC"
+                res_all = mcp.call_tool("execute_datasource_query", {
+                    "queryInput": {
+                        "sqlStatement": sql,
+                        "dataGranularity": "MONTHLY", "limit": -1, 
+                        "timeRange": {"last": 1, "excludeCurrent": False}
+                    },
+                    "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                })
+                
+                lm_data = {}
+                mtd_data = {}
+                try:
+                    raw_csv = json.loads(res_all["content"][0]["text"]).get("csv", "")
+                    for r in csv.DictReader(io.StringIO(raw_csv)):
+                        # Clean and lowercase keys to handle alias dropping/spaces/parens (e.g. "SUM(EffectiveCost)")
+                        row = {str(k).lower().replace("_", "").replace(" ", "").replace("(", "").replace(")", ""): v for k, v in r.items() if k}
+                        
+                        svc = row.get("service") or row.get("servicecategory") or row.get("servicename")
+                        if not svc: continue
+                        
+                        cost_str = row.get("cost") or row.get("sumeffectivecost") or row.get("effectivecost") or 0.0
+                        cost = float(cost_str) if cost_str else 0.0
+                        
+                        prov = row.get("provider") or cloud_target.capitalize()
+                        month_val = str(row.get("month") or "")
+                        
+                        if month_val.startswith(current_ym):
+                            mtd_data[svc] = {"cost": cost, "provider": prov}
+                        elif month_val.startswith(last_ym):
+                            lm_data[svc] = {"cost": cost, "provider": prov}
+                except Exception as e:
+                    logger.debug(f"[MoM Parse Error] {e}")
+                
+                now_dt = datetime.date.today()
+                days_in_month = calendar.monthrange(now_dt.year, now_dt.month)[1]
+                days_elapsed = max(now_dt.day, 1)
+                # Adjust for 24-48h billing latency (today is empty, yesterday is partial)
+                effective_days = max(days_elapsed - 2.0, 1.0)
+                runrate_factor = days_in_month / effective_days
+                
+                all_svcs = set(lm_data.keys()).union(set(mtd_data.keys()))
+                
+                merged_data = []
+                for svc in all_svcs:
+                    lm_cost = lm_data.get(svc, {}).get("cost", 0.0)
+                    mtd_cost = mtd_data.get(svc, {}).get("cost", 0.0)
+                    prov = lm_data.get(svc, {}).get("provider") or mtd_data.get(svc, {}).get("provider", cloud_target.capitalize())
+                    fc_cost = mtd_cost * runrate_factor if mtd_cost > 0 else 0.0
+                    merged_data.append((prov, svc, lm_cost, fc_cost))
+                
+                merged_data.sort(key=lambda x: max(x[2], x[3]), reverse=True)
+                
+                tbl_lines = []
+                for prov, svc, lm_cost, fc_cost in merged_data[:20]:
+                    delta = fc_cost - lm_cost
+                    delta_str = f"+${delta:,.2f}" if delta > 0 else f"-${abs(delta):,.2f}"
+                    if delta > 0: delta_str = f"🔺 {delta_str}"
+                    elif delta < 0: delta_str = f"🔻 {delta_str}"
+                    tbl_lines.append(f"| {prov} | {svc} | ${lm_cost:,.2f} | ${fc_cost:,.2f} | {delta_str} |")
+                
+                if not tbl_lines:
+                    return f"### ☁️ CloudHealth Spend Analysis\n\nNo spend data returned for {cloud_target.upper()} to compare."
+                
+                table = (
+                    f"| Cloud Provider | Service Category | Last Month Cost ({last_ym}) | Forecast This Month ({current_ym}) | Delta (Forecast vs LM) |\n"
+                    f"|:---|:---|:---|:---|:---|\n"
+                    f"{chr(10).join(tbl_lines)}\n"
+                )
+                
+                insight_md = ""
+                if self.engine != "direct":
+                    try:
+                        sys_msg = {
+                            "role": "system",
+                            "content": (
+                                "You are Cleo, an expert FinOps AI. Analyze this Month-over-Month cloud service cost comparison table. "
+                                "Provide 2 concise, actionable FinOps insights explaining the biggest cost drivers, deltas, or anomalies, and what actions to take to optimize. "
+                                "CRITICAL 1: If you see massive Month-over-Month spikes or 100% drops in third-party software, SaaS, or security platforms (e.g., WIZ, Reltio, IBM, Datadog, Snowflake), DO NOT classify them as 'discontinued' or 'unexpected usage spikes'. Correctly identify them as likely one-time or annual Cloud Marketplace commitments/renewals. "
+                                "CRITICAL 2: If 'ComputeSavingsPlans', 'SavingsPlans', or 'Reserved Instances' dominate the spend, explicitly identify them as upfront/partial-upfront commitment fees rather than standard run-rate compute usage."
+                            )
+                        }
+                        user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{table}"}
+                        llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
+                        if llm_ans:
+                            insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
+                    except Exception as e:
+                        logger.debug(f"[LLM Commentary] {e}")
+                
+                target_display = cloud_target.upper() if cloud_target != "multi-cloud" else "Multi-Cloud"
+                return (
+                    f"### 📊 CloudHealth Spend Analysis: {target_display} Services MoM Comparison\n\n"
+                    f"{table}"
+                    f"{insight_md}\n\n"
+                    f"*Source: MULTICLOUD_FOCUS_COST_AND_USAGE. Forecast assumes linear run-rate adjusted for 24-48h billing latency.*"
+                )
+
+            # 3c. Multi-Cloud & Provider Service Spend Breakdown (AWS, Azure, GCP)
             # A "total spend over time" request (MoM variance / waterfall / trend line) with no
             # specific service named belongs in 3d's monthly-trend handler, which already builds
             # those chart types — without this check, e.g. "aws" in the query alone would route
@@ -5456,7 +5591,7 @@ class AIClient:
                 any(w in low for w in ["mom variance", "month over month", "month-over-month"])
             )) and (requested_service or active_cloud or any(w in low for w in [
                 "service", "product", "ec2", "s3", "rds", "bigquery", "vertex", "blob",
-                "azure", "gcp", "oci", "aws", "cloud", "breakdown"
+                "azure", "gcp", "aws", "cloud", "breakdown"
             ])):
                 partial_notice = ""
                 if time_ctx.get("timeframe_days"):
@@ -5515,7 +5650,7 @@ class AIClient:
                         cloud_target = "azure"
                     elif "gcp" in low or "google" in low:
                         cloud_target = "gcp"
-                    elif "oci" in low or "oracle" in low:
+                    elif False and ("oci" in low or "oracle" in low):
                         cloud_target = "oci"
                     elif "aws" in low or "amazon" in low:
                         cloud_target = "aws"
@@ -5527,7 +5662,7 @@ class AIClient:
                     pcode = str(requested_service)
                     pdisp = requested_service_disp or pcode
                     prov = PCODE_TO_PROVIDER.get(pcode, "aws")
-                    prov_disp = "AWS" if prov == "aws" else ("Azure" if prov == "azure" else ("GCP" if prov == "gcp" else ("OCI" if prov == "oci" else "Cloud")))
+                    prov_disp = "AWS" if prov == "aws" else ("Azure" if prov == "azure" else ("GCP" if prov == "gcp" else "Cloud"))
                     
                     svc_cost = 0.0
                     if prov == "aws":
@@ -5547,7 +5682,7 @@ class AIClient:
                         try:
                             res = mcp.call_tool("execute_datasource_query", {
                                 "queryInput": {
-                                    "sqlStatement": f"SELECT provider AS provider, ServiceName AS service, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE ServiceName LIKE '%{pcode}%' GROUP BY provider, ServiceName",
+                                    "sqlStatement": f"SELECT provider AS provider, ServiceName AS service, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE ServiceName LIKE '%{pcode}%' GROUP BY provider, ServiceName ORDER BY cost DESC",
                                     "dataGranularity": svc_granularity, "limit": 1, "timeRange": svc_time_range
                                 },
                                 "requestInfo": {"sourceType": "API", "caller": "mcp"}
@@ -5663,7 +5798,7 @@ class AIClient:
                     svc_hdr = f"CloudHealth Spend Analysis: Top Google Cloud (GCP) Services by Spend — {svc_scope_label}"
 
                 # ── OCI Specific Breakdown ──
-                elif cloud_target == "oci":
+                elif False and cloud_target == "oci":
                     oci_rows = []
                     try:
                         res = mcp.call_tool("execute_datasource_query", {
@@ -5733,7 +5868,7 @@ class AIClient:
                             f"*Source: AWS_CUR via CloudHealth FlexReports.*"
                         )
 
-                    # Use the same FOCUS-table EffectiveCost basis as Azure/GCP/OCI (not AWS_CUR's
+                    # Use the same FOCUS-table EffectiveCost basis as Azure/GCP (not AWS_CUR's
                     # UnblendedCost) so all four providers' totals are apples-to-apples comparable.
                     total_aws = _true_total_cost(
                         "SELECT SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider = 'AWS'"
@@ -5750,7 +5885,7 @@ class AIClient:
                     )
                     svc_hdr = f"CloudHealth Spend Analysis: Top {len(tbl_lines)} AWS Services by Spend — {svc_scope_label}"
 
-                # ── Multi-Cloud / All Clouds Breakdown (AWS + Azure + GCP + OCI) ──
+                # ── Multi-Cloud / All Clouds Breakdown (AWS + Azure + GCP) ──
                 else:
                     # "break it down by cloud/provider" asks for one row per cloud; anything else
                     # (or no qualifier at all) gets the existing per-service breakdown. Without this,
@@ -5892,7 +6027,7 @@ class AIClient:
                         labels = [s for _, s, _ in gcp_rows[:12]]
                         values = [c for _, _, c in gcp_rows[:12]]
                         chart_md = _chart_block(c_kind, f"Top GCP Services by Spend ({svc_scope_label})", labels, values=values, horizontal=False, stacked=True)
-                    elif cloud_target == "oci" and oci_rows:
+                    elif False and cloud_target == "oci" and oci_rows:
                         labels = [s for _, s, _ in oci_rows[:12]]
                         values = [c for _, _, c in oci_rows[:12]]
                         chart_md = _chart_block(c_kind, f"Top OCI Services by Spend ({svc_scope_label})", labels, values=values, horizontal=False, stacked=True)

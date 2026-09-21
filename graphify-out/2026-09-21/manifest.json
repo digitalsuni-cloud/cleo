@@ -30,9 +30,9 @@
     "semantic_hash": ""
   },
   "cleo_server.py": {
-    "mtime": 1789978904.9773762,
-    "seen": 1789979516.752873,
-    "ast_hash": "44bd2e2ff6be3828d47a5d0a4262a9e7",
+    "mtime": 1789977808.5837264,
+    "seen": 1789977841.207977,
+    "ast_hash": "e421212859fb33df378d56673d85d141",
     "semantic_hash": ""
   },
   "workflows/cleo-v2.json": {
@@ -54,9 +54,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1789979497.4974046,
-    "seen": 1789979516.752928,
-    "ast_hash": "b2dac6a7e7af2476982f8c4d48a5c92d",
+    "mtime": 1789458729.7250204,
+    "seen": 1789726715.878426,
+    "ast_hash": "d68f67ffdc89859b2e45761db1ced326",
     "semantic_hash": ""
   },
   "docker-compose.yml": {
@@ -90,9 +90,9 @@
     "semantic_hash": ""
   },
   "cleo_ui.html": {
-    "mtime": 1789979465.134976,
-    "seen": 1789979516.752938,
-    "ast_hash": "06f1989ddcf41d62a551e80772ec8e49",
+    "mtime": 1789976490.0440679,
+    "seen": 1789976513.462778,
+    "ast_hash": "16789a8561baea92edfab4ebc0bcce67",
     "semantic_hash": ""
   },
   "skills-lock.json": {
@@ -669,12 +669,6 @@
     "mtime": 1789930670.612879,
     "seen": 1789976513.4626539,
     "ast_hash": "6a5b67f29b0e1c9ee6514b0b33635927",
-    "semantic_hash": ""
-  },
-  "docs/cleo-icon.svg": {
-    "mtime": 1789979119.6967828,
-    "seen": 1789979516.752942,
-    "ast_hash": "e1bc4a28df9beba52687fe182e699124",
     "semantic_hash": ""
   }
 }

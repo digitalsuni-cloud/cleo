@@ -1,19 +1,52 @@
-# Secrets — never commit real credentials
+# Secrets & Credentials — never commit real credentials
 .env
 .envrc
 credentials.json
 *.pem
 *.key
+*token*.json
+oauth_tokens.json
+mcp_oauth_tokens.json
 
-# Python
-__pycache__/
-*.pyc
-.venv/
-
-# Cleo runtime data
+# Cleo local runtime data & cache
+.cleo/
 graphify-out/cache/
 *.log
+sessions.json
+config.json
+oauth_pending_verifiers.json
+
+# Python environments & build caches
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.coverage
+
+# Local testing, debug & probe scripts (preserved locally for diagnostics)
+debug.py
+fix_*.py
+remove_*.py
+test_*.py
+update_compare.py
+scratch/
+local_tests/
 
 # OS & Local editor/agent files
 .DS_Store
+._*
 *.local.json
+.idea/
+.vscode/
+.claude/
+
+# Agent skills: Only include cloud-finops; exclude local developer/design skills
+.agents/skills/*
+!.agents/skills/cloud-finops/
+

@@ -1,0 +1,20 @@
+<svg width="128" height="128" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="cleoGradTop" x1="24" y1="4" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="cleoGradLeft" x1="6" y1="14" x2="24" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+    <linearGradient id="cleoGradRight" x1="42" y1="14" x2="24" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+  </defs>
+  <polygon points="24,4 42,14 24,24 6,14" fill="url(#cleoGradTop)" opacity="0.95" />
+  <polygon points="6,14 24,24 24,44 6,34" fill="url(#cleoGradLeft)" opacity="0.95" />
+  <polygon points="42,14 42,34 24,44 24,24" fill="url(#cleoGradRight)" opacity="0.95" />
+  <circle cx="24" cy="24" r="3.5" fill="#ffffff" />
+</svg>

@@ -7,37 +7,63 @@ OAuth 2.0 PKCE handshake support for CloudHealth MCP, detailed verbose logging,
 and live diagnostic inspection.
 """
 
-import sys, os
+import sys, os, subprocess
 
-# Auto-switch to project .venv if available and not currently active
-_venv_python = os.path.abspath(os.path.join(os.path.dirname(__file__), ".venv", "bin", "python3"))
-if os.path.exists(_venv_python) and os.path.abspath(sys.executable) != _venv_python:
-    if sys.argv and sys.argv[0] != "-c":
-        os.execv(_venv_python, [_venv_python] + sys.argv)
+_base_dir = os.path.dirname(os.path.abspath(__file__))
+_venv_dir = os.path.join(_base_dir, ".venv")
+_venv_python = os.path.join(_venv_dir, "bin", "python3") if os.name != "nt" else os.path.join(_venv_dir, "Scripts", "python.exe")
 
-import json, uuid, time, argparse, urllib.parse, base64, hashlib
+def _setup_and_activate_venv():
+    # If not running in our venv, we either create it or switch to it.
+    if os.path.abspath(sys.executable) != os.path.abspath(_venv_python):
+        # Create venv if missing
+        if not os.path.exists(_venv_dir):
+            print(f"⚙️  Setting up isolated virtual environment in .venv ...")
+            subprocess.check_call([sys.executable, "-m", "venv", _venv_dir])
+            
+            # Install requirements immediately after creation
+            req_file = os.path.join(_base_dir, "requirements.txt")
+            if os.path.exists(req_file):
+                print(f"📦 Installing required packages from requirements.txt ...")
+                subprocess.check_call([_venv_python, "-m", "pip", "install", "--upgrade", "pip", "-q"])
+                subprocess.check_call([_venv_python, "-m", "pip", "install", "-r", req_file, "-q"])
+            else:
+                print("⚠️  No requirements.txt found. Installing fallback packages...")
+                subprocess.check_call([_venv_python, "-m", "pip", "install", "fastapi", "uvicorn[standard]", "pywebview", "-q"])
+                
+            import platform
+            try:
+                if sys.platform == "darwin" and platform.machine() == "arm64":
+                    print("🍎 Apple Silicon detected. Auto-installing 'mlx-lm' for local Qwen support...")
+                    subprocess.check_call([_venv_python, "-m", "pip", "install", "mlx-lm", "huggingface_hub", "-q"])
+                elif sys.platform == "win32":
+                    print("🪟 Windows detected. Auto-installing 'llama-cpp-python' and 'transformers' for local Qwen support...")
+                    subprocess.check_call([_venv_python, "-m", "pip", "install", "huggingface_hub", "transformers", "llama-cpp-python", "-q"])
+                else:
+                    print("🐧 Linux/x86 detected. Auto-installing local LLM packages for Qwen support...")
+                    subprocess.check_call([_venv_python, "-m", "pip", "install", "huggingface_hub", "transformers", "llama-cpp-python", "-q"])
+            except Exception as e:
+                print(f"⚠️  Note: Could not auto-install optional local LLM packages ({e}). The core server will still start.")
+                
+            print("✅ Setup complete! Starting Cleo Server...\n")
+
+        # Relaunch script using the venv python
+        if sys.argv and sys.argv[0] != "-c":
+            if os.name == "nt":
+                subprocess.check_call([_venv_python] + sys.argv)
+                sys.exit(0)
+            else:
+                os.execv(_venv_python, [_venv_python] + sys.argv)
+
+_setup_and_activate_venv()
+
+import json, uuid, time, argparse, urllib.parse, base64, hashlib, socket, subprocess
 from datetime import datetime, timezone
 from typing import Optional
-
-def _ensure(packages: list[str]):
-    import subprocess
-    for pkg in packages:
-        mod = pkg.split("[")[0].replace("-", "_")
-        try:
-            __import__(mod)
-        except ImportError:
-            try:
-                subprocess.check_call([sys.executable, "-m", "pip", "install", pkg, "-q"])
-            except Exception:
-                try:
-                    subprocess.check_call([sys.executable, "-m", "pip", "install", pkg, "--break-system-packages", "-q"])
-                except Exception:
-                    pass
-
-_ensure(["fastapi", "uvicorn[standard]"])
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 import uvicorn
 
@@ -61,11 +87,24 @@ if os.path.isdir(_venv_lib):
         _sp = os.path.join(_venv_lib, _d, "site-packages")
         if os.path.isdir(_sp) and _sp not in sys.path:
             sys.path.insert(0, _sp)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("=" * 60)
+    logger.info("  🤖  Cleo FinOps Agent Server Started (Verbose Logging Active)")
+    logger.info("=" * 60)
+    if init_mcp_if_authenticated():
+        logger.info(f"✅ CloudHealth Connection Ready ({len(_tools)} tools available)")
+    else:
+        logger.info("ℹ️ CloudHealth authentication needed (use Web GUI to connect)")
+    yield
+    if _mcp:
+        _mcp.close()
 
 app = FastAPI(
     title="Cleo — CloudHealth FinOps AI",
     description="Intelligent FinOps Assistant powered by CloudHealth MCP",
     version="2.1.0",
+    lifespan=lifespan,
 )
 
 # Check for local MLX models on Apple Silicon
@@ -265,6 +304,7 @@ def _save_pending_verifier(state: str, info: dict):
     try:
         with open(VERIFIER_CACHE_FILE, "w") as f:
             json.dump(_oauth_verifiers, f)
+        os.chmod(VERIFIER_CACHE_FILE, 0o600)
     except Exception:
         pass
 
@@ -367,20 +407,7 @@ def init_mcp_if_authenticated() -> bool:
         logger.error(f"❌ [MCP Init Error] {e}")
         return False
 
-@app.on_event("startup")
-async def startup():
-    logger.info("=" * 60)
-    logger.info("  🤖  Cleo FinOps Agent Server Started (Verbose Logging Active)")
-    logger.info("=" * 60)
-    if init_mcp_if_authenticated():
-        logger.info(f"✅ CloudHealth Connection Ready ({len(_tools)} tools available)")
-    else:
-        logger.info("ℹ️ CloudHealth authentication needed (use Web GUI to connect)")
 
-@app.on_event("shutdown")
-async def shutdown():
-    if _mcp:
-        _mcp.close()
 
 # ── Authentication Endpoints ──────────────────────────────────────────────────
 
@@ -616,6 +643,140 @@ def health():
         "last_error": _last_error
     }
 
+# ── n8n Orchestrator Compatibility Endpoints ────────────────────────────────
+@app.api_route("/start", methods=["GET", "POST"])
+def start_model(model: str = "qwen-3b"):
+    """Compatibility endpoint for n8n orchestrator to activate/preload a model."""
+    global _active_engine_key, _engine_label, _ai
+    logger.info(f"🚀 [n8n /start] Requested model: {model}")
+    target_engine = None
+    label = model
+    if "3b" in model.lower():
+        target_engine = "mlx:mlx-community/Qwen2.5-3B-Instruct-4bit"
+        label = "Qwen2.5-3B-Instruct-4bit (MLX)"
+    elif "7b" in model.lower() or "deep" in model.lower():
+        target_engine = "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit"
+        label = "Qwen2.5-7B-Instruct-4bit (MLX)"
+    elif model.startswith("mlx:") or model.startswith("ollama:") or model in ("gemini", "openai", "anthropic"):
+        target_engine = model
+        label = model
+
+    if target_engine and target_engine != _active_engine_key:
+        _active_engine_key = target_engine
+        _engine_label = label
+        cfg = _load_config()
+        _ai = AIClient(_active_engine_key, cfg, tools=_tools)
+        logger.info(f"🔄 [n8n /start] Switched active engine to {_engine_label}")
+
+    return {"status": "ok", "model": model, "active_engine": _active_engine_key}
+
+@app.api_route("/stop", methods=["GET", "POST"])
+def stop_model(model: str = "qwen-3b"):
+    """Compatibility endpoint for n8n orchestrator to stop/release a model."""
+    logger.info(f"🛑 [n8n /stop] Requested stop for model: {model}")
+    return {"status": "ok", "model": model, "stopped": True}
+
+@app.api_route("/stop_all", methods=["GET", "POST"])
+def stop_all_models():
+    """Compatibility endpoint for n8n orchestrator to stop/release all models."""
+    logger.info("🛑 [n8n /stop_all] Requested stop for all models")
+    return {"status": "ok", "stopped": True}
+
+@app.api_route("/mcp", methods=["GET", "POST"])
+async def mcp_endpoint(request: Request):
+    """
+    Model Context Protocol (MCP) JSON-RPC 2.0 and SSE endpoint for external orchestrators (e.g. n8n).
+    """
+    global _mcp, _tools
+    if not _mcp or not _tools:
+        init_mcp_if_authenticated()
+
+    if request.method == "GET":
+        accept = request.headers.get("accept", "")
+        if "text/event-stream" in accept:
+            async def event_generator():
+                yield "event: endpoint\ndata: /mcp\n\n"
+            return StreamingResponse(event_generator(), media_type="text/event-stream")
+        return {"status": "ok", "mcp": "ready" if _mcp else "unauthenticated", "tools_count": len(_tools)}
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": None})
+
+    method = body.get("method")
+    req_id = body.get("id")
+    params = body.get("params", {})
+
+    logger.info(f"🔌 [n8n /mcp] JSON-RPC method: {method} (id: {req_id})")
+
+    if method == "initialize":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {"listChanged": False}
+                },
+                "serverInfo": {
+                    "name": "cleo-cloudhealth-mcp",
+                    "version": "2.1.0"
+                }
+            }
+        }
+    elif method in ("notifications/initialized", "initialized"):
+        return Response(status_code=204)
+    elif method == "ping":
+        return {"jsonrpc": "2.0", "id": req_id, "result": {}}
+    elif method == "tools/list":
+        tools_to_return = _tools if _tools else STANDARD_CH_TOOLS
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "tools": tools_to_return
+            }
+        }
+    elif method == "tools/call":
+        tool_name = params.get("name")
+        tool_args = params.get("arguments", {})
+        if not tool_name:
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32602, "message": "Missing tool name in params"}
+            }
+        try:
+            if _mcp:
+                res = _mcp.call_tool(tool_name, tool_args)
+            else:
+                res = {
+                    "content": [{"type": "text", "text": "CloudHealth MCP is not authenticated. Please authenticate via the Cleo Web UI."}],
+                    "isError": True
+                }
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": res
+            }
+        except Exception as e:
+            logger.error(f"❌ [n8n /mcp] Tool call error for {tool_name}: {e}")
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [{"type": "text", "text": f"Error executing tool '{tool_name}': {str(e)}"}],
+                    "isError": True
+                }
+            }
+    else:
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": {"code": -32601, "message": f"Method not found: {method}"}
+        }
+
 @app.get("/api/tools")
 def get_tools():
     return {"tools": _tools}
@@ -652,7 +813,7 @@ def get_channel_customers():
 def list_engines():
     cfg = _load_config()
     
-    # 1. Local MLX Models (Apple Silicon)
+    # 1. Curated Local MLX Models (Apple Silicon)
     mlx_installed = get_installed_mlx_models()
     installed_mlx_map = {m["repo_id"]: m for m in mlx_installed}
     
@@ -674,24 +835,7 @@ def list_engines():
             "download_progress": 100 if is_inst else dl_info.get("progress", 0)
         })
 
-    # Add custom installed MLX models
-    catalog_repos = {mm["repo_id"] for mm in MLX_MODELS}
-    for repo_id, meta in installed_mlx_map.items():
-        if repo_id not in catalog_repos:
-            short_name = repo_id.split("/")[-1]
-            mlx_list.append({
-                "id": f"mlx:{repo_id}",
-                "model_id": repo_id,
-                "name": f"{short_name} (MLX)",
-                "size": meta.get("size", "Local"),
-                "tier": "installed",
-                "desc": "Custom installed Apple Silicon model in cache",
-                "downloaded": True,
-                "download_status": "completed",
-                "download_progress": 100
-            })
-
-    # 2. Local Ollama Models
+    # 2. Curated Local Ollama Models
     ollama_models = get_installed_ollama_models()
     ollama_running = bool(ollama_models) or _check_ollama_alive()
     installed_names = [m.get("name", "") for m in ollama_models]
@@ -709,27 +853,55 @@ def list_engines():
             "tier": m["tier"],
             "desc": m["desc"],
             "downloaded": is_downloaded,
-            "download_status": dl_info.get("status", ""),
-            "download_progress": dl_info.get("progress", 0)
+            "download_status": "completed" if is_downloaded else dl_info.get("status", ""),
+            "download_progress": 100 if is_downloaded else dl_info.get("progress", 0)
         })
 
-    for om in ollama_models:
-        name = om.get("name", "")
-        if not any(lm["id"] in name for lm in LOCAL_MODELS):
-            size_gb = round(om.get("size", 0) / (1024**3), 1)
-            local_list.append({
-                "id": f"ollama:{name}",
-                "model_id": name,
-                "name": name,
-                "size": f"{size_gb} GB" if size_gb > 0 else "Local",
+    # 3. LLMs Already Available in the System (Other detected MLX & Ollama models)
+    system_models = []
+
+    # Detected MLX models in cache not in curated catalog
+    catalog_mlx_repos = {mm["repo_id"] for mm in MLX_MODELS}
+    for repo_id, meta in installed_mlx_map.items():
+        if repo_id not in catalog_mlx_repos:
+            short_name = repo_id.split("/")[-1]
+            system_models.append({
+                "id": f"mlx:{repo_id}",
+                "model_id": repo_id,
+                "name": f"{short_name} (MLX)",
+                "framework": "MLX",
+                "size": meta.get("size", "Local"),
                 "tier": "installed",
-                "desc": "Custom installed local model",
+                "desc": f"Detected in Apple Silicon cache: {repo_id}",
                 "downloaded": True,
                 "download_status": "completed",
                 "download_progress": 100
             })
 
-    # 3. Public Cloud LLMs
+    # Detected Ollama models in daemon not in curated catalog
+    catalog_ollama_ids = {lm["id"] for lm in LOCAL_MODELS}
+    for om in ollama_models:
+        name = om.get("name", "")
+        is_curated = any(name == cid or name.startswith(cid + ":") or name.startswith(cid) for cid in catalog_ollama_ids)
+        if not is_curated and name:
+            size_gb = round(om.get("size", 0) / (1024**3), 1)
+            details = om.get("details", {})
+            param_size = details.get("parameter_size", "")
+            desc_extra = f" • {param_size}" if param_size else ""
+            system_models.append({
+                "id": f"ollama:{name}",
+                "model_id": name,
+                "name": f"{name} (Ollama)",
+                "framework": "Ollama",
+                "size": f"{size_gb} GB" if size_gb > 0 else "Local",
+                "tier": "installed",
+                "desc": f"Detected in local Ollama service{desc_extra}",
+                "downloaded": True,
+                "download_status": "completed",
+                "download_progress": 100
+            })
+
+    # 4. Public Cloud LLMs
     public_list = []
     for pe in PUBLIC_ENGINES:
         token = cfg.get(pe["env_var"]) or os.environ.get(pe["env_var"], "")
@@ -751,6 +923,7 @@ def list_engines():
         "mlx_models": mlx_list,
         "ollama_running": ollama_running,
         "local_models": local_list,
+        "system_models": system_models,
         "public_engines": public_list,
         "direct_engine": {
             "id": "direct",
@@ -1129,6 +1302,106 @@ def delete_memory_entry(entry_id: str):
         raise HTTPException(status_code=404, detail="Entry not found")
     return {"status": "deleted"}
 
+# ── Auto-Update via GitHub ────────────────────────────────────────────────────
+
+CLEO_GITHUB_REPO = os.environ.get("CLEO_GITHUB_REPO", "yourorg/cleo")
+_CLEO_ROOT       = os.path.dirname(os.path.abspath(__file__))
+_update_state: dict = {"status": "idle", "latest_sha": "", "current_sha": "", "update_available": False, "message": ""}
+
+def _git_sha() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=_CLEO_ROOT, stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        return ""
+
+def _check_update_bg():
+    """Background: compare local HEAD to GitHub latest commit SHA on main."""
+    global _update_state
+    try:
+        current = _git_sha()
+        if not current:
+            _update_state = {"status": "unavailable", "latest_sha": "", "current_sha": "", "update_available": False, "message": "Not a git repository"}
+            return
+
+        api_url = f"https://api.github.com/repos/{CLEO_GITHUB_REPO}/commits/main"
+        req = urllib.request.Request(api_url, headers={"Accept": "application/vnd.github+json", "User-Agent": "Cleo-FinOps/2.1"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+        latest = data.get("sha", "")
+        if not latest:
+            _update_state = {"status": "error", "latest_sha": "", "current_sha": current, "update_available": False, "message": "Could not parse GitHub response"}
+            return
+
+        update_available = latest != current
+        _update_state = {
+            "status": "ok",
+            "current_sha": current[:7],
+            "latest_sha": latest[:7],
+            "update_available": update_available,
+            "message": "Update available — click 'Update' to pull the latest code." if update_available else "Cleo is up to date.",
+        }
+        logger.info(f"[Update] current={current[:7]} latest={latest[:7]} update_available={update_available}")
+    except Exception as e:
+        _update_state = {"status": "error", "latest_sha": "", "current_sha": _git_sha()[:7], "update_available": False, "message": str(e)}
+        logger.warning(f"[Update] Check failed: {e}")
+
+@app.get("/api/update/check")
+def check_update():
+    """Check GitHub for a newer version of Cleo."""
+    # Run synchronously so UI gets a fresh result on demand; background check runs at startup too.
+    _check_update_bg()
+    return _update_state
+
+@app.post("/api/update/apply")
+def apply_update():
+    """Pull the latest code from GitHub and restart."""
+    current_sha = _git_sha()
+    if not current_sha:
+        raise HTTPException(status_code=400, detail="Not a git repository — manual update required.")
+    try:
+        result = subprocess.run(
+            ["git", "pull", "--ff-only"],
+            cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=60
+        )
+        if result.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"git pull failed: {result.stderr.strip()}")
+        new_sha = _git_sha()
+        logger.info(f"[Update] Applied: {current_sha[:7]} → {new_sha[:7]}")
+        return {
+            "status": "updated",
+            "from_sha": current_sha[:7],
+            "to_sha": new_sha[:7],
+            "output": result.stdout.strip(),
+            "message": "Update applied. Restart Cleo (Ctrl+C → python3 cleo_server.py) to load the new version.",
+        }
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="git pull timed out after 60 s.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ── Port Fallback ─────────────────────────────────────────────────────────────
+
+_PORT_CANDIDATES = [8080, 8081, 8082, 8083, 8090, 8888, 9090, 9191]
+
+def _find_free_port(preferred: int = 8080) -> int:
+    """Return `preferred` if it's free, otherwise the first free candidate."""
+    for port in [preferred] + [p for p in _PORT_CANDIDATES if p != preferred]:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    # Last resort: let the OS pick
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
 # ── GUI Dashboard ─────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
@@ -1141,4 +1414,19 @@ def serve_gui():
 
 if __name__ == "__main__":
     _uvicorn_log_level = "debug" if os.environ.get("CLEO_VERBOSE", "").lower() in ("1", "true", "yes") else "info"
-    uvicorn.run("cleo_server:app", host="127.0.0.1", port=8080, reload=True, log_level=_uvicorn_log_level)
+
+    # Port resolution
+    _preferred_port = int(os.environ.get("PORT", 8080))
+    _port = _find_free_port(_preferred_port)
+    if _port != _preferred_port:
+        print(f"⚠️  Port {_preferred_port} is in use. Starting Cleo on port {_port} instead.")
+    print(f"🌐 Cleo Web UI → http://127.0.0.1:{_port}")
+
+    # Background update check — non-blocking, fires 5 s after startup
+    def _delayed_update_check():
+        time.sleep(5)
+        _check_update_bg()
+    threading.Thread(target=_delayed_update_check, daemon=True, name="update-check").start()
+
+    uvicorn.run("cleo_server:app", host="127.0.0.1", port=_port, reload=False, log_level=_uvicorn_log_level)
+
