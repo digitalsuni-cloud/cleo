@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import sys
 import json
@@ -356,7 +357,7 @@ class MCPClient:
             self._query_cache.clear()
             logger.info("[MCP Cache] Cache cleared.")
 
-    def _http_request(self, method: str, params: dict | None = None) -> dict:
+    def _http_request(self, method: str, params: Optional[dict] = None) -> dict:
         with self._lock:
             req_id = self._next_id
             self._next_id += 1
@@ -617,7 +618,7 @@ class MCPClient:
 
 # ── AI Client & Agent Turn ───────────────────────────────────────────────────
 
-def _detect_chart_type(low: str) -> str | None:
+def _detect_chart_type(low: str) -> Optional[str]:
     """Return chart type string if user asked for a chart, else None."""
     # Variance chart → waterfall (must check before generic "waterfall" keyword)
     if any(w in low for w in ["variance chart", "waterfall chart", "bridge chart"]):
@@ -6130,7 +6131,7 @@ class AIClient:
 def run_agent_turn(mcp: MCPClient, ai: AIClient, messages: list[dict]) -> str:
     return ai.generate(messages, mcp=mcp)
 
-def get_access_token(interactive: bool = False) -> str | None:
+def get_access_token(interactive: bool = False) -> Optional[str]:
     mcp_data = auth_helper.load_token()
     if mcp_data:
         if MCP_RESOURCE in mcp_data:
