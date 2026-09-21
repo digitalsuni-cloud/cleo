@@ -6,8 +6,7 @@
 # anthropic>=0.34.0          # Anthropic Claude Sonnet
 # google-genai>=1.0.0        # Google Gemini (Optional)
 
-# GUI & Server Mode
+# Web Server Mode
 fastapi>=0.112.0
 uvicorn[standard]>=0.30.0
-pywebview>=5.0.0
 zstandard>=0.22.0

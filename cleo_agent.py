@@ -6232,3 +6232,60 @@ def get_access_token(interactive: bool = False) -> Optional[str]:
         if mcp_data:
             return mcp_data["token"]["access_token"]
     return None
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Cleo FinOps Agent — Terminal CLI",
+        epilog=(
+            "Examples:\n"
+            "  python3 cleo_agent.py \"Show top 5 AWS services\"\n"
+            "  python3 cleo_agent.py --engine gemini \"List all organizations\"\n"
+            "  python3 cleo_agent.py                          # Interactive REPL mode\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument("query", nargs="*", help="FinOps query to ask Cleo (omit for interactive CLI mode)")
+    parser.add_argument("--engine", default=None, help="AI engine (direct, mlx:..., ollama:..., gemini, openai, anthropic)")
+    args = parser.parse_args()
+
+    cfg = _load_config()
+    engine_key = args.engine or os.environ.get("AI_ENGINE") or cfg.get("ai_engine", "direct")
+
+    token = get_access_token(interactive=False)
+    if not token and sys.stdin.isatty():
+        print("🔐 CloudHealth session not found. Starting OAuth authentication in browser...")
+        token = get_access_token(interactive=True)
+
+    mcp = MCPClient(token, token_refresher=lambda: get_access_token(interactive=False)) if token else None
+    ai = AIClient(engine_key, cfg, tools=STANDARD_CH_TOOLS)
+
+    prompt = " ".join(args.query).strip()
+    if prompt:
+        print(f"🤖 [Cleo FinOps Agent] Engine: {engine_key}")
+        print(f"💬 Query: {prompt}\n")
+        reply = run_agent_turn(mcp, ai, [{"role": "user", "content": prompt}])
+        print(reply)
+    else:
+        print("🚀 Cleo FinOps Agent CLI")
+        print(f"🤖 Active Engine: {engine_key}")
+        if not token:
+            print("⚠️  No CloudHealth token found. Operating in offline / advisory mode.")
+        print("Type your FinOps query or 'exit' / 'quit' to exit.\n")
+        history = []
+        while True:
+            try:
+                user_input = input("cleo> ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print("\nGoodbye!")
+                break
+            if not user_input:
+                continue
+            if user_input.lower() in ("exit", "quit", "q"):
+                break
+            history.append({"role": "user", "content": user_input})
+            reply = run_agent_turn(mcp, ai, history)
+            history.append({"role": "assistant", "content": reply})
+            print(f"\n{reply}\n")
+

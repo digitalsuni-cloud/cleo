@@ -244,7 +244,7 @@ docker compose down
 
 ## 🔄 Auto-Updates
 
-Cleo automatically checks GitHub for the latest release **every time you start or restart** (`python3 cleo_server.py` or `python3 cleo_gui.py`). If a newer commit is detected, Cleo automatically fetches the latest code (using `git pull` or `curl` fallback), updates itself, and reloads seamlessly.
+Cleo automatically checks GitHub for the latest release **every time you start or restart** (`python3 cleo_server.py`). If a newer commit is detected, Cleo automatically fetches the latest code (using `git pull` or `curl` fallback), updates itself, and reloads seamlessly.
 
 You can also update on-demand from the Web UI: if a newer version is released while Cleo is already running, an update banner appears at the top:
 
