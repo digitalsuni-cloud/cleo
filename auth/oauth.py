@@ -43,8 +43,31 @@ _load_dotenv_safe()
 ANTIGRAVITY_CLIENT_ID     = "https://antigravity.google/oauth/client-metadata.json"
 ANTIGRAVITY_REDIRECT_URI  = "https://antigravity.google/oauth-callback"
 
-LOCAL_CLIENT_ID           = os.environ.get("CLOUDHEALTH_CLIENT_ID", "BQf6HFF5XNHyCYDvW6zXN_JnZvNrq4uSQrLkbbG9sbM")
-LOCAL_CLIENT_SECRET       = os.environ.get("CLOUDHEALTH_CLIENT_SECRET", "")
+CLIENT_CREDENTIALS_FILE   = os.path.expanduser("~/.cleo/client_credentials.json")
+
+def _load_cached_client() -> dict:
+    if os.path.exists(CLIENT_CREDENTIALS_FILE):
+        try:
+            with open(CLIENT_CREDENTIALS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+_cached_client = _load_cached_client()
+
+# Default public PKCE client registered on CloudHealth via RFC 7591 (token_endpoint_auth_method: none)
+# Pure PKCE - zero client secret required, perfectly safe for open source / public repositories.
+DEFAULT_PUBLIC_CLIENT_ID  = "onIzlIo9LXYzTB0fYaJ4XRBl_QPbjXBY9n6SqiLRqHI"
+
+LOCAL_CLIENT_ID           = os.environ.get(
+    "CLOUDHEALTH_CLIENT_ID",
+    _cached_client.get("client_id", DEFAULT_PUBLIC_CLIENT_ID)
+)
+LOCAL_CLIENT_SECRET       = os.environ.get(
+    "CLOUDHEALTH_CLIENT_SECRET",
+    _cached_client.get("client_secret", "")
+)
 LOCAL_REDIRECT_URI        = os.environ.get("CLOUDHEALTH_REDIRECT_URI", "http://127.0.0.1:8080/oauth-callback")
 
 # Default to Cleo's local independent OAuth client (no third-party/Antigravity redirect needed)
@@ -94,19 +117,22 @@ class OAuth2Helper:
     @classmethod
     def register_client(cls, 
                         registration_url: str = "https://apps.cloudhealthtech.com/oauth2/register", 
-                        redirect_uris: list = None) -> Optional[Dict]:
-        """Dynamically registers a new confidential OAuth client with CloudHealth via RFC 7591."""
+                        redirect_uris: list = None,
+                        auth_method: str = "none") -> Optional[Dict]:
+        """Dynamically registers a new OAuth client with CloudHealth via RFC 7591."""
         if redirect_uris is None:
             redirect_uris = [
+                LOCAL_REDIRECT_URI,
                 "http://127.0.0.1:8080/oauth-callback", 
                 "http://localhost:8080/oauth-callback"
             ]
+        deduped_uris = list(dict.fromkeys(redirect_uris))
         payload = {
             "client_name": "Cleo FinOps Agent",
-            "redirect_uris": redirect_uris,
+            "redirect_uris": deduped_uris,
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],
-            "token_endpoint_auth_method": "client_secret_post",
+            "token_endpoint_auth_method": auth_method,
             "scope": DEFAULT_SCOPES
         }
         logger.debug(f"[RFC 7591 Register] POST {registration_url} Payload: {payload}")
@@ -123,7 +149,15 @@ class OAuth2Helper:
             with urllib.request.urlopen(req, timeout=10.0) as resp:
                 body = resp.read().decode("utf-8")
                 logger.debug(f"[RFC 7591 Register] Status: {resp.status}, Response: {body}")
-                return json.loads(body)
+                data = json.loads(body)
+                try:
+                    os.makedirs(os.path.dirname(CLIENT_CREDENTIALS_FILE), exist_ok=True)
+                    with open(CLIENT_CREDENTIALS_FILE, "w") as f:
+                        json.dump(data, f, indent=2)
+                    os.chmod(CLIENT_CREDENTIALS_FILE, 0o600)
+                except Exception:
+                    pass
+                return data
         except urllib.error.HTTPError as e:
             err = e.read().decode('utf-8', 'ignore') if hasattr(e, 'read') else str(e)
             logger.error(f"[RFC 7591 Register Failed] HTTP {e.code}: {err}")
@@ -236,6 +270,9 @@ class OAuth2Helper:
             
         logger.info("[OAuth Refresh] Refreshing CloudHealth access token...")
         client_id = mcp_data.get("client_id", self.client_id)
+        if client_id == "BQf6HFF5XNHyCYDvW6zXN_JnZvNrq4uSQrLkbbG9sbM" and not self.client_secret and not LOCAL_CLIENT_SECRET:
+            client_id = DEFAULT_PUBLIC_CLIENT_ID
+
         payload = {
             "grant_type":    "refresh_token",
             "refresh_token": refresh_token_str,
@@ -278,6 +315,9 @@ class OAuth2Helper:
                 code = qs["code"][0].strip()
 
         used_client_id = client_id or self.client_id or LOCAL_CLIENT_ID
+        if used_client_id == "BQf6HFF5XNHyCYDvW6zXN_JnZvNrq4uSQrLkbbG9sbM" and not self.client_secret and not LOCAL_CLIENT_SECRET:
+            used_client_id = DEFAULT_PUBLIC_CLIENT_ID
+
         used_redirect_uri = redirect_uri or (
             ANTIGRAVITY_REDIRECT_URI if used_client_id == ANTIGRAVITY_CLIENT_ID else LOCAL_REDIRECT_URI
         )
