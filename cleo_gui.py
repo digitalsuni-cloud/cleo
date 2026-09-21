@@ -35,7 +35,9 @@ def is_port_in_use(port: int) -> bool:
 def start_server():
     import uvicorn
     from cleo_server import app
-    config = uvicorn.Config(app, host=HOST, port=PORT, log_level="info")
+    _default_level = os.environ.get("CLEO_LOG_LEVEL", "warning").lower()
+    _log_level = "debug" if os.environ.get("CLEO_VERBOSE", "").lower() in ("1", "true", "yes") else _default_level
+    config = uvicorn.Config(app, host=HOST, port=PORT, log_level=_log_level)
     server = uvicorn.Server(config)
     server.run()
 
@@ -44,6 +46,13 @@ def main():
     parser.add_argument("--browser", "-b", action="store_true", help="Launch in web browser instead of native desktop window")
     parser.add_argument("--port", type=int, default=PORT, help=f"Port to run on (default: {PORT})")
     args = parser.parse_args()
+
+    # 0. Check for updates on startup before starting backend or GUI
+    try:
+        from cleo_server import _auto_update_on_startup
+        _auto_update_on_startup()
+    except Exception:
+        pass
 
     port = args.port
     gui_url = f"http://{HOST}:{port}"

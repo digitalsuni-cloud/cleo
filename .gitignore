@@ -15,6 +15,7 @@ graphify-out/
 sessions.json
 config.json
 oauth_pending_verifiers.json
+.version
 
 # Python environments & build caches
 __pycache__/

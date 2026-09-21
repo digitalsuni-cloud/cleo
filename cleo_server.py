@@ -1904,6 +1904,68 @@ def _find_free_port(preferred: int = 8080) -> int:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
 
+def _auto_update_on_startup():
+    """Checks remote GitHub repo on startup and automatically fetches & applies updates."""
+    if os.environ.get("CLEO_NO_UPDATE", "").lower() in ("1", "true", "yes") or "--no-update" in sys.argv:
+        return
+
+    if os.environ.get("_CLEO_RESTARTED_FROM_UPDATE") == "1":
+        os.environ.pop("_CLEO_RESTARTED_FROM_UPDATE", None)
+        return
+
+    try:
+        current_sha = _git_sha()
+        latest_sha = _get_latest_remote_sha()
+        if not latest_sha:
+            return
+
+        if current_sha and current_sha[:7] == latest_sha[:7]:
+            return
+
+        print(f"🔄 [Auto-Update] Newer version available ({current_sha[:7] if current_sha else 'unknown'} → {latest_sha[:7]}). Fetching latest code...")
+
+        git_ok = False
+        if os.path.exists(os.path.join(_CLEO_ROOT, ".git")):
+            try:
+                res = subprocess.run(["git", "pull", "--ff-only"], cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=30)
+                if res.returncode == 0:
+                    git_ok = True
+                else:
+                    res2 = subprocess.run(["git", "pull", "origin", "main"], cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=30)
+                    if res2.returncode == 0:
+                        git_ok = True
+                    else:
+                        subprocess.run(["git", "fetch", "origin", "main"], cwd=_CLEO_ROOT, capture_output=True, timeout=30)
+                        res3 = subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=_CLEO_ROOT, capture_output=True, timeout=15)
+                        if res3.returncode == 0:
+                            git_ok = True
+            except Exception:
+                pass
+
+        if not git_ok:
+            ok, msg = _apply_curl_update()
+            if not ok:
+                print(f"⚠️  [Auto-Update] Could not apply update: {msg}")
+                return
+
+        new_sha = _git_sha() or latest_sha
+        try:
+            with open(os.path.join(_CLEO_ROOT, ".version"), "w", encoding="utf-8") as f:
+                f.write(new_sha + "\n")
+        except Exception:
+            pass
+
+        print(f"🚀 [Auto-Update] Successfully updated to {new_sha[:7]}! Reloading Cleo...")
+        env = os.environ.copy()
+        env["_CLEO_RESTARTED_FROM_UPDATE"] = "1"
+        if os.name == "nt":
+            subprocess.Popen([sys.executable] + sys.argv, env=env)
+            sys.exit(0)
+        else:
+            os.execve(sys.executable, [sys.executable] + sys.argv, env)
+    except Exception as e:
+        print(f"⚠️  [Auto-Update] Note: update check skipped ({e}). Continuing startup...")
+
 # ── GUI Dashboard ─────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
@@ -1915,7 +1977,10 @@ def serve_gui():
     return HTMLResponse(content="<h1>Cleo UI template not found</h1>", status_code=500)
 
 if __name__ == "__main__":
-    _uvicorn_log_level = "debug" if os.environ.get("CLEO_VERBOSE", "").lower() in ("1", "true", "yes") else "info"
+    _auto_update_on_startup()
+
+    _default_level = os.environ.get("CLEO_LOG_LEVEL", "warning").lower()
+    _uvicorn_log_level = "debug" if os.environ.get("CLEO_VERBOSE", "").lower() in ("1", "true", "yes") else _default_level
 
     # Port resolution
     _preferred_port = int(os.environ.get("PORT", 8080))
