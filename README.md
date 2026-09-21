@@ -33,7 +33,7 @@
 Open a terminal and run:
 
 ```bash
-git clone https://github.com/yourorg/cleo.git
+git clone https://github.com/digitalsuni-cloud/cleo.git
 cd cleo
 ```
 
@@ -210,7 +210,7 @@ Running via standard Python (`python3 cleo_server.py`) is the default and recomm
 ### Start with Docker
 
 ```bash
-git clone https://github.com/yourorg/cleo.git
+git clone https://github.com/digitalsuni-cloud/cleo.git
 cd cleo
 docker compose up
 ```

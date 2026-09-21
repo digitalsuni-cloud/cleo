@@ -1304,7 +1304,7 @@ def delete_memory_entry(entry_id: str):
 
 # ── Auto-Update via GitHub ────────────────────────────────────────────────────
 
-CLEO_GITHUB_REPO = os.environ.get("CLEO_GITHUB_REPO", "yourorg/cleo")
+CLEO_GITHUB_REPO = os.environ.get("CLEO_GITHUB_REPO", "digitalsuni-cloud/cleo")
 _CLEO_ROOT       = os.path.dirname(os.path.abspath(__file__))
 _update_state: dict = {"status": "idle", "latest_sha": "", "current_sha": "", "update_available": False, "message": ""}
 
