@@ -10,7 +10,7 @@ mcp_oauth_tokens.json
 
 # Cleo local runtime data & cache
 .cleo/
-graphify-out/cache/
+graphify-out/
 *.log
 sessions.json
 config.json
@@ -46,7 +46,9 @@ local_tests/
 .vscode/
 .claude/
 
-# Agent skills: Only include cloud-finops; exclude local developer/design skills
+# Agent skills & internal dev rules
 .agents/skills/*
 !.agents/skills/cloud-finops/
+.agents/rules/graphify.md
+.agents/workflows/graphify.md
 
