@@ -1,4 +1,4 @@
-# <img src="docs/cleo-icon.svg" width="32" height="32" alt="Cleo" align="middle" /> Cleo — Cloud Efficiency Optimizer `BETA`
+# <img src="docs/cleo-icon.svg" width="32" height="32" alt="Cleo" align="texttop" /> Cleo — Cloud Efficiency Optimizer `BETA`
 
 **Cleo** is your AI assistant for cloud cost intelligence. Ask questions about your AWS, Azure, and GCP spend in plain English and get live answers straight from CloudHealth — no dashboards, no SQL, no manual reports.
 
