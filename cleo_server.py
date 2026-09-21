@@ -56,8 +56,13 @@ def _setup_and_activate_venv():
                             print("📥 Bootstrapping pip into .venv ...")
                             import urllib.request
                             get_pip_path = os.path.join(_venv_dir, "get-pip.py")
-                            urllib.request.urlretrieve("https://bootstrap.pypa.io/get-pip.py", get_pip_path)
-                            subprocess.check_call([_venv_python, get_pip_path, "--no-warn-script-location", "-q"])
+                            def _dl_hook(blocks, block_size, total_size):
+                                if total_size > 0:
+                                    pct = min(100, int(blocks * block_size * 100 / total_size))
+                                    print(f"\r📥 Downloading get-pip.py: {pct}%", end="", flush=True)
+                            urllib.request.urlretrieve("https://bootstrap.pypa.io/get-pip.py", get_pip_path, reporthook=_dl_hook)
+                            print("\r📥 Downloading get-pip.py: 100% (done)")
+                            subprocess.check_call([_venv_python, get_pip_path, "--no-warn-script-location"])
                             if os.path.exists(get_pip_path):
                                 os.remove(get_pip_path)
                             venv_ok = True
@@ -69,23 +74,24 @@ def _setup_and_activate_venv():
                 req_file = os.path.join(_base_dir, "requirements.txt")
                 if os.path.exists(req_file):
                     print(f"📦 Installing required packages from requirements.txt ...")
-                    subprocess.check_call([_venv_python, "-m", "pip", "install", "--upgrade", "pip", "-q"])
-                    subprocess.check_call([_venv_python, "-m", "pip", "install", "-r", req_file, "-q"])
+                    subprocess.check_call([_venv_python, "-m", "pip", "install", "--upgrade", "pip", "--progress-bar", "on"])
+                    subprocess.check_call([_venv_python, "-m", "pip", "install", "-r", req_file, "--progress-bar", "on"])
                 else:
                     print("⚠️  No requirements.txt found. Installing fallback packages...")
-                    subprocess.check_call([_venv_python, "-m", "pip", "install", "fastapi", "uvicorn[standard]", "httpx", "-q"])
+                    subprocess.check_call([_venv_python, "-m", "pip", "install", "fastapi", "uvicorn[standard]", "httpx", "--progress-bar", "on"])
 
                 import platform
                 try:
                     if sys.platform == "darwin" and platform.machine() == "arm64":
                         print("🍎 Apple Silicon detected. Auto-installing 'mlx-lm' for local Qwen support...")
-                        subprocess.check_call([_venv_python, "-m", "pip", "install", "mlx-lm", "huggingface_hub", "-q"])
+                        subprocess.check_call([_venv_python, "-m", "pip", "install", "mlx-lm", "huggingface_hub", "--progress-bar", "on"])
                     elif sys.platform == "win32":
                         print("🪟 Windows detected. Auto-installing 'llama-cpp-python' and 'transformers' for local Qwen support...")
-                        subprocess.check_call([_venv_python, "-m", "pip", "install", "huggingface_hub", "transformers", "llama-cpp-python", "-q"])
+                        subprocess.check_call([_venv_python, "-m", "pip", "install", "huggingface_hub", "transformers", "llama-cpp-python", "--progress-bar", "on"])
                     else:
                         print("🐧 Linux detected. Auto-installing local LLM packages for Qwen support...")
-                        subprocess.check_call([_venv_python, "-m", "pip", "install", "huggingface_hub", "transformers", "llama-cpp-python", "-q"])
+                        print("   ℹ️  Note: Compiling llama-cpp-python may take 1-2 minutes; this is optional for local LLM mode.")
+                        subprocess.check_call([_venv_python, "-m", "pip", "install", "huggingface_hub", "transformers", "llama-cpp-python", "--progress-bar", "on"])
                 except Exception as e:
                     print(f"⚠️  Note: Could not auto-install optional local LLM packages ({e}). The core server will still start.")
 
@@ -109,9 +115,9 @@ def _setup_and_activate_venv():
         print("📦 Installing required packages into active environment...")
         req_file = os.path.join(_base_dir, "requirements.txt")
         if os.path.exists(req_file):
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", req_file, "-q"])
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", req_file, "--progress-bar", "on"])
         else:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "fastapi", "uvicorn[standard]", "httpx", "-q"])
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "fastapi", "uvicorn[standard]", "httpx", "--progress-bar", "on"])
 
 _setup_and_activate_venv()
 
