@@ -64,10 +64,15 @@ LOCAL_CLIENT_ID           = os.environ.get(
     "CLOUDHEALTH_CLIENT_ID",
     _cached_client.get("client_id", DEFAULT_PUBLIC_CLIENT_ID)
 )
-LOCAL_CLIENT_SECRET       = os.environ.get(
-    "CLOUDHEALTH_CLIENT_SECRET",
-    _cached_client.get("client_secret", "")
-)
+# Only use CLOUDHEALTH_CLIENT_SECRET if a custom confidential client was specified
+_env_client_id = os.environ.get("CLOUDHEALTH_CLIENT_ID")
+if _env_client_id and _env_client_id != DEFAULT_PUBLIC_CLIENT_ID:
+    LOCAL_CLIENT_SECRET = os.environ.get("CLOUDHEALTH_CLIENT_SECRET", _cached_client.get("client_secret", ""))
+elif _cached_client.get("client_id") and _cached_client.get("client_id") != DEFAULT_PUBLIC_CLIENT_ID:
+    LOCAL_CLIENT_SECRET = _cached_client.get("client_secret", "")
+else:
+    LOCAL_CLIENT_SECRET = ""
+
 LOCAL_REDIRECT_URI        = os.environ.get("CLOUDHEALTH_REDIRECT_URI", "http://127.0.0.1:8080/oauth-callback")
 
 # Default to Cleo's local independent OAuth client (no third-party/Antigravity redirect needed)
@@ -106,9 +111,12 @@ class OAuth2Helper:
             self.redirect_uri = redirect_uri
             
         self.scopes = scopes
-        self.client_secret = client_secret or os.environ.get("CLOUDHEALTH_CLIENT_SECRET") or (
-            LOCAL_CLIENT_SECRET if self.client_id == LOCAL_CLIENT_ID else DEFAULT_CLIENT_SECRET
-        )
+        if self.client_id in (DEFAULT_PUBLIC_CLIENT_ID, ANTIGRAVITY_CLIENT_ID):
+            self.client_secret = ""
+        else:
+            self.client_secret = client_secret or os.environ.get("CLOUDHEALTH_CLIENT_SECRET") or (
+                LOCAL_CLIENT_SECRET if self.client_id == LOCAL_CLIENT_ID else DEFAULT_CLIENT_SECRET
+            )
         self.tokens_file = tokens_file or os.path.expanduser("~/.cleo/mcp_oauth_tokens.json")
         self.last_error = ""
 
@@ -279,10 +287,12 @@ class OAuth2Helper:
             "client_id":     client_id,
             "resource":      MCP_RESOURCE
         }
-        client_sec = self.client_secret or mcp_data.get("client_secret", "")
-        if not client_sec and client_id == LOCAL_CLIENT_ID:
-            client_sec = LOCAL_CLIENT_SECRET
-        if client_sec and client_id != ANTIGRAVITY_CLIENT_ID:
+        client_sec = ""
+        if client_id not in (DEFAULT_PUBLIC_CLIENT_ID, ANTIGRAVITY_CLIENT_ID):
+            client_sec = self.client_secret or mcp_data.get("client_secret", "")
+            if not client_sec and client_id == LOCAL_CLIENT_ID:
+                client_sec = LOCAL_CLIENT_SECRET
+        if client_sec:
             payload["client_secret"] = client_sec
 
         td = self._post_request(payload)
@@ -331,10 +341,12 @@ class OAuth2Helper:
             "code_verifier": verifier,
             "resource":      MCP_RESOURCE
         }
-        sec = self.client_secret
-        if not sec and used_client_id == LOCAL_CLIENT_ID:
-            sec = LOCAL_CLIENT_SECRET
-        if sec and used_client_id != ANTIGRAVITY_CLIENT_ID:
+        sec = ""
+        if used_client_id not in (DEFAULT_PUBLIC_CLIENT_ID, ANTIGRAVITY_CLIENT_ID):
+            sec = self.client_secret
+            if not sec and used_client_id == LOCAL_CLIENT_ID:
+                sec = LOCAL_CLIENT_SECRET
+        if sec:
             payload["client_secret"] = sec
 
         td = self._post_request(payload)
