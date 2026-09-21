@@ -16,44 +16,81 @@ _venv_python = os.path.join(_venv_dir, "bin", "python3") if os.name != "nt" else
 def _setup_and_activate_venv():
     # If not running in our venv, we either create it or switch to it.
     if os.path.abspath(sys.executable) != os.path.abspath(_venv_python):
-        # Create venv if missing
+        # Detect missing or broken venv (e.g. from an earlier interrupted run)
+        venv_needed = False
         if not os.path.exists(_venv_dir):
-            print(f"⚙️  Setting up isolated virtual environment in .venv ...")
-            subprocess.check_call([sys.executable, "-m", "venv", _venv_dir])
-            
-            # Install requirements immediately after creation
-            req_file = os.path.join(_base_dir, "requirements.txt")
-            if os.path.exists(req_file):
-                print(f"📦 Installing required packages from requirements.txt ...")
-                subprocess.check_call([_venv_python, "-m", "pip", "install", "--upgrade", "pip", "-q"])
-                subprocess.check_call([_venv_python, "-m", "pip", "install", "-r", req_file, "-q"])
-            else:
-                print("⚠️  No requirements.txt found. Installing fallback packages...")
-                subprocess.check_call([_venv_python, "-m", "pip", "install", "fastapi", "uvicorn[standard]", "pywebview", "-q"])
-                
-            import platform
-            try:
-                if sys.platform == "darwin" and platform.machine() == "arm64":
-                    print("🍎 Apple Silicon detected. Auto-installing 'mlx-lm' for local Qwen support...")
-                    subprocess.check_call([_venv_python, "-m", "pip", "install", "mlx-lm", "huggingface_hub", "-q"])
-                elif sys.platform == "win32":
-                    print("🪟 Windows detected. Auto-installing 'llama-cpp-python' and 'transformers' for local Qwen support...")
-                    subprocess.check_call([_venv_python, "-m", "pip", "install", "huggingface_hub", "transformers", "llama-cpp-python", "-q"])
-                else:
-                    print("🐧 Linux/x86 detected. Auto-installing local LLM packages for Qwen support...")
-                    subprocess.check_call([_venv_python, "-m", "pip", "install", "huggingface_hub", "transformers", "llama-cpp-python", "-q"])
-            except Exception as e:
-                print(f"⚠️  Note: Could not auto-install optional local LLM packages ({e}). The core server will still start.")
-                
-            print("✅ Setup complete! Starting Cleo Server...\n")
+            venv_needed = True
+        elif not os.path.exists(_venv_python):
+            import shutil
+            shutil.rmtree(_venv_dir, ignore_errors=True)
+            venv_needed = True
 
-        # Relaunch script using the venv python
-        if sys.argv and sys.argv[0] != "-c":
-            if os.name == "nt":
-                subprocess.check_call([_venv_python] + sys.argv)
-                sys.exit(0)
+        if venv_needed:
+            print(f"⚙️  Setting up isolated virtual environment in .venv ...")
+            venv_created = False
+            
+            # Attempt 1: Standard venv
+            try:
+                subprocess.check_call([sys.executable, "-m", "venv", _venv_dir])
+                venv_created = True
+            except (subprocess.CalledProcessError, Exception):
+                # On Debian/Ubuntu, ensurepip is stripped from base python3 and requires apt install python3-venv.
+                # Fallback: create venv with --without-pip and bootstrap pip directly — zero sudo required!
+                import shutil
+                shutil.rmtree(_venv_dir, ignore_errors=True)
+                try:
+                    print("ℹ️  Standard ensurepip not available. Creating virtual environment with --without-pip (no sudo needed)...")
+                    subprocess.check_call([sys.executable, "-m", "venv", "--without-pip", _venv_dir])
+                    if os.path.exists(_venv_python):
+                        print("📥 Bootstrapping pip into .venv ...")
+                        import urllib.request
+                        get_pip_path = os.path.join(_venv_dir, "get-pip.py")
+                        urllib.request.urlretrieve("https://bootstrap.pypa.io/get-pip.py", get_pip_path)
+                        subprocess.check_call([_venv_python, get_pip_path, "--no-warn-script-location", "-q"])
+                        if os.path.exists(get_pip_path):
+                            os.remove(get_pip_path)
+                        venv_created = True
+                except Exception as e:
+                    print(f"⚠️  Could not auto-create isolated .venv without pip: {e}")
+                    venv_created = False
+
+            if venv_created and os.path.exists(_venv_python):
+                # Install requirements immediately after creation
+                req_file = os.path.join(_base_dir, "requirements.txt")
+                if os.path.exists(req_file):
+                    print(f"📦 Installing required packages from requirements.txt ...")
+                    subprocess.check_call([_venv_python, "-m", "pip", "install", "--upgrade", "pip", "-q"])
+                    subprocess.check_call([_venv_python, "-m", "pip", "install", "-r", req_file, "-q"])
+                else:
+                    print("⚠️  No requirements.txt found. Installing fallback packages...")
+                    subprocess.check_call([_venv_python, "-m", "pip", "install", "fastapi", "uvicorn[standard]", "-q"])
+
+                import platform
+                try:
+                    if sys.platform == "darwin" and platform.machine() == "arm64":
+                        print("🍎 Apple Silicon detected. Auto-installing 'mlx-lm' for local Qwen support...")
+                        subprocess.check_call([_venv_python, "-m", "pip", "install", "mlx-lm", "huggingface_hub", "-q"])
+                    elif sys.platform == "win32":
+                        print("🪟 Windows detected. Auto-installing 'llama-cpp-python' and 'transformers' for local Qwen support...")
+                        subprocess.check_call([_venv_python, "-m", "pip", "install", "huggingface_hub", "transformers", "llama-cpp-python", "-q"])
+                    else:
+                        print("🐧 Linux detected. Auto-installing local LLM packages for Qwen support...")
+                        subprocess.check_call([_venv_python, "-m", "pip", "install", "huggingface_hub", "transformers", "llama-cpp-python", "-q"])
+                except Exception as e:
+                    print(f"⚠️  Note: Could not auto-install optional local LLM packages ({e}). The core server will still start.")
+
+                print("✅ Setup complete! Starting Cleo Server...\n")
             else:
-                os.execv(_venv_python, [_venv_python] + sys.argv)
+                print("⚠️  Proceeding with host Python environment...")
+
+        # Relaunch script using the venv python if available
+        if os.path.exists(_venv_python):
+            if sys.argv and sys.argv[0] != "-c":
+                if os.name == "nt":
+                    subprocess.check_call([_venv_python] + sys.argv)
+                    sys.exit(0)
+                else:
+                    os.execv(_venv_python, [_venv_python] + sys.argv)
 
 _setup_and_activate_venv()
 
