@@ -5717,14 +5717,15 @@
     async function applyUpdate() {
       const banner = document.getElementById('update-banner');
       const msg = document.getElementById('update-banner-msg');
-      msg.textContent = '⏳ Pulling update from GitHub…';
+      msg.textContent = '⏳ Pulling update from GitHub (git pull / curl fallback)…';
       try {
         const r = await fetch('/api/update/apply', { method: 'POST' });
         const data = await r.json();
         if (r.ok) {
           msg.textContent = `✅ ${data.message}`;
           // Remove the "Update now" button, keep dismiss
-          banner.querySelector('button:first-child').remove();
+          const updateBtn = banner.querySelector('.update-actions button:not(.dismiss-btn)');
+          if (updateBtn) updateBtn.remove();
         } else {
           msg.textContent = `❌ Update failed: ${data.detail || 'unknown error'}`;
         }
