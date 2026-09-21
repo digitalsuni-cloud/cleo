@@ -1310,6 +1310,30 @@ def call_mlx_generate(model_id: str, messages: list[dict], max_tokens: int = 102
 
     return ans
 
+def unload_mlx_models(model_id: Optional[str] = None):
+    """Unloads MLX model(s) from memory and releases Apple Silicon Metal unified memory cache."""
+    global _mlx_models_cache
+    if not _mlx_models_cache:
+        return
+    if model_id:
+        clean_id = model_id.removeprefix("mlx:").strip()
+        if clean_id in _mlx_models_cache:
+            logger.info(f"🧹 [MLX Unload] Evicting model '{clean_id}' from unified memory...")
+            _mlx_models_cache.pop(clean_id, None)
+    else:
+        logger.info(f"🧹 [MLX Unload] Evicting {len(_mlx_models_cache)} MLX model(s) from unified memory...")
+        _mlx_models_cache.clear()
+
+    import gc
+    gc.collect()
+    try:
+        import mlx.core as mx
+        if hasattr(mx, "metal") and hasattr(mx.metal, "clear_cache"):
+            mx.metal.clear_cache()
+    except Exception:
+        pass
+    logger.info("✅ [MLX Unload] MLX unified memory and Metal cache freed.")
+
 # ── LLM Client Callers (Zero-Dependency via urllib) ──────────────────────────
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 
