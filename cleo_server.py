@@ -1597,39 +1597,97 @@ _update_state: dict = {"status": "idle", "latest_sha": "", "current_sha": "", "u
 
 def _git_sha() -> str:
     try:
-        return subprocess.check_output(
+        sha = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=_CLEO_ROOT, stderr=subprocess.DEVNULL
         ).decode().strip()
+        if sha:
+            return sha
     except Exception:
-        return ""
+        pass
+    ver_path = os.path.join(_CLEO_ROOT, ".version")
+    if os.path.exists(ver_path):
+        try:
+            with open(ver_path, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except Exception:
+            pass
+    return ""
+
+def _get_latest_remote_sha() -> str:
+    """Retrieve latest commit SHA via git ls-remote (fast, no rate-limits) or GitHub API."""
+    try:
+        res = subprocess.run(
+            ["git", "ls-remote", f"https://github.com/{CLEO_GITHUB_REPO}.git", "refs/heads/main"],
+            capture_output=True, text=True, timeout=10
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip().split()[0]
+    except Exception:
+        pass
+    try:
+        api_url = f"https://api.github.com/repos/{CLEO_GITHUB_REPO}/commits/main"
+        req = urllib.request.Request(api_url, headers={"Accept": "application/vnd.github+json", "User-Agent": "Cleo-FinOps/2.1"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+        return data.get("sha", "")
+    except Exception:
+        pass
+    return ""
+
+def _apply_curl_update() -> tuple[bool, str]:
+    """Download latest repository archive via curl and extract into _CLEO_ROOT."""
+    tarball_url = f"https://github.com/{CLEO_GITHUB_REPO}/archive/refs/heads/main.tar.gz"
+    # 1. Standard curl piped to tar (preserves .env and local untracked configs)
+    try:
+        cmd = f"curl -sL --max-time 90 '{tarball_url}' | tar -xz --strip-components=1 -C '{_CLEO_ROOT}'"
+        res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+        if res.returncode == 0:
+            return True, "Successfully downloaded and applied latest update via curl."
+        curl_err = res.stderr.strip() or f"curl exit code {res.returncode}"
+    except Exception as e:
+        curl_err = str(e)
+
+    # 2. Python in-memory urllib + tarfile fallback
+    try:
+        import io, tarfile
+        req = urllib.request.Request(tarball_url, headers={"User-Agent": "Cleo-FinOps/2.1"})
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            tar_bytes = io.BytesIO(resp.read())
+        with tarfile.open(fileobj=tar_bytes, mode="r:gz") as tar:
+            for member in tar.getmembers():
+                parts = member.name.split("/", 1)
+                if len(parts) > 1 and parts[1]:
+                    member.name = parts[1]
+                    tar.extract(member, path=_CLEO_ROOT)
+        return True, "Successfully updated via Python tarfile extraction."
+    except Exception as pe:
+        return False, f"Curl failed ({curl_err}) and python extraction failed ({pe})"
 
 def _check_update_bg():
     """Background: compare local HEAD to GitHub latest commit SHA on main."""
     global _update_state
     try:
         current = _git_sha()
-        if not current:
-            _update_state = {"status": "unavailable", "latest_sha": "", "current_sha": "", "update_available": False, "message": "Not a git repository"}
-            return
-
-        api_url = f"https://api.github.com/repos/{CLEO_GITHUB_REPO}/commits/main"
-        req = urllib.request.Request(api_url, headers={"Accept": "application/vnd.github+json", "User-Agent": "Cleo-FinOps/2.1"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-        latest = data.get("sha", "")
+        latest = _get_latest_remote_sha()
         if not latest:
-            _update_state = {"status": "error", "latest_sha": "", "current_sha": current, "update_available": False, "message": "Could not parse GitHub response"}
+            _update_state = {
+                "status": "error",
+                "latest_sha": "",
+                "current_sha": current[:7] if current else "unknown",
+                "update_available": False,
+                "message": "Could not check remote repository status",
+            }
             return
 
-        update_available = latest != current
+        update_available = (not current) or (latest != current)
         _update_state = {
             "status": "ok",
-            "current_sha": current[:7],
+            "current_sha": current[:7] if current else "unknown",
             "latest_sha": latest[:7],
             "update_available": update_available,
             "message": "Update available — click 'Update' to pull the latest code." if update_available else "Cleo is up to date.",
         }
-        logger.info(f"[Update] current={current[:7]} latest={latest[:7]} update_available={update_available}")
+        logger.info(f"[Update] current={current[:7] if current else 'unknown'} latest={latest[:7]} update_available={update_available}")
     except Exception as e:
         _update_state = {"status": "error", "latest_sha": "", "current_sha": _git_sha()[:7], "update_available": False, "message": str(e)}
         logger.warning(f"[Update] Check failed: {e}")
@@ -1643,32 +1701,78 @@ def check_update():
 
 @app.post("/api/update/apply")
 def apply_update():
-    """Pull the latest code from GitHub and restart."""
+    """Pull the latest code from GitHub (via git pull or curl fallback) and restart."""
     current_sha = _git_sha()
-    if not current_sha:
-        raise HTTPException(status_code=400, detail="Not a git repository — manual update required.")
-    try:
-        result = subprocess.run(
-            ["git", "pull", "--ff-only"],
-            cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=60
-        )
-        if result.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"git pull failed: {result.stderr.strip()}")
-        new_sha = _git_sha()
-        logger.info(f"[Update] Applied: {current_sha[:7]} → {new_sha[:7]}")
-        return {
-            "status": "updated",
-            "from_sha": current_sha[:7],
-            "to_sha": new_sha[:7],
-            "output": result.stdout.strip(),
-            "message": "Update applied. Restart Cleo (Ctrl+C → python3 cleo_server.py) to load the new version.",
-        }
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="git pull timed out after 60 s.")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    latest_sha = _get_latest_remote_sha()
+    method_used = "git"
+    output = ""
+    git_ok = False
+
+    # 1. Attempt git pull if this is a git repository
+    if os.path.exists(os.path.join(_CLEO_ROOT, ".git")):
+        try:
+            # First attempt: fast-forward pull
+            result = subprocess.run(
+                ["git", "pull", "--ff-only"],
+                cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=45
+            )
+            if result.returncode == 0:
+                git_ok = True
+                output = result.stdout.strip()
+            else:
+                logger.warning(f"[Update] 'git pull --ff-only' failed ({result.stderr.strip()}). Trying 'git pull origin main'...")
+                res_main = subprocess.run(
+                    ["git", "pull", "origin", "main"],
+                    cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=45
+                )
+                if res_main.returncode == 0:
+                    git_ok = True
+                    output = res_main.stdout.strip()
+                else:
+                    logger.warning(f"[Update] 'git pull origin main' failed ({res_main.stderr.strip()}). Trying 'git fetch & reset'...")
+                    res_fetch = subprocess.run(
+                        ["git", "fetch", "origin", "main"],
+                        cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=45
+                    )
+                    if res_fetch.returncode == 0:
+                        res_hard = subprocess.run(
+                            ["git", "reset", "--hard", "origin/main"],
+                            cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=30
+                        )
+                        if res_hard.returncode == 0:
+                            git_ok = True
+                            output = res_hard.stdout.strip()
+        except Exception as e:
+            logger.warning(f"[Update] Git pull execution error: {e}")
+
+    # 2. If git failed or directory is not a git repository, fallback to curl download
+    if not git_ok:
+        logger.info("[Update] git pull failed or unavailable. Falling back to curl download...")
+        method_used = "curl"
+        ok, msg = _apply_curl_update()
+        if not ok:
+            raise HTTPException(status_code=500, detail=f"Update failed: {msg}")
+        output = msg
+
+    new_sha = _git_sha()
+    if not new_sha and latest_sha:
+        new_sha = latest_sha
+    if new_sha:
+        try:
+            with open(os.path.join(_CLEO_ROOT, ".version"), "w", encoding="utf-8") as f:
+                f.write(new_sha + "\n")
+        except Exception:
+            pass
+
+    logger.info(f"[Update] Applied via {method_used}: {current_sha[:7] if current_sha else 'unknown'} → {new_sha[:7] if new_sha else 'latest'}")
+    return {
+        "status": "updated",
+        "method": method_used,
+        "from_sha": current_sha[:7] if current_sha else "unknown",
+        "to_sha": new_sha[:7] if new_sha else "latest",
+        "output": output,
+        "message": f"Update applied successfully (via {method_used}). Restart Cleo (Ctrl+C → python3 cleo_server.py) to load the new version.",
+    }
 
 # ── Port Fallback ─────────────────────────────────────────────────────────────
 

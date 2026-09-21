@@ -263,15 +263,17 @@ Then restart:
 python3 cleo_server.py
 ```
 
-> **Note:** The update banner only appears if Cleo was installed via `git clone`. If you downloaded a ZIP, pull the latest ZIP from GitHub instead.
+> **Note:** If `git pull` fails (due to merge conflicts, uncommitted local edits, or if Cleo was extracted from a ZIP), Cleo automatically falls back to downloading and extracting the latest code archive via `curl`. Your `.env` file, virtual environment, and local configs are always preserved.
+
+To manually update from the terminal at any time using `curl`:
+```bash
+# In your Cleo root directory:
+curl -sL https://github.com/digitalsuni-cloud/cleo/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1
+```
 
 To manually check for updates via the API:
 ```bash
 curl http://localhost:8080/api/update/check
-```
-
-
-
 ```
 cleo/
 ├── cleo_server.py       ← Main entry point. Run this to start Cleo.
