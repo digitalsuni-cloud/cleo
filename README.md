@@ -30,14 +30,26 @@
 
 ### Step 1 — Download Cleo
 
-Open a terminal and run:
+Choose whichever option is easiest for your setup:
+
+#### Option A — With Git (Standard)
 
 ```bash
 git clone https://github.com/digitalsuni-cloud/cleo.git
 cd cleo
 ```
 
-> **Don't have git?** Download the ZIP from the GitHub page → click **Code → Download ZIP**, then unzip it and open the folder in your terminal.
+#### Option B — Direct Download (No Git or Xcode Tools Needed)
+
+If you do not have Git installed, or if your Mac prompts `xcode-select: note: No developer tools were found`, download and unzip directly from your terminal:
+
+```bash
+curl -L https://github.com/digitalsuni-cloud/cleo/archive/refs/heads/main.zip -o cleo.zip
+unzip cleo.zip
+cd cleo-main
+```
+
+*(You can also download the ZIP directly in your browser from GitHub → click **Code → Download ZIP**, extract it, and `cd` into the extracted folder in your terminal).*
 
 ---
 
