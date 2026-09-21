@@ -1563,7 +1563,8 @@ def build_system_prompt(tools: list[dict]) -> str:
         "3. When user asks about costs, customer spend breakdown, or trends, call 'execute_datasource_query'.\n"
         "4. When user asks about schema or column definitions, call 'get_datasource_metadata'.\n"
         "5. When user asks about available datasets, call 'list_standard_datasources'.\n"
-        "6. When user asks about cost anomalies, unusual spikes, or anomaly detection, query 'AWS_COST_ANOMALY' (or 'AZURE_COST_ANOMALY') via execute_datasource_query.\n\n"
+        "6. When user asks about cost anomalies, unusual spikes, or anomaly detection, query 'AWS_COST_ANOMALY' (or 'AZURE_COST_ANOMALY') via execute_datasource_query.\n"
+        "7. CloudHealth MCP does NOT support tenant user management or user identity listing (e.g. users in tenant, user accounts, IAM permissions). When asked to list users in a tenant, clearly explain that CloudHealth MCP is strictly focused on multi-cloud FinOps (cost, usage, anomalies, organizations) and direct the user to the CloudHealth console (Setup -> Users) or their SSO/IdP directory.\n\n"
         "CONVERSATIONAL MEMORY & MULTI-TURN CONTEXT:\n"
         "- You maintain full conversational memory across all turns in this session.\n"
         "- When the user asks about prior queries, results, or context (e.g. 'which month was I asking for?', 'who spent the most?', 'summarize the table', 'why?'), ALWAYS use the conversation history to answer directly, accurately, and concisely.\n"
@@ -2103,7 +2104,15 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     is_rec = any(w in low for w in ["recommendation", "optimize", "saving", "reduce cost", "rightsizing", "waste", "underutilized"])
     is_anomaly = any(w in low for w in ["anomal", "spike", "unusual spend", "unexpected cost"])
 
-    if is_pure_reformat and prior_assistant_msgs:
+    is_user_query = bool(re.search(
+        r'\b(?:list\s+(?:the\s+)?(?:of\s+)?users?|users?\s+list|all\s+users?|show\s+(?:me\s+)?(?:the\s+)?users?|get\s+(?:me\s+)?(?:the\s+)?users?|give\s+(?:me\s+)?(?:the\s+)?(?:list\s+(?:of\s+)?)?users?|who\s+are\s+the\s+users?|what\s+users?\b|users?\s+in\s+(?:this|the|our)\s+tenant|tenant\s+users?|user\s+accounts?|iam\s+users?|who\s+has\s+access|manage\s+users?|add\s+users?|invite\s+users?)\b',
+        low
+    )) and not any(w in low for w in ["tag", "tags", "tagged"])
+
+    if is_user_query:
+        intent = "unsupported_capability"
+        is_new_data_fetch = False
+    elif is_pure_reformat and prior_assistant_msgs:
         intent = "reformat_previous"
         is_new_data_fetch = False
     elif is_history_qa:
@@ -2257,7 +2266,7 @@ class AIClient:
             f"- Last 30 Days Window: {cal['d30_start']} to {cal['yesterday_str']} (30 closed days, ending yesterday, ignoring today)\n\n"
             "Output ONLY a raw JSON object (no markdown, no code fencing, no explanation) with this schema:\n"
             "{\n"
-            '  "intent": "fetch_data" | "reformat_previous" | "history_qa" | "finops_recommendations" | "anomalies" | "general_chat",\n'
+            '  "intent": "fetch_data" | "reformat_previous" | "history_qa" | "finops_recommendations" | "anomalies" | "unsupported_capability" | "general_chat",\n'
             '  "service": "AmazonRDS" | "AmazonEC2" | "AmazonS3" | "Azure" | "GCP" | "all" | null,\n'
             '  "customer": string or null,\n'
             '  "timeframe_months": integer or null,\n'
@@ -2272,6 +2281,7 @@ class AIClient:
             "3. service: Set to 'AmazonRDS' if user mentions RDS, database, relational database, or aurora. Set to 'AmazonEC2' if user mentions EC2, compute instances (non-database). Set to 'AmazonS3' if user mentions S3, bucket, storage.\n"
             "4. customer: Extract customer name (e.g. 'Lundbeck', 'Novo Nordisk') if specified or clearly referenced.\n"
             "5. timeframe_days: Set to 15 if user asks for last 15 days or 15days. Default to 30 for usage/spend queries unless user specifies a different timeframe (e.g. 12 months, 60 days).\n"
+            "6. Set intent to 'unsupported_capability' and is_new_data_fetch to false if user asks for tenant users, user accounts, IAM users, passwords, or identity management in the tenant (CloudHealth MCP does not manage user accounts).\n"
         )
 
         user_prompt = (
@@ -2397,6 +2407,28 @@ class AIClient:
         # Prior context extraction
         prior_user_msgs = [m["content"] for m in messages[:-1] if m.get("role") == "user"]
         prior_assistant_msgs = [m["content"] for m in messages[:-1] if m.get("role") == "assistant"]
+
+        # ── 0a. Unsupported CloudHealth Capabilities (Tenant Users / IAM / Identity) ──
+        is_user_list_query = bool(re.search(
+            r'\b(?:list\s+(?:the\s+)?(?:of\s+)?users?|users?\s+list|all\s+users?|show\s+(?:me\s+)?(?:the\s+)?users?|get\s+(?:me\s+)?(?:the\s+)?users?|give\s+(?:me\s+)?(?:the\s+)?(?:list\s+(?:of\s+)?)?users?|who\s+are\s+the\s+users?|what\s+users?\b|users?\s+in\s+(?:this|the|our)\s+tenant|tenant\s+users?|user\s+accounts?|iam\s+users?|who\s+has\s+access|manage\s+users?|add\s+users?|invite\s+users?)\b',
+            low
+        )) or (intent_info.get("intent") == "unsupported_capability" and any(w in low for w in ["user", "users", "access"]))
+
+        if is_user_list_query and not any(w in low for w in ["tag", "tags", "tagged"]):
+            return (
+                "### ℹ️ Capability Notice: Tenant User Management\n\n"
+                "The **CloudHealth MCP server** does not currently provide tools or APIs for listing tenant users or managing user identities. "
+                "Its capabilities are exclusively focused on **Multi-Cloud FinOps & Cost Intelligence**:\n\n"
+                "- 📊 **Cost & Usage Analytics**: SQL queries across `AWS_CUR`, `MULTICLOUD_FOCUS_COST_AND_USAGE`, and `CLOUDHEALTH_CONSUMPTION_BREAKDOWN`\n"
+                "- 🚨 **Cost Anomaly Detection**: Identifying abnormal spend spikes via `AWS_COST_ANOMALY` and `AZURE_COST_ANOMALY`\n"
+                "- 🏢 **Managed Organizations & Channel Customers**: Partner hierarchy via `list_channel_customers` and `list_managed_orgs`\n"
+                "- 📚 **Dataset Catalogs & Schemas**: Telemetry structure via `list_standard_datasources` and `get_datasource_metadata`\n\n"
+                "**Where to find user and access details for this tenant:**\n"
+                "1. Log into your **CloudHealth / VMware Aria Cost** console.\n"
+                "2. Navigate to **Setup** → **Users** (or **Administration** → **Identity & Access Management** in VMware Cloud Services Portal).\n"
+                "3. If your tenant uses Single Sign-On (SSO), consult your corporate Identity Provider directory (e.g. Okta, Microsoft Entra ID).\n\n"
+                "> 💡 *Tip*: If you would like to analyze cloud costs, usage trends, top services, or anomalies for this tenant or any customer, feel free to ask!"
+            )
 
         # ── 0. Conversational Memory Queries (Direct Chat History Recall) ─────
         is_mem_cust = any(pattern in low for pattern in [
@@ -2921,7 +2953,7 @@ class AIClient:
             "chart", "waterfall", "graph", "plot", "pie", "donut", "doughnut", "instance", "ec2", "rds", "service"
         ]) or bool(is_prior_cost_query and is_clarification)
 
-        if is_prior_cost_query and is_followup:
+        if is_prior_cost_query and is_followup and not is_user_list_query and not any(w in low for w in ["org", "organization", "dataset", "datasource"]):
             is_cost_query = True
 
         if is_cost_query and mcp:
@@ -4713,6 +4745,26 @@ class AIClient:
 
                 savings_pct = (total_savings / total_mc_spend * 100) if total_mc_spend else 0.0
 
+                if opp_rows:
+                    sc_rows = [
+                        f"| **{title}** | {complexity} | ${base_cost:,.2f} | **${sav:,.2f}** | {(sav/base_cost*100):.1f}% |"
+                        for title, base_cost, complexity, sav in opp_rows
+                    ]
+                    scorecard_table = (
+                        f"| Optimization Opportunity / Lever | Implementation Complexity | Baseline Spend | Est. Monthly Savings | % Reduction |\n"
+                        f"|:---|:---|:---|:---|:---|\n"
+                        f"{chr(10).join(sc_rows)}\n"
+                        f"| **Total Projected Savings Opportunity** | | **${total_mc_spend:,.2f}** | **${total_savings:,.2f} / month** | **{savings_pct:.1f}%** |"
+                    )
+                else:
+                    scorecard_table = (
+                        f"| Metric | Value |\n"
+                        f"|:---|:---|\n"
+                        f"| **Total Monthly Spend Analyzed** | **${total_mc_spend:,.2f}** |\n"
+                        f"| **Total Projected Savings Opportunity** | **${total_savings:,.2f} / month** |\n"
+                        f"| **Potential Spend Reduction** | **{savings_pct:.1f}%** |"
+                    )
+
                 rec_sections = [
                     f"### 💡 CloudHealth Multi-Cloud FinOps Optimization: Top Strategic Recommendations {rec_title}\n",
                     f"Based on live multi-cloud telemetry retrieved from **CloudHealth FOCUS & Billing Datasets** "
@@ -4720,10 +4772,7 @@ class AIClient:
                     f"#### 🔍 Top Spend by Provider & Service\n\n{spend_table}\n",
                     f"#### 🎯 Prioritized Multi-Cloud FinOps Levers (OptimNow Doctrine)\n",
                     *levers_md,
-                    f"#### 📊 Savings Scorecard\n\n",
-                    f"| Total Projected Savings Opportunity | % of Analyzed Spend |\n",
-                    f"|:---|:---|\n",
-                    f"| **${total_savings:,.2f} / month** | **{savings_pct:.1f}%** |\n\n",
+                    f"#### 📊 Savings Scorecard\n\n{scorecard_table}\n\n",
                     f"*Source: CloudHealth FOCUS & Multi-Cloud Billing Datasets (AWS CUR, Azure Cost Management, GCP BigQuery). "
                     f"Savings figures are estimates based on documented industry-standard optimization percentages applied to live matched spend, not guarantees.*"
                 ]

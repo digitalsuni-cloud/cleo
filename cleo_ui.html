@@ -2085,6 +2085,11 @@
       color: #f87171;
       border-color: rgba(239, 68, 68, 0.2);
     }
+    .status-indicator-pill.standby {
+      background: rgba(56, 189, 248, 0.08);
+      color: #38bdf8;
+      border-color: rgba(56, 189, 248, 0.2);
+    }
     .status-indicator-pill .indicator-dot {
       width: 5px;
       height: 5px;
@@ -3767,6 +3772,7 @@
         const renderModelCard = (m, isOllama = false) => {
           const isActive = data.active_engine === m.id;
           const isDownloading = m.download_status === 'downloading';
+          const isFailed = m.download_status === 'failed';
           const progress = m.download_progress || 0;
           
           let actionBtn = '';
@@ -3775,7 +3781,7 @@
           } else if (m.downloaded) {
             actionBtn = `<button class="btn-model-action" onclick="switchEngine('${m.id}')">Select</button>`;
           } else if (isDownloading) {
-            actionBtn = `<span style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:#38bdf8; font-weight:600;">${progress}%</span>`;
+            actionBtn = `<span style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:#38bdf8; font-weight:600;"><span class="spinning-loader" style="width:10px;height:10px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:4px;"></span>${progress}%</span>`;
           } else {
             const dlId = isOllama ? m.model_id : m.id;
             actionBtn = `
@@ -3785,7 +3791,7 @@
                   <polyline points="7 10 12 15 17 10"></polyline>
                   <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
-                <span>Download</span>
+                <span>${isFailed ? 'Retry' : 'Download'}</span>
               </button>
             `;
           }
@@ -3818,8 +3824,14 @@
                   <div class="progress-bar-container">
                     <div class="progress-bar-fill" style="width:${progress}%;"></div>
                   </div>
-                  <div style="font-family:'JetBrains Mono',monospace; font-size:0.68rem; color:#38bdf8; margin-top:3px;">
-                    Downloading weights: ${progress}%
+                  <div style="font-family:'JetBrains Mono',monospace; font-size:0.68rem; color:#38bdf8; margin-top:3px; display:flex; justify-content:space-between;">
+                    <span>${escapeHtml(m.status_detail || 'Downloading weights...')}</span>
+                    ${progress > 0 ? `<span>${progress}%</span>` : ''}
+                  </div>
+                ` : ''}
+                ${isFailed ? `
+                  <div style="font-family:'JetBrains Mono',monospace; font-size:0.68rem; color:#f87171; margin-top:4px;">
+                    ⚠ ${escapeHtml(m.error || m.status_detail || 'Download failed')}
                   </div>
                 ` : ''}
               </div>
@@ -3837,9 +3849,13 @@
         if (localList) {
           const ollamaBadge = document.getElementById('modal-ollama-status');
           if (ollamaBadge) {
-            ollamaBadge.innerHTML = data.ollama_running 
-              ? '<span class="status-indicator-pill online"><span class="indicator-dot"></span>Service Active</span>' 
-              : '<span class="status-indicator-pill offline"><span class="indicator-dot"></span>Offline</span>';
+            if (data.ollama_running) {
+              ollamaBadge.innerHTML = '<span class="status-indicator-pill online"><span class="indicator-dot"></span>Service Active</span>';
+            } else if (data.ollama_installed) {
+              ollamaBadge.innerHTML = '<span class="status-indicator-pill standby"><span class="indicator-dot"></span>Ready (Auto-starts)</span>';
+            } else {
+              ollamaBadge.innerHTML = '<span class="status-indicator-pill standby"><span class="indicator-dot"></span>Auto-installs on download</span>';
+            }
           }
           localList.innerHTML = data.local_models.map(m => renderModelCard(m, true)).join('');
         }
@@ -3853,6 +3869,12 @@
           } else {
             sysSection.style.display = 'none';
           }
+        }
+
+        const hasDownloading = (data.local_models || []).some(m => m.download_status === 'downloading') ||
+                               (data.mlx_models || []).some(m => m.download_status === 'downloading');
+        if (hasDownloading && !downloadPollTimer) {
+          downloadPollTimer = setInterval(pollDownloads, 1200);
         }
 
         const pubList = document.getElementById('public-engines-list');
@@ -5254,6 +5276,8 @@
 
     function renderMarkdown(text) {
       if (!text) return '';
+      // Normalize table formatting: collapse empty lines between markdown table rows
+      text = text.replace(/(\|.+?\|)\s*\n\s*(?=\|)/g, '$1\n');
       if (typeof marked !== 'undefined' && marked.parse) {
         try {
           return sanitizeHtml(decorateCloudServices(marked.parse(text, { breaks: true, gfm: true })));
