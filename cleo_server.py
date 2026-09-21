@@ -122,7 +122,7 @@ def _setup_and_activate_venv():
 
 _setup_and_activate_venv()
 
-import json, uuid, time, argparse, urllib.parse, base64, hashlib, socket, subprocess
+import json, uuid, time, argparse, urllib.parse, urllib.request, base64, hashlib, socket, subprocess, platform, shutil
 from datetime import datetime, timezone
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -331,9 +331,225 @@ def _check_ollama_alive() -> bool:
     except Exception:
         return False
 
+def _find_ollama_bin() -> Optional[str]:
+    """Locates the Ollama executable on the system, checking PATH and common installation locations."""
+    bin_name = "ollama.exe" if platform.system() == "Windows" else "ollama"
+    found = shutil.which(bin_name)
+    if found and os.path.isfile(found) and (platform.system() == "Windows" or os.access(found, os.X_OK)):
+        return found
+
+    home = os.path.expanduser("~")
+    candidates = []
+    if platform.system() == "Darwin":
+        candidates = [
+            "/opt/homebrew/bin/ollama",
+            "/usr/local/bin/ollama",
+            os.path.join(home, "Applications", "Ollama.app", "Contents", "Resources", "ollama"),
+            "/Applications/Ollama.app/Contents/Resources/ollama",
+            os.path.join(home, ".local", "bin", "ollama"),
+        ]
+    elif platform.system() == "Linux":
+        candidates = [
+            os.path.join(home, ".local", "bin", "ollama"),
+            "/usr/local/bin/ollama",
+            "/usr/bin/ollama",
+            "/bin/ollama",
+        ]
+    elif platform.system() == "Windows":
+        local_app = os.environ.get("LOCALAPPDATA", os.path.join(home, "AppData", "Local"))
+        candidates = [
+            os.path.join(local_app, "Programs", "Ollama", "ollama.exe"),
+            os.path.join(home, "AppData", "Local", "Programs", "Ollama", "ollama.exe"),
+        ]
+
+    for cand in candidates:
+        if os.path.isfile(cand) and (platform.system() == "Windows" or os.access(cand, os.X_OK)):
+            return cand
+    return None
+
+def _start_ollama_daemon(timeout: float = 25.0) -> bool:
+    """Spawns Ollama daemon in the background if not already running."""
+    if _check_ollama_alive():
+        return True
+
+    bin_path = _find_ollama_bin()
+    if not bin_path:
+        return False
+
+    logger.info(f"🚀 Starting Ollama daemon ({bin_path} serve)...")
+    try:
+        if platform.system() == "Windows":
+            subprocess.Popen(
+                [bin_path, "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | getattr(subprocess, "DETACHED_PROCESS", 0)
+            )
+        else:
+            subprocess.Popen(
+                [bin_path, "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True
+            )
+    except Exception as e:
+        logger.error(f"❌ Failed to spawn Ollama daemon: {e}")
+        return False
+
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        if _check_ollama_alive():
+            logger.info("✅ Ollama daemon started successfully.")
+            return True
+        time.sleep(0.5)
+
+    logger.warning(f"⚠️ Timed out after {timeout}s waiting for Ollama daemon to respond.")
+    return False
+
+def _install_ollama(status_cb=None) -> tuple[bool, str]:
+    """Downloads and installs Ollama without requiring sudo."""
+    system = platform.system()
+    home = os.path.expanduser("~")
+    cache_dir = os.path.join(home, ".cleo", "cache")
+    os.makedirs(cache_dir, exist_ok=True)
+
+    if status_cb:
+        status_cb(5, "Downloading Ollama CLI...")
+
+    if system == "Darwin":
+        zip_path = os.path.join(cache_dir, "Ollama-darwin.zip")
+        url = "https://ollama.com/download/Ollama-darwin.zip"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Cleo-FinOps/1.0)"})
+            with urllib.request.urlopen(req, timeout=180.0) as resp:
+                total_size = int(resp.headers.get("Content-Length", 0))
+                downloaded = 0
+                chunk_size = 65536
+                with open(zip_path, "wb") as f:
+                    while True:
+                        chunk = resp.read(chunk_size)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if status_cb and total_size > 0:
+                            pct = round((downloaded / total_size) * 100, 1)
+                            mb_cur = round(downloaded / (1024 * 1024), 1)
+                            mb_tot = round(total_size / (1024 * 1024), 1)
+                            status_cb(round(5 + (pct * 0.7), 1), f"Downloading Ollama ({mb_cur}/{mb_tot} MB)...")
+        except Exception as e:
+            return False, f"Failed to download Ollama package: {e}"
+
+        if status_cb:
+            status_cb(80, "Extracting Ollama...")
+
+        apps_dir = os.path.join(home, "Applications")
+        os.makedirs(apps_dir, exist_ok=True)
+        res = subprocess.run(["/usr/bin/ditto", "-xk", zip_path, apps_dir], capture_output=True, text=True)
+        if res.returncode != 0:
+            res = subprocess.run(["unzip", "-q", "-o", zip_path, "-d", apps_dir], capture_output=True, text=True)
+            if res.returncode != 0:
+                return False, f"Failed to extract Ollama: {res.stderr or 'Extraction error'}"
+
+        installed_bin = os.path.join(apps_dir, "Ollama.app", "Contents", "Resources", "ollama")
+        if not os.path.isfile(installed_bin):
+            return False, "Ollama binary not found in extracted app bundle."
+
+        try:
+            os.chmod(installed_bin, 0o755)
+            local_bin = os.path.join(home, ".local", "bin")
+            os.makedirs(local_bin, exist_ok=True)
+            symlink = os.path.join(local_bin, "ollama")
+            if os.path.islink(symlink) or os.path.exists(symlink):
+                os.remove(symlink)
+            os.symlink(installed_bin, symlink)
+        except Exception as e:
+            logger.warning(f"Could not symlink to ~/.local/bin: {e}")
+
+        try:
+            os.remove(zip_path)
+        except Exception:
+            pass
+
+        if status_cb:
+            status_cb(95, "Ollama CLI installed successfully.")
+        return True, ""
+
+    elif system == "Linux":
+        try:
+            if status_cb:
+                status_cb(10, "Installing Ollama via official installer...")
+            res = subprocess.run(
+                ["sh", "-c", "curl -fsSL https://ollama.com/install.sh | sh"],
+                capture_output=True, text=True, timeout=300
+            )
+            if res.returncode == 0 and _find_ollama_bin():
+                return True, ""
+        except Exception as e:
+            logger.warning(f"Official install script failed: {e}")
+        return False, "Please install Ollama from https://ollama.com/download"
+
+    elif system == "Windows":
+        installer_path = os.path.join(cache_dir, "OllamaSetup.exe")
+        url = "https://ollama.com/download/OllamaSetup.exe"
+        try:
+            urllib.request.urlretrieve(url, installer_path)
+            if status_cb:
+                status_cb(50, "Running Ollama installer...")
+            res = subprocess.run([installer_path, "/silent"], capture_output=True, timeout=180)
+            if _find_ollama_bin():
+                return True, ""
+        except Exception as e:
+            return False, f"Windows installer failed: {e}"
+        return False, "Please install Ollama from https://ollama.com/download"
+
+    return False, f"Unsupported OS platform: {system}"
+
 def _bg_pull_model(model_name: str):
     global _model_downloads
-    _model_downloads[model_name] = {"status": "downloading", "progress": 0, "status_detail": "Starting pull...", "error": ""}
+    _model_downloads[model_name] = {
+        "status": "downloading",
+        "progress": 0,
+        "status_detail": "Checking Ollama service...",
+        "error": ""
+    }
+
+    # 1. Ensure Ollama service is active (installing and starting if needed)
+    if not _check_ollama_alive():
+        ollama_bin = _find_ollama_bin()
+        if not ollama_bin:
+            logger.info("Ollama binary not found. Starting automatic installation...")
+            def _install_status(pct: float, msg: str):
+                _model_downloads[model_name]["progress"] = round(pct * 0.15, 1)
+                _model_downloads[model_name]["status_detail"] = msg
+
+            ok, err_msg = _install_ollama(status_cb=_install_status)
+            if not ok:
+                logger.error(f"❌ [Ollama Install Failed]: {err_msg}")
+                _model_downloads[model_name] = {
+                    "status": "failed",
+                    "progress": 0,
+                    "error": err_msg,
+                    "status_detail": f"Install failed: {err_msg}"
+                }
+                return
+
+        _model_downloads[model_name]["progress"] = 15
+        _model_downloads[model_name]["status_detail"] = "Starting Ollama service..."
+        started = _start_ollama_daemon()
+        if not started:
+            err = "Failed to start Ollama daemon ('ollama serve')"
+            logger.error(f"❌ {err}")
+            _model_downloads[model_name] = {
+                "status": "failed",
+                "progress": 0,
+                "error": err,
+                "status_detail": err
+            }
+            return
+
+    # 2. Pull the model weights from Ollama
+    _model_downloads[model_name]["status_detail"] = f"Connecting to Ollama to pull '{model_name}'..."
     url = f"{OLLAMA_BASE_URL}/api/pull"
     payload = json.dumps({"name": model_name, "stream": True}).encode("utf-8")
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
@@ -348,20 +564,24 @@ def _bg_pull_model(model_name: str):
                     total = chunk.get("total", 0)
                     status_text = chunk.get("status", "")
                     if total > 0:
-                        pct = round((completed / total) * 100, 1)
-                        _model_downloads[model_name]["progress"] = pct
-                    _model_downloads[model_name]["status_detail"] = status_text
+                        raw_pct = (completed / total) * 100
+                        scaled_pct = round(15 + (raw_pct * 0.84), 1)
+                        _model_downloads[model_name]["progress"] = min(99.0, scaled_pct)
+                    if status_text:
+                        _model_downloads[model_name]["status_detail"] = status_text
                     if status_text == "success":
                         _model_downloads[model_name]["status"] = "completed"
                         _model_downloads[model_name]["progress"] = 100
+                        _model_downloads[model_name]["status_detail"] = "Download complete"
                 except Exception:
                     pass
         _model_downloads[model_name]["status"] = "completed"
         _model_downloads[model_name]["progress"] = 100
+        _model_downloads[model_name]["status_detail"] = "Download complete"
         logger.info(f"✅ [Ollama Download Complete] Model '{model_name}' successfully downloaded!")
     except Exception as e:
         logger.error(f"❌ [Ollama Download Failed] Model '{model_name}': {e}")
-        _model_downloads[model_name] = {"status": "failed", "progress": 0, "error": str(e)}
+        _model_downloads[model_name] = {"status": "failed", "progress": 0, "error": str(e), "status_detail": f"Failed: {e}"}
 
 def _save_pending_verifier(state: str, info: dict):
     global _oauth_verifiers
@@ -897,7 +1117,9 @@ def list_engines():
             "desc": mm["desc"],
             "downloaded": is_inst,
             "download_status": "completed" if is_inst else dl_info.get("status", ""),
-            "download_progress": 100 if is_inst else dl_info.get("progress", 0)
+            "download_progress": 100 if is_inst else dl_info.get("progress", 0),
+            "status_detail": dl_info.get("status_detail", ""),
+            "error": dl_info.get("error", "")
         })
 
     # 2. Curated Local Ollama Models
@@ -919,7 +1141,9 @@ def list_engines():
             "desc": m["desc"],
             "downloaded": is_downloaded,
             "download_status": "completed" if is_downloaded else dl_info.get("status", ""),
-            "download_progress": 100 if is_downloaded else dl_info.get("progress", 0)
+            "download_progress": 100 if is_downloaded else dl_info.get("progress", 0),
+            "status_detail": dl_info.get("status_detail", ""),
+            "error": dl_info.get("error", "")
         })
 
     # 3. LLMs Already Available in the System (Other detected MLX & Ollama models)
@@ -987,6 +1211,7 @@ def list_engines():
         "mlx_available": True,
         "mlx_models": mlx_list,
         "ollama_running": ollama_running,
+        "ollama_installed": bool(_find_ollama_bin()),
         "local_models": local_list,
         "system_models": system_models,
         "public_engines": public_list,
@@ -1026,6 +1251,8 @@ def set_engine(req: EngineSelection):
     _save_config({"AI_ENGINE": req.engine})
     cfg = _load_config()
     _ai = AIClient(req.engine, cfg, tools=_tools)
+    if req.engine.startswith("ollama:") and not _check_ollama_alive():
+        threading.Thread(target=_start_ollama_daemon, daemon=True).start()
     logger.info(f"🔄 [AI Engine Switched] Active engine is now: {_engine_label} ({req.engine})")
     return {"status": "ok", "engine": req.engine, "label": _engine_label}
 
@@ -1044,11 +1271,6 @@ def download_model(req: DownloadRequest):
         t.start()
         return {"status": "started", "model": repo_id, "type": "mlx"}
 
-    if not _check_ollama_alive():
-        raise HTTPException(
-            status_code=503,
-            detail="Ollama daemon is not reachable at localhost:11434. Please start Ollama ('ollama serve') first."
-        )
     existing = _model_downloads.get(model, {})
     if existing.get("status") == "downloading":
         return {"status": "already_downloading", "progress": existing.get("progress", 0)}
