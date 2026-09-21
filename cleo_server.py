@@ -132,6 +132,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from pydantic import BaseModel
 import uvicorn
 
+import atexit
 from cleo_logger import get_logger, get_recent_logs
 logger = get_logger("server")
 import threading
@@ -141,8 +142,48 @@ from cleo_agent import (
     get_access_token, _load_config, _save_config, AI_ENGINES, auth_helper,
     STANDARD_CH_TOOLS, LOCAL_CLIENT_ID, LOCAL_REDIRECT_URI,
     LOCAL_MODELS, PUBLIC_ENGINES, get_installed_ollama_models, OLLAMA_BASE_URL,
-    MLX_MODELS, get_installed_mlx_models, call_mlx_generate, estimate_token_count
+    MLX_MODELS, get_installed_mlx_models, call_mlx_generate, unload_mlx_models, estimate_token_count
 )
+
+def unload_ollama_models(model_name: Optional[str] = None):
+    """Tells local Ollama daemon to immediately evict loaded models from RAM/VRAM."""
+    if not _check_ollama_alive():
+        return
+    try:
+        targets = []
+        if model_name:
+            targets.append(model_name.removeprefix("ollama:").strip())
+        else:
+            req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/ps")
+            with urllib.request.urlopen(req, timeout=2.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for item in data.get("models", []):
+                    name = item.get("name") or item.get("model")
+                    if name:
+                        targets.append(name)
+
+        for m in targets:
+            logger.info(f"🧹 [Ollama Unload] Evicting model '{m}' from VRAM/RAM...")
+            payload = json.dumps({"model": m, "keep_alive": 0}).encode("utf-8")
+            req = urllib.request.Request(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                data=payload,
+                headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                pass
+            logger.info(f"✅ [Ollama Unload] Model '{m}' evicted from memory.")
+    except Exception as e:
+        logger.warning(f"Could not evict Ollama models: {e}")
+
+def _on_process_shutdown():
+    try:
+        unload_mlx_models()
+        unload_ollama_models()
+    except Exception:
+        pass
+
+atexit.register(_on_process_shutdown)
 
 # Ensure workspace virtualenv site-packages are accessible
 _cleo_root = os.path.dirname(os.path.abspath(__file__))
@@ -162,8 +203,15 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("ℹ️ CloudHealth authentication needed (use Web GUI to connect)")
     yield
+    # Server shutdown: evict any loaded local models and close MCP
+    logger.info("🛑 Cleo server shutting down. Releasing local LLM models from memory...")
     if _mcp:
-        _mcp.close()
+        try:
+            _mcp.close()
+        except Exception:
+            pass
+    unload_mlx_models()
+    unload_ollama_models()
 
 app = FastAPI(
     title="Cleo — CloudHealth FinOps AI",
@@ -1058,24 +1106,35 @@ def start_model(model: str = "qwen-3b"):
         label = model
 
     if target_engine and target_engine != _active_engine_key:
+        old_engine = _active_engine_key
         _active_engine_key = target_engine
         _engine_label = label
         cfg = _load_config()
         _ai = AIClient(_active_engine_key, cfg, tools=_tools)
+        if old_engine.startswith("mlx:"):
+            unload_mlx_models(old_engine)
+        elif old_engine.startswith("ollama:"):
+            unload_ollama_models(old_engine)
         logger.info(f"🔄 [n8n /start] Switched active engine to {_engine_label}")
 
     return {"status": "ok", "model": model, "active_engine": _active_engine_key}
 
 @app.api_route("/stop", methods=["GET", "POST"])
 def stop_model(model: str = "qwen-3b"):
-    """Compatibility endpoint for n8n orchestrator to stop/release a model."""
-    logger.info(f"🛑 [n8n /stop] Requested stop for model: {model}")
+    """Compatibility endpoint for n8n orchestrator to stop/release a model from memory."""
+    logger.info(f"🛑 [/stop] Requested stop for model: {model}")
+    if model.startswith("mlx:") or "mlx" in model.lower():
+        unload_mlx_models(model)
+    else:
+        unload_ollama_models(model)
     return {"status": "ok", "model": model, "stopped": True}
 
 @app.api_route("/stop_all", methods=["GET", "POST"])
 def stop_all_models():
-    """Compatibility endpoint for n8n orchestrator to stop/release all models."""
-    logger.info("🛑 [n8n /stop_all] Requested stop for all models")
+    """Compatibility endpoint for n8n orchestrator to stop/release all models from memory."""
+    logger.info("🛑 [/stop_all] Requested stop for all models")
+    unload_mlx_models()
+    unload_ollama_models()
     return {"status": "ok", "stopped": True}
 
 @app.api_route("/mcp", methods=["GET", "POST"])
@@ -1339,6 +1398,7 @@ class EngineSelection(BaseModel):
 @app.post("/api/engine")
 def set_engine(req: EngineSelection):
     global _active_engine_key, _engine_label, _ai
+    old_engine = _active_engine_key
     _active_engine_key = req.engine
     
     if req.engine == "direct":
@@ -1362,6 +1422,14 @@ def set_engine(req: EngineSelection):
     _save_config({"AI_ENGINE": req.engine})
     cfg = _load_config()
     _ai = AIClient(req.engine, cfg, tools=_tools)
+
+    # Evict previous local model from RAM/VRAM when switching to another engine
+    if old_engine and old_engine != req.engine:
+        if old_engine.startswith("mlx:"):
+            unload_mlx_models(old_engine)
+        elif old_engine.startswith("ollama:"):
+            unload_ollama_models(old_engine)
+
     if req.engine.startswith("ollama:") and not _check_ollama_alive():
         threading.Thread(target=_start_ollama_daemon, daemon=True).start()
     logger.info(f"🔄 [AI Engine Switched] Active engine is now: {_engine_label} ({req.engine})")
