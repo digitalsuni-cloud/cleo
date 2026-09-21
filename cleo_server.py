@@ -482,8 +482,8 @@ def auth_login():
     Directly redirects to CloudHealth login and returns automatically
     to http://127.0.0.1:8080/oauth-callback without any third-party pages.
     """
-    cid = LOCAL_CLIENT_ID
-    ruri = LOCAL_REDIRECT_URI
+    cid = auth_helper.client_id
+    ruri = auth_helper.redirect_uri
 
     auth_url, verifier, params = auth_helper.generate_auth_params(client_id=cid, redirect_uri=ruri)
     state = params["state"]
@@ -529,8 +529,8 @@ def auth_submit_code(sub: CodeSubmission):
         verifier_info = all_verifiers[sorted_keys[0]]
 
     verifier = verifier_info.get("verifier") if verifier_info else ""
-    client_id = verifier_info.get("client_id", LOCAL_CLIENT_ID) if verifier_info else LOCAL_CLIENT_ID
-    redirect_uri = verifier_info.get("redirect_uri", LOCAL_REDIRECT_URI) if verifier_info else LOCAL_REDIRECT_URI
+    client_id = verifier_info.get("client_id", auth_helper.client_id) if verifier_info else auth_helper.client_id
+    redirect_uri = verifier_info.get("redirect_uri", auth_helper.redirect_uri) if verifier_info else auth_helper.redirect_uri
 
     mcp_data = auth_helper.exchange_code(
         code=code, 
@@ -619,8 +619,8 @@ def oauth_callback(code: Optional[str] = None, state: Optional[str] = None, erro
         """, status_code=400)
 
     verifier = verifier_info.get("verifier", "") if verifier_info else ""
-    client_id = verifier_info.get("client_id", LOCAL_CLIENT_ID) if verifier_info else LOCAL_CLIENT_ID
-    redirect_uri = verifier_info.get("redirect_uri", LOCAL_REDIRECT_URI) if verifier_info else LOCAL_REDIRECT_URI
+    client_id = verifier_info.get("client_id", auth_helper.client_id) if verifier_info else auth_helper.client_id
+    redirect_uri = verifier_info.get("redirect_uri", auth_helper.redirect_uri) if verifier_info else auth_helper.redirect_uri
 
     logger.info(f"[OAuth Callback] Exchanging code ({code[:10]}...{code[-6:]}) with client {client_id[:25]}...")
     mcp_data = auth_helper.exchange_code(
@@ -641,7 +641,7 @@ def oauth_callback(code: Optional[str] = None, state: Optional[str] = None, erro
                 <a href="/auth/login" style="background:#6366f1;color:white;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;">Retry Connection</a>
             </div>
         </body></html>
-        """, status_code=500)
+        """, status_code=400)
 
     # Initialize MCP client with new token
     init_mcp_if_authenticated()
