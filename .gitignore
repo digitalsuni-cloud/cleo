@@ -48,6 +48,7 @@ local_tests/
 
 # Agent skills & internal dev rules
 agent/
+skills-lock.json
 .agents/skills/*
 !.agents/skills/cloud-finops/
 .agents/rules/graphify.md
