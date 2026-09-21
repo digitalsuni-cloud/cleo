@@ -6,6 +6,7 @@ Provides a complete, modern Web UI and REST API for Cleo, with native
 OAuth 2.0 PKCE handshake support for CloudHealth MCP, detailed verbose logging,
 and live diagnostic inspection.
 """
+from __future__ import annotations
 
 import sys, os, subprocess
 
@@ -182,8 +183,8 @@ else:
     _init_engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
 
 # Global runtime state
-_mcp: MCPClient | None = None
-_ai:  AIClient | None  = None
+_mcp: Optional[MCPClient] = None
+_ai:  Optional[AIClient]  = None
 _tools: list[dict]     = []
 
 SESSIONS_CACHE_FILE = os.path.expanduser("~/.cleo/sessions.json")
