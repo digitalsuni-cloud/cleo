@@ -41,6 +41,31 @@ def start_server():
     server = uvicorn.Server(config)
     server.run()
 
+def _has_linux_gui_runtime() -> bool:
+    """Checks if Linux has GTK WebKit or Qt WebEngine installed for native pywebview window."""
+    try:
+        import gi
+        gi.require_version("Gtk", "3.0")
+        try:
+            gi.require_version("WebKit2", "4.1")
+        except ValueError:
+            gi.require_version("WebKit2", "4.0")
+        from gi.repository import Gtk, WebKit2
+        return True
+    except Exception:
+        pass
+    try:
+        from PyQt6 import QtWebEngineWidgets
+        return True
+    except Exception:
+        pass
+    try:
+        from PySide6 import QtWebEngineWidgets
+        return True
+    except Exception:
+        pass
+    return False
+
 def main():
     parser = argparse.ArgumentParser(description="Cleo — CloudHealth FinOps Agent GUI")
     parser.add_argument("--browser", "-b", action="store_true", help="Launch in web browser instead of native desktop window")
@@ -73,6 +98,12 @@ def main():
 
     # 2. Open Desktop GUI or Browser
     use_native_window = not args.browser
+    is_linux_headless_or_no_gui = False
+    if use_native_window and sys.platform.startswith("linux"):
+        if not _has_linux_gui_runtime():
+            use_native_window = False
+            is_linux_headless_or_no_gui = True
+
     if use_native_window:
         try:
             import webview
@@ -93,6 +124,9 @@ def main():
 
     # Fallback to browser
     print(f"🌐  Opening Cleo in your default browser: {gui_url}")
+    if is_linux_headless_or_no_gui:
+        print("    ℹ️  Browser mode active. For a native desktop window on Ubuntu/Debian:")
+        print("       sudo apt install -y python3-gi gir1.2-webkit2-4.1")
     webbrowser.open(gui_url)
     print("\nPress Ctrl+C to stop the Cleo server.")
     try:
