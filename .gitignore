@@ -47,6 +47,7 @@ local_tests/
 .claude/
 
 # Agent skills & internal dev rules
+agent/
 .agents/skills/*
 !.agents/skills/cloud-finops/
 .agents/rules/graphify.md
