@@ -476,18 +476,129 @@ def _install_ollama(status_cb=None) -> tuple[bool, str]:
         return True, ""
 
     elif system == "Linux":
+        arch = "arm64" if platform.machine().lower() in ("arm64", "aarch64") else "amd64"
+        tar_zst_path = os.path.join(cache_dir, f"ollama-linux-{arch}.tar.zst")
+        url = f"https://github.com/ollama/ollama/releases/latest/download/ollama-linux-{arch}.tar.zst"
+        local_dir = os.path.join(home, ".local")
+        bin_dir = os.path.join(local_dir, "bin")
+        os.makedirs(bin_dir, exist_ok=True)
+
+        # 1. Download release archive directly
         try:
             if status_cb:
-                status_cb(10, "Installing Ollama via official installer...")
-            res = subprocess.run(
-                ["sh", "-c", "curl -fsSL https://ollama.com/install.sh | sh"],
-                capture_output=True, text=True, timeout=300
-            )
-            if res.returncode == 0 and _find_ollama_bin():
-                return True, ""
+                status_cb(10, f"Downloading Ollama Linux ({arch})...")
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Cleo-FinOps/1.0)"})
+            with urllib.request.urlopen(req, timeout=180.0) as resp:
+                total_size = int(resp.headers.get("Content-Length", 0))
+                downloaded = 0
+                chunk_size = 65536
+                with open(tar_zst_path, "wb") as f:
+                    while True:
+                        chunk = resp.read(chunk_size)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if status_cb and total_size > 0:
+                            pct = round((downloaded / total_size) * 100, 1)
+                            mb_cur = round(downloaded / (1024 * 1024), 1)
+                            mb_tot = round(total_size / (1024 * 1024), 1)
+                            status_cb(round(10 + (pct * 0.65), 1), f"Downloading Ollama ({mb_cur}/{mb_tot} MB)...")
         except Exception as e:
-            logger.warning(f"Official install script failed: {e}")
-        return False, "Please install Ollama from https://ollama.com/download"
+            logger.warning(f"Direct download of Ollama archive failed: {e}")
+            # Fallback to install script ONLY if non-interactive sudo is available or root
+            if os.geteuid() == 0:
+                try:
+                    if status_cb:
+                        status_cb(30, "Running official install script (root mode)...")
+                    subprocess.run(
+                        ["sh", "-c", "curl -fsSL https://ollama.com/install.sh | sh"],
+                        capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL
+                    )
+                    if _find_ollama_bin():
+                        return True, ""
+                except Exception:
+                    pass
+            return False, f"Failed to download Ollama package: {e}"
+
+        # 2. Extract into ~/.local (non-sudo user space)
+        if status_cb:
+            status_cb(80, "Extracting Ollama into ~/.local...")
+
+        extracted = False
+        # Try method A: system zstd + tar
+        try:
+            res = subprocess.run(
+                ["sh", "-c", f"zstd -d '{tar_zst_path}' --stdout | tar -xf - -C '{local_dir}'"],
+                capture_output=True, text=True, timeout=60
+            )
+            if res.returncode == 0:
+                extracted = True
+        except Exception:
+            pass
+
+        # Try method B: tar with --zstd
+        if not extracted:
+            try:
+                res = subprocess.run(
+                    ["tar", "--zstd", "-xf", tar_zst_path, "-C", local_dir],
+                    capture_output=True, text=True, timeout=60
+                )
+                if res.returncode == 0:
+                    extracted = True
+            except Exception:
+                pass
+
+        # Try method C: Python zstandard package
+        if not extracted:
+            try:
+                import zstandard as zstd
+            except ImportError:
+                if status_cb:
+                    status_cb(82, "Installing decompression helper...")
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "zstandard", "-q"],
+                    capture_output=True, timeout=45
+                )
+                try:
+                    import zstandard as zstd
+                except ImportError:
+                    zstd = None
+
+            if zstd:
+                try:
+                    import tarfile
+                    dctx = zstd.ZstdDecompressor()
+                    with open(tar_zst_path, "rb") as ifh:
+                        with dctx.stream_reader(ifh) as reader:
+                            with tarfile.open(fileobj=reader, mode="r|") as tar:
+                                tar.extractall(path=local_dir)
+                    extracted = True
+                except Exception as ze:
+                    logger.warning(f"Python zstandard extraction failed: {ze}")
+
+        # Clean up temporary archive file
+        try:
+            os.remove(tar_zst_path)
+        except Exception:
+            pass
+
+        installed_bin = os.path.join(bin_dir, "ollama")
+        if not os.path.isfile(installed_bin):
+            cand = _find_ollama_bin()
+            if cand:
+                installed_bin = cand
+            else:
+                return False, "Ollama binary could not be extracted (requires zstd or python zstandard library)."
+
+        try:
+            os.chmod(installed_bin, 0o755)
+        except Exception:
+            pass
+
+        if status_cb:
+            status_cb(95, "Ollama CLI installed successfully.")
+        return True, ""
 
     elif system == "Windows":
         installer_path = os.path.join(cache_dir, "OllamaSetup.exe")
