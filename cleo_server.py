@@ -142,7 +142,8 @@ from cleo_agent import (
     get_access_token, _load_config, _save_config, AI_ENGINES, auth_helper,
     STANDARD_CH_TOOLS, LOCAL_CLIENT_ID, LOCAL_REDIRECT_URI,
     LOCAL_MODELS, PUBLIC_ENGINES, get_installed_ollama_models, OLLAMA_BASE_URL,
-    MLX_MODELS, get_installed_mlx_models, call_mlx_generate, unload_mlx_models, estimate_token_count
+    MLX_MODELS, get_installed_mlx_models, call_mlx_generate, unload_mlx_models, estimate_token_count,
+    crawl_and_cache_all_datasource_metadata
 )
 
 def unload_ollama_models(model_name: Optional[str] = None):
@@ -817,6 +818,7 @@ def init_mcp_if_authenticated() -> bool:
         _mcp = MCPClient(token, token_refresher=lambda: get_access_token(interactive=False))
         info = _mcp.initialize()
         _tools = _mcp.list_tools()
+        threading.Thread(target=crawl_and_cache_all_datasource_metadata, args=(_mcp,), daemon=True).start()
         
         cfg = _load_config()
         mlx_inst = get_installed_mlx_models()

@@ -78,6 +78,145 @@ if os.path.isdir(_venv_lib):
         if os.path.isdir(_sp) and _sp not in sys.path:
             sys.path.insert(0, _sp)
 
+# ── Datasource Metadata Cache & Schema Intelligence ───────────────────────────
+DATASOURCES_METADATA_CACHE_FILE = os.path.join(APP_DATA_DIR, "datasources_metadata_cache.json")
+_datasources_metadata_memory_cache: dict = {}
+
+def get_cached_datasource_metadata(dataset: Optional[str] = None) -> Optional[dict]:
+    """Retrieve cached metadata schema for one or all datasources."""
+    global _datasources_metadata_memory_cache
+    if not _datasources_metadata_memory_cache:
+        if os.path.exists(DATASOURCES_METADATA_CACHE_FILE):
+            try:
+                with open(DATASOURCES_METADATA_CACHE_FILE, "r") as f:
+                    _datasources_metadata_memory_cache = json.load(f).get("datasources", {})
+            except Exception as e:
+                logger.warning(f"[Metadata Cache] Failed to read {DATASOURCES_METADATA_CACHE_FILE}: {e}")
+    if dataset:
+        return _datasources_metadata_memory_cache.get(dataset)
+    return _datasources_metadata_memory_cache
+
+def crawl_and_cache_all_datasource_metadata(mcp, force: bool = False) -> dict:
+    """
+    Crawls list_standard_datasources and get_datasource_metadata across all CloudHealth datasets.
+    Caches the parsed schemas to ~/.cleo/datasources_metadata_cache.json.
+    """
+    global _datasources_metadata_memory_cache
+    if not force and os.path.exists(DATASOURCES_METADATA_CACHE_FILE):
+        try:
+            mtime = os.path.getmtime(DATASOURCES_METADATA_CACHE_FILE)
+            if (time.time() - mtime) < (7 * 86400):  # Fresh for 7 days
+                data = get_cached_datasource_metadata()
+                if data and len(data) >= 15:
+                    logger.debug(f"[Metadata Cache] Loaded {len(data)} cached datasource schemas")
+                    return data
+        except Exception:
+            pass
+
+    logger.info("🔍 [Metadata Crawler] Discovering all CloudHealth standard datasources...")
+    try:
+        res = mcp.call_tool("list_standard_datasources", {})
+        txt = res.get("content", [{}])[0].get("text", "")
+        idx = txt.find("[")
+        if idx == -1:
+            logger.warning("[Metadata Crawler] No JSON array found in list_standard_datasources")
+            return get_cached_datasource_metadata() or {}
+        ds_list = json.loads(txt[idx:])
+        all_ds_names = [d.get("datasetName") for d in ds_list if d.get("datasetName")]
+    except Exception as e:
+        logger.warning(f"[Metadata Crawler] Failed to list datasources: {e}")
+        return get_cached_datasource_metadata() or {}
+
+    logger.info(f"📥 [Metadata Crawler] Fetching schemas for {len(all_ds_names)} datasources in parallel...")
+    def _fetch_one(dname: str):
+        try:
+            r = mcp.call_tool("get_datasource_metadata", {"dataset": dname})
+            c_txt = r.get("content", [{}])[0].get("text", "")
+            d = json.loads(c_txt)
+            cols = d.get("commonColumns", []) or d.get("columns", [])
+            clean_cols = [
+                {
+                    "name": c.get("name"),
+                    "displayName": c.get("displayName") or c.get("name"),
+                    "type": c.get("type", "DIMENSION"),
+                    "dataType": c.get("dataType", "STRING"),
+                    "description": c.get("description", "")
+                }
+                for c in cols if isinstance(c, dict)
+            ]
+            return dname, {
+                "dataset": dname,
+                "displayName": d.get("datasetDisplayName", dname),
+                "description": d.get("description", ""),
+                "cloudType": d.get("cloudType"),
+                "columnCount": len(clean_cols),
+                "columns": clean_cols
+            }
+        except Exception as ex:
+            return dname, {"dataset": dname, "error": str(ex)}
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        results = dict(ex.map(_fetch_one, all_ds_names))
+
+    payload = {
+        "updated_at": time.time(),
+        "total_datasets": len(results),
+        "datasources": results
+    }
+    try:
+        os.makedirs(APP_DATA_DIR, exist_ok=True)
+        with open(DATASOURCES_METADATA_CACHE_FILE, "w") as f:
+            json.dump(payload, f, indent=2)
+        _datasources_metadata_memory_cache = results
+        logger.info(f"✅ [Metadata Crawler] Successfully cached {len(results)} datasource schemas to {DATASOURCES_METADATA_CACHE_FILE}")
+    except Exception as e:
+        logger.error(f"[Metadata Crawler] Failed to write cache file: {e}")
+
+    return results
+
+def build_llm_schema_context() -> str:
+    """
+    Builds a concise, high-density catalog of CloudHealth datasets and key columns
+    derived directly from the cached metadata schemas so the LLM knows what to query.
+    """
+    cache = get_cached_datasource_metadata() or {}
+    if not cache:
+        return ""
+
+    lines = ["CLOUDHEALTH DATASOURCE SCHEMAS & KEY COLUMNS (AUTO-GENERATED FROM MCP METADATA):"]
+    priority_keys = [
+        "AWS_CUR", "MULTICLOUD_FOCUS_COST_AND_USAGE", "AWS_FOCUS_COST_AND_USAGE",
+        "AZURE_FOCUS_COST_AND_USAGE", "GCP_FOCUS_COST_AND_USAGE", "CLOUDHEALTH_CONSUMPTION_BREAKDOWN",
+        "AWS_COST_ANOMALY", "AZURE_COST_ANOMALY", "GCP_COST_ANOMALY",
+        "AWS_EC2_COST_AND_USAGE", "AWS_RDS_COST_AND_USAGE",
+        "AWS_AI_COST_AND_USAGE", "MULTICLOUD_AI_COST_AND_USAGE", "OPENAI_COST_AND_USAGE", "ANTHROPIC_COST_AND_USAGE",
+        "AWS_DATA_TRANSFER_COST_AND_USAGE", "MULTICLOUD_COMMITMENT_SAVINGS",
+        "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS", "WASTE_OPPORTUNITY"
+    ]
+
+    for key in priority_keys:
+        ds_info = cache.get(key)
+        if not ds_info or "columns" not in ds_info:
+            continue
+        disp = ds_info.get("displayName") or key
+        cols = ds_info["columns"]
+        measures = [c["name"] for c in cols if c.get("type") == "MEASURE"]
+        dimensions = [c["name"] for c in cols if c.get("type") != "MEASURE"]
+        key_dims = [
+            d for d in dimensions
+            if any(k in d.lower() for k in [
+                "region", "location", "service", "customer", "month", "time",
+                "instance", "engine", "account", "provider", "model", "token"
+            ])
+        ]
+        lines.append(f"- `{key}` ({disp}):")
+        if measures:
+            lines.append(f"  * Measures (Metrics): {', '.join(measures[:6])}")
+        if key_dims:
+            lines.append(f"  * Key Dimensions: {', '.join(key_dims[:12])}")
+
+    return "\n".join(lines)
+
 # ── Local & Public Model Catalogs ──────────────────────────────────────────────
 MLX_MODELS = [
     {"id": "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit", "repo_id": "mlx-community/Qwen2.5-7B-Instruct-4bit", "name": "Qwen2.5-7B-Instruct-4bit (MLX)", "size": "4.3 GB", "tier": "default", "desc": "Default recommended Apple Silicon Metal model (~4.3 GB RAM)"},
@@ -533,50 +672,74 @@ class MCPClient:
                 warning = "\n\n⚠️ **CloudHealth MCP is offline** — this is a partial dataset list. Connect CloudHealth for the full catalogue (40+ datasets)."
                 res = {"content": [{"type": "text", "text": json.dumps(ds, indent=2) + warning}]}
             elif name == "get_datasource_metadata":
-                # ponytail: MCP offline — return known columns for common datasets; always partial; real schema via MCP
                 dataset = args.get("dataset", "CLOUDHEALTH_CONSUMPTION_BREAKDOWN")
-                known_columns = {
-                    "CLOUDHEALTH_CONSUMPTION_BREAKDOWN": [
-                        {"name": "timeInterval_Month", "type": "string"},
-                        {"name": "CustomerName", "type": "string"},
-                        {"name": "ServiceName", "type": "string"},
-                        {"name": "ConfiguredUsageAtPartner", "type": "number"},
-                        {"name": "ChannelBillableUsage", "type": "number"},
-                    ],
-                    "MULTICLOUD_FOCUS_COST_AND_USAGE": [
-                        {"name": "Month", "type": "string"},
-                        {"name": "ServiceCategory", "type": "string"},
-                        {"name": "provider", "type": "string"},
-                        {"name": "EffectiveCost", "type": "number"},
-                        {"name": "BilledCost", "type": "number"},
-                    ],
-                    "AWS_FOCUS_COST_AND_USAGE": [
-                        {"name": "Month", "type": "string"},
-                        {"name": "ServiceName", "type": "string"},
-                        {"name": "EffectiveCost", "type": "number"},
-                        {"name": "BilledCost", "type": "number"},
-                    ],
-                    "AZURE_FOCUS_COST_AND_USAGE": [
-                        {"name": "Month", "type": "string"},
-                        {"name": "ServiceName", "type": "string"},
-                        {"name": "EffectiveCost", "type": "number"},
-                        {"name": "BilledCost", "type": "number"},
-                    ],
-                    "AWS_CUR": [
-                        {"name": "timeInterval_Month", "type": "string"},
-                        {"name": "lineItem_ProductCode", "type": "string"},
-                        {"name": "lineItem_UnblendedCost", "type": "number"},
-                        {"name": "lineItem_UsageAccountId", "type": "string"},
-                        {"name": "lineItem_UsageType", "type": "string"},
-                    ],
-                }
-                columns = known_columns.get(dataset, [{"name": "unknown", "type": "string"}])
-                meta = {
-                    "dataset": dataset,
-                    "columns": columns,
-                    "_warning": "CloudHealth MCP is offline — column list is partial. Connect CloudHealth for the full schema.",
-                }
-                res = {"content": [{"type": "text", "text": json.dumps(meta, indent=2)}]}
+                cached_ds = get_cached_datasource_metadata(dataset)
+                if cached_ds and "columns" in cached_ds:
+                    meta = {
+                        "dataset": dataset,
+                        "displayName": cached_ds.get("displayName", dataset),
+                        "description": cached_ds.get("description", ""),
+                        "columns": cached_ds["columns"],
+                        "columnCount": len(cached_ds["columns"]),
+                        "_source": "local_metadata_cache"
+                    }
+                    res = {"content": [{"type": "text", "text": json.dumps(meta, indent=2)}]}
+                else:
+                    known_columns = {
+                        "CLOUDHEALTH_CONSUMPTION_BREAKDOWN": [
+                            {"name": "timeInterval_Month", "type": "string"},
+                            {"name": "CustomerName", "type": "string"},
+                            {"name": "ServiceName", "type": "string"},
+                            {"name": "ConfiguredUsageAtPartner", "type": "number"},
+                            {"name": "ChannelBillableUsage", "type": "number"},
+                        ],
+                        "MULTICLOUD_FOCUS_COST_AND_USAGE": [
+                            {"name": "Month", "type": "string"},
+                            {"name": "ServiceCategory", "type": "string"},
+                            {"name": "provider", "type": "string"},
+                            {"name": "RegionId", "type": "string"},
+                            {"name": "EffectiveCost", "type": "number"},
+                            {"name": "BilledCost", "type": "number"},
+                        ],
+                        "AWS_FOCUS_COST_AND_USAGE": [
+                            {"name": "Month", "type": "string"},
+                            {"name": "ServiceName", "type": "string"},
+                            {"name": "RegionId", "type": "string"},
+                            {"name": "EffectiveCost", "type": "number"},
+                            {"name": "BilledCost", "type": "number"},
+                        ],
+                        "AZURE_FOCUS_COST_AND_USAGE": [
+                            {"name": "Month", "type": "string"},
+                            {"name": "ServiceName", "type": "string"},
+                            {"name": "RegionId", "type": "string"},
+                            {"name": "EffectiveCost", "type": "number"},
+                            {"name": "BilledCost", "type": "number"},
+                        ],
+                        "GCP_FOCUS_COST_AND_USAGE": [
+                            {"name": "Month", "type": "string"},
+                            {"name": "ServiceName", "type": "string"},
+                            {"name": "RegionId", "type": "string"},
+                            {"name": "EffectiveCost", "type": "number"},
+                            {"name": "BilledCost", "type": "number"},
+                        ],
+                        "AWS_CUR": [
+                            {"name": "timeInterval_Month", "type": "string"},
+                            {"name": "lineItem_ProductCode", "type": "string"},
+                            {"name": "product_region", "type": "string"},
+                            {"name": "product_location", "type": "string"},
+                            {"name": "lineItem_AvailabilityZone", "type": "string"},
+                            {"name": "lineItem_UnblendedCost", "type": "number"},
+                            {"name": "lineItem_UsageAccountId", "type": "string"},
+                            {"name": "lineItem_UsageType", "type": "string"},
+                        ],
+                    }
+                    columns = known_columns.get(dataset, [{"name": "unknown", "type": "string"}])
+                    meta = {
+                        "dataset": dataset,
+                        "columns": columns,
+                        "_warning": "CloudHealth MCP is offline — column list is partial. Connect CloudHealth for the full schema.",
+                    }
+                    res = {"content": [{"type": "text", "text": json.dumps(meta, indent=2)}]}
             else:
                 return {"error": f"Unknown tool: {name}"}
 
@@ -1537,8 +1700,9 @@ def build_system_prompt(tools: list[dict]) -> str:
         "     * Channel Customer queries MUST use 'SUM(ConfiguredUsageAtPartner) AS cost' WHERE CustomerType != 'Partner' AND ConfiguredUsageAtPartner > 0.\n"
         "     * Combined queries use 'SUM(CASE WHEN CustomerType = 'Partner' THEN Usage ELSE ConfiguredUsageAtPartner END) AS cost' WHERE CostType = 'total'.\n"
         "     * Never use 'Usage' or 'ChannelBillableUsage' for channel customers (they evaluate to 0.0).\n"
-        "   - AWS_CUR: AWS Cost & Usage Report dataset. Key columns: lineItem_ProductCode (Service), lineItem_UnblendedCost, timeInterval_Month, lineItem_UsageAccountId.\n"
-        "   - MULTICLOUD_FOCUS_COST_AND_USAGE: Unified AWS+Azure FOCUS standard dataset. Key columns: provider, ServiceName, Month, EffectiveCost, BilledCost.\n"
+        "   - AWS_CUR: AWS Cost & Usage Report dataset. Key columns: lineItem_ProductCode (Service), lineItem_UnblendedCost, timeInterval_Month, lineItem_UsageAccountId, product_region (Region code e.g. us-east-1), product_location (Location name e.g. US East (N. Virginia)), lineItem_AvailabilityZone.\n"
+        "   - MULTICLOUD_FOCUS_COST_AND_USAGE: Unified AWS+Azure FOCUS standard dataset. Key columns: provider, ServiceName, Month, EffectiveCost, BilledCost, RegionId (Region identifier e.g. us-east-1, eastus).\n"
+        "   - REGION & LOCATION BREAKDOWNS: When user asks to break down costs by region or location, query product_region / product_location from AWS_CUR, or RegionId from MULTICLOUD_FOCUS_COST_AND_USAGE / AZURE_FOCUS_COST_AND_USAGE / GCP_FOCUS_COST_AND_USAGE.\n"
         "   - AWS_FOCUS_COST_AND_USAGE / AZURE_FOCUS_COST_AND_USAGE: Provider-specific FOCUS cost datasets.\n"
         "   - AWS_COST_ANOMALY / AZURE_COST_ANOMALY: Dedicated CloudHealth Anomaly Detection datasets containing identified cost anomalies, spikes, and unusual spend.\n"
         "     * Key columns: Service, CostImpact (dollar variance), CostImpactPercentage (%), CostImpactType (Increase/Decrease), Status (ACTIVE/INACTIVE/ARCHIVED), Region, AccountID, Duration_Days, timeInterval_Month.\n"
@@ -1594,6 +1758,9 @@ def build_system_prompt(tools: list[dict]) -> str:
         "- When the user asks about prior queries, results, or context (e.g. 'which month was I asking for?', 'who spent the most?', 'summarize the table', 'why?'), ALWAYS use the conversation history to answer directly, accurately, and concisely.\n"
         "- Never claim you don't know the requested month or parameters when they were stated in previous user turns or assistant answers.\n"
     )
+    schema_ctx = build_llm_schema_context()
+    if schema_ctx:
+        prompt += f"\n{schema_ctx}\n"
     return prompt
 
 # ── Multi-Cloud Service Mapping & Extraction (AWS, Azure, GCP) ────────
@@ -2066,6 +2233,17 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     elif False and any(w in low for w in ["oci", "oracle cloud"]):
         service = "OCI"
 
+    # Cloud detection
+    cloud = None
+    if any(w in low for w in ["azure", "microsoft"]):
+        cloud = "azure"
+    elif any(w in low for w in ["gcp", "google cloud", "google", "bigquery"]):
+        cloud = "gcp"
+    elif any(w in low for w in ["aws", "amazon"]):
+        cloud = "aws"
+    elif any(w in low for w in ["all cloud", "all clouds", "multi-cloud", "multicloud", "cross-cloud"]):
+        cloud = "all"
+
     # Timeframe detection
     m_months = re.search(r'\b(\d+)\s*(?:months?|m)\b', low)
     m_days = re.search(r'\b(\d+)\s*(?:days?|d)\b', low)
@@ -2088,6 +2266,10 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         breakdowns.append("instance_type")
     if any(w in low for w in ["enginetype", "engine type", "engine", "database engine"]):
         breakdowns.append("engine_type")
+    if any(w in low for w in ["region", "regions", "regional"]):
+        breakdowns.append("region")
+    if any(w in low for w in ["location", "locations", "geography", "geographic"]):
+        breakdowns.append("location")
     if any(w in low for w in ["service", "product"]):
         breakdowns.append("service")
     if any(w in low for w in ["customer", "tenant", "client"]):
@@ -2133,8 +2315,24 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         low
     )) and not any(w in low for w in ["tag", "tags", "tagged"])
 
+    # General Cloud FinOps Advisory / Conceptual Question (no live data needed)
+    is_general_finops = any(phrase in low for phrase in [
+        "what is the difference", "difference between", "what is billedcost", "what is effectivecost",
+        "what is focus", "what is finops", "explain finops", "finops framework", "finops phases",
+        "inform optimize operate", "savings plan vs", "savings plans vs", "ri vs", "reserved instance vs",
+        "how to optimize", "how do i optimize", "best practice", "playbook", "doctrine", "strategy",
+        "unit economics", "tag governance", "waste pattern", "gp2 to gp3", "zombie nat", "egress cost"
+    ]) and not (customer or has_fetch_verb or any(w in low for w in ["our spend", "my spend", "our cost", "my cost", "show me our", "show me my"]))
+
+    # Date parsing
+    t_ctx = parse_query_time_context(last_msg)
+    target_ym = t_ctx.get("target_ym") if t_ctx.get("is_specific") else None
+
     if is_user_query:
         intent = "unsupported_capability"
+        is_new_data_fetch = False
+    elif is_general_finops:
+        intent = "general_finops_advisory"
         is_new_data_fetch = False
     elif is_pure_reformat and prior_assistant_msgs:
         intent = "reformat_previous"
@@ -2157,13 +2355,16 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
 
     return {
         "intent": intent,
+        "cloud": cloud,
         "service": service,
         "customer": customer,
+        "target_ym": target_ym,
         "timeframe_months": timeframe_months,
         "timeframe_days": timeframe_days,
         "breakdowns": breakdowns,
         "chart_types": chart_types,
-        "is_new_data_fetch": is_new_data_fetch
+        "is_new_data_fetch": is_new_data_fetch,
+        "corrected_query": last_msg
     }
 
 class AIClient:
@@ -2281,6 +2482,7 @@ class AIClient:
         cal = get_realtime_calendar_info()
         system_instruction = (
             "You are Cleo's FinOps Request Analyzer. Analyze the user query in the context of recent chat history.\n"
+            "Your mission is to understand the user's intent with extreme accuracy, correct any typos in services, dates, or cloud providers, normalize entities, and extract query parameters.\n\n"
             f"REAL-TIME TEMPORAL DETAILS (Ground all dates against this calendar):\n"
             f"- Today's Date: {cal['today_str']} ({cal['today_verbose']}) — ALWAYS IGNORE TODAY in closed daily billing trends as in-flight.\n"
             f"- Yesterday: {cal['yesterday_str']} — ALWAYS REMEMBER that yesterday's data is PARTIAL due to cloud billing settlement latency.\n"
@@ -2290,26 +2492,31 @@ class AIClient:
             f"- Last 30 Days Window: {cal['d30_start']} to {cal['yesterday_str']} (30 closed days, ending yesterday, ignoring today)\n\n"
             "Output ONLY a raw JSON object (no markdown, no code fencing, no explanation) with this schema:\n"
             "{\n"
-            '  "intent": "fetch_data" | "reformat_previous" | "history_qa" | "finops_recommendations" | "anomalies" | "unsupported_capability" | "general_chat",\n'
-            '  "service": "AmazonRDS" | "AmazonEC2" | "AmazonS3" | "Azure" | "GCP" | "all" | null,\n'
+            '  "intent": "fetch_data" | "general_finops_advisory" | "reformat_previous" | "history_qa" | "finops_recommendations" | "anomalies" | "unsupported_capability" | "general_chat",\n'
+            '  "cloud": "aws" | "azure" | "gcp" | "all" | null,\n'
+            '  "service": "AmazonRDS" | "AmazonEC2" | "AmazonS3" | "AWSLambda" | "AmazonVPC" | string | null,\n'
             '  "customer": string or null,\n'
+            '  "target_ym": "YYYY-MM" or null,\n'
             '  "timeframe_months": integer or null,\n'
             '  "timeframe_days": integer or null,\n'
-            '  "breakdowns": ["instance_type", "engine_type"],\n'
-            '  "chart_types": ["bar", "pie", "donut", "line", "stacked_bar"],\n'
-            '  "is_new_data_fetch": boolean\n'
+            '  "breakdowns": ["region", "location", "instance_type", "engine_type", "service", "customer"],\n'
+            '  "chart_types": ["bar", "horizontal-bar", "pie", "donut", "line"],\n'
+            '  "is_new_data_fetch": boolean,\n'
+            '  "corrected_query": string\n'
             "}\n\n"
             "CRITICAL RULES:\n"
-            "1. is_new_data_fetch MUST be true if the user asks to get/fetch/show usage, cost, spend, or mentions a cloud service (RDS, EC2, S3, Azure, etc.) or timeframe, EVEN IF they also ask for a chart.\n"
-            "2. is_new_data_fetch is false ONLY when the user asks purely to re-render the immediately preceding table into a different chart format (e.g. 'show that as a pie chart', 'make it a donut') without requesting new data or changing service.\n"
-            "3. service: Set to 'AmazonRDS' if user mentions RDS, database, relational database, or aurora. Set to 'AmazonEC2' if user mentions EC2, compute instances (non-database). Set to 'AmazonS3' if user mentions S3, bucket, storage.\n"
-            "4. customer: Extract customer name (e.g. 'Lundbeck', 'Novo Nordisk') if specified or clearly referenced.\n"
-            "5. timeframe_days: Set to 15 if user asks for last 15 days or 15days. Default to 30 for usage/spend queries unless user specifies a different timeframe (e.g. 12 months, 60 days).\n"
-            "6. Set intent to 'unsupported_capability' and is_new_data_fetch to false if user asks for tenant users, user accounts, IAM users, passwords, or identity management in the tenant (CloudHealth MCP does not manage user accounts).\n"
+            "1. GENERAL FINOPS ADVISORY (NO DATA FETCH): Set intent to 'general_finops_advisory' and is_new_data_fetch to false if the user asks a conceptual FinOps, architectural, best practice, or educational question (e.g. 'What is the difference between EffectiveCost and BilledCost?', 'How to optimize NAT gateways?', 'Explain FinOps framework phases', 'Savings Plans vs RIs', 'What is FOCUS?', 'OptimNow doctrine on egress'). These questions DO NOT require pulling data from CloudHealth.\n"
+            "2. DATA FETCH: Set intent to 'fetch_data' and is_new_data_fetch to true if the user asks to see, show, fetch, get, analyze, or chart their costs, usage, spend, or data from cloud providers (AWS, Azure, GCP), even if their prompt has typos (e.g. 'shw me jne 2026 cst for awz').\n"
+            "3. TYPO CORRECTION & NORMALIZATION: In corrected_query, fix all spelling mistakes, typos in services (e.g. 'awz' -> 'AWS', 'rds' -> 'RDS', 'jne' -> 'June'), and clarify the sentence. In 'cloud', normalize to 'aws', 'azure', 'gcp', or 'all'. In 'service', normalize to canonical names like 'AmazonEC2', 'AmazonRDS', 'AmazonS3'. In 'target_ym', extract normalized 'YYYY-MM' (e.g. '2026-06').\n"
+            "4. BREAKDOWNS: Include 'region' if user asks to break down or group by region, or 'location' if user asks to break down or group by location.\n"
+            "5. REFORMAT ONLY: is_new_data_fetch is false and intent is 'reformat_previous' ONLY when the user asks purely to re-render the immediately preceding table into a different chart format (e.g. 'show that as a pie chart') without requesting new data or changing service.\n"
+            "6. UNSUPPORTED CAPABILITY: Set intent to 'unsupported_capability' and is_new_data_fetch to false if user asks for tenant users, user accounts, IAM users, passwords, or identity management in the tenant (CloudHealth MCP does not manage user accounts).\n"
         )
 
+        cust_list_snippet = f"Known Channel Customers: {', '.join(list(cust_map.keys())[:25])}\n\n" if cust_map else ""
         user_prompt = (
             f"Recent Context:\n{context_str}\n\n"
+            f"{cust_list_snippet}"
             f"Current User Query: \"{last_msg}\"\n\n"
             "JSON Analysis:"
         )
@@ -2326,13 +2533,16 @@ class AIClient:
                 if "is_new_data_fetch" in parsed and "intent" in parsed:
                     return {
                         "intent": parsed.get("intent", det_info["intent"]),
+                        "cloud": parsed.get("cloud") or det_info.get("cloud"),
                         "service": parsed.get("service") or det_info["service"],
                         "customer": parsed.get("customer") or det_info["customer"],
+                        "target_ym": parsed.get("target_ym") or det_info.get("target_ym"),
                         "timeframe_months": parsed.get("timeframe_months") or det_info["timeframe_months"],
                         "timeframe_days": parsed.get("timeframe_days") or det_info["timeframe_days"],
                         "breakdowns": parsed.get("breakdowns") or det_info["breakdowns"],
                         "chart_types": parsed.get("chart_types") or det_info["chart_types"],
-                        "is_new_data_fetch": bool(parsed.get("is_new_data_fetch", det_info["is_new_data_fetch"]))
+                        "is_new_data_fetch": bool(parsed.get("is_new_data_fetch", det_info["is_new_data_fetch"])),
+                        "corrected_query": parsed.get("corrected_query") or last_msg
                     }
         except Exception as ex:
             logger.warning(f"[LLM-First Intent Analysis] Fallback to deterministic: {ex}")
@@ -2931,32 +3141,51 @@ class AIClient:
             "spend by", "cost by", "usage by", "spend breakdown", "usage breakdown", "cost breakdown"
         ]) or bool(is_followup and is_prior_cust_query)
 
-        is_advisory_inquiry = any(phrase in low for phrase in [
+        # ── 2c. FinOps Advisory, Architecture & Conceptual Queries ───────────
+        # Handle conceptual, strategic, and advisory questions directly using LLM + OptimNow FinOps knowledge
+        # without querying CloudHealth telemetry or returning empty/unrelated data tables.
+        is_advisory_phrase = any(phrase in low for phrase in [
             "how to", "how do i", "how can i", "how should", "best practice", "playbook",
-            "explain", "what is the difference", "trade-off", "tradeoff",
-            "doctrine", "strategy", "architecture", "what is focus", "what is billedcost",
-            "what is effectivecost", "break-even", "roi of"
+            "explain", "what is", "what are", "difference between", "trade-off", "tradeoff",
+            "doctrine", "strategy", "architecture", "framework", "what is focus", "what is billedcost",
+            "what is effectivecost", "break-even", "roi of", "inform optimize operate",
+            "unit economics", "tag governance", "waste pattern", "savings plan vs", "ri vs",
+            "egress cost", "nat gateway optimization"
         ])
+        is_live_data_followup = is_followup and is_prior_cost_query and not is_advisory_phrase
 
-        # A follow-up continuing a live-data conversation (e.g. "give the similar data for
-        # AWS and GCP" right after a real Azure spend query) must never be hijacked into a
-        # generic FinOps-education answer just because a keyword in ROUTING (cleo_finops_refs.py)
-        # loosely matches a word in it — that silently drops the live-data request entirely.
-        is_live_data_followup = is_followup and is_prior_cost_query and not is_advisory_inquiry
+        is_general_finops_query = (
+            intent_info.get("intent") == "general_finops_advisory" or
+            (
+                is_advisory_phrase
+                and not is_live_data_followup
+                and not named_customer
+                and not is_explicit_telemetry_table
+                and not any(w in low for w in [
+                    "get me", "fetch", "query", "show me our", "show me my", "our spend", "my spend",
+                    "our cost", "my cost", "break it down", "breakdown by"
+                ])
+            )
+        )
+
         finops_adv = get_finops_advisory(last_msg) if not is_live_data_followup else None
-        if finops_adv and not named_customer and not is_explicit_telemetry_table:
+        if (is_general_finops_query or (finops_adv and not named_customer and not is_explicit_telemetry_table)):
             # External LLM synthesis if active
             if self.engine != "direct":
                 cal = get_realtime_calendar_info()
                 sys_msg = {
                     "role": "system",
                     "content": (
-                        f"You are Cleo, an expert Autonomous FinOps advisor.\n"
-                        f"Real-Time Calendar Context: Today is {cal['today_str']} ({cal['today_verbose']}), current billing period is {cal['current_ym']}.\n"
-                        f"Use the authoritative OptimNow FinOps guidance below to directly and professionally answer the user's question.\n"
-                        f"CRITICAL: DO NOT output pseudocode, python scripts, tool calls (e.g. list_standard_datasources), or narrate API mechanics.\n"
-                        f"Provide clear, actionable FinOps recommendations, trade-offs, and architecture best practices.\n\n"
-                        f"AUTHORITATIVE GUIDANCE:\n{finops_adv}"
+                        "You are Cleo, an expert Principal Cloud FinOps Architect and advisor.\n"
+                        "Ground your guidance in the FinOps Foundation Framework (Inform → Optimize → Operate) and OptimNow practitioner doctrine.\n"
+                        f"Real-Time Calendar Context: Current date is {cal['today_str']}, current billing period is {cal['current_ym']}.\n"
+                        "Answer the user's question with deep FinOps precision and clarity:\n"
+                        "- Provide clear definitions, financial mechanics, and trade-offs.\n"
+                        "- Distinguish Quick Wins (non-disruptive, immediate) from Strategic Modernization (architectural).\n"
+                        "- Include concrete metrics, formulas, or architecture/CLI steps where applicable.\n"
+                        "- DO NOT call CloudHealth tools or generate SQL statements, as this is a general FinOps domain question.\n"
+                        "- NEVER output internal pseudocode or python scripts (e.g. list_standard_datasources).\n\n"
+                        f"{f'AUTHORITATIVE FINOPS GUIDANCE & CONTEXT:\n{finops_adv}\n' if finops_adv else ''}"
                     )
                 }
                 user_msg = {"role": "user", "content": last_msg}
@@ -2965,8 +3194,17 @@ class AIClient:
                     return llm_resp
                 if err:
                     logger.warning(f"[LLM Advisory Fallback] {err}")
-            # Direct FinOps Router mode: return authoritative OptimNow playbook/reference guidance
-            return finops_adv
+            if finops_adv:
+                return finops_adv
+            # Fallback if in direct engine mode and no specific playbook matched
+            return (
+                f"### 💡 Cloud FinOps Expert Guidance\n\n"
+                f"To address your inquiry regarding **{last_msg}**, adhere to the **FinOps Foundation Framework**:\n\n"
+                f"- **Inform**: Gain granular visibility into unit metrics (BilledCost vs EffectiveCost in FOCUS 1.2), allocate shared costs, and identify drivers.\n"
+                f"- **Optimize**: Implement Quick Wins (storage tiering, gp2→gp3, unattached EBS/IPs) before Strategic Modernization (Graviton, commitments, architecture).\n"
+                f"- **Operate**: Automate continuous waste detection, tag governance, and track KPIs against business value.\n\n"
+                f"*Source: FinOps Foundation Framework & OptimNow Multi-Cloud Engineering Doctrine.*"
+            )
 
         # ── 3. Cost, Spend, Breakdown & Billing Queries (High Priority) ──────
         is_cost_query = any(w in low for w in [
@@ -2974,7 +3212,8 @@ class AIClient:
             "expense", "expensive", "top", "unblended", "recommendation",
             "recommendations", "optimize", "optimization", "forecast", "projected",
             "anomal", "spike", "spikes", "unusual",
-            "chart", "waterfall", "graph", "plot", "pie", "donut", "doughnut", "instance", "ec2", "rds", "service"
+            "chart", "waterfall", "graph", "plot", "pie", "donut", "doughnut", "instance", "ec2", "rds", "service",
+            "region", "regions", "regional", "location", "locations", "geography"
         ]) or bool(is_prior_cost_query and is_clarification)
 
         if is_prior_cost_query and is_followup and not is_user_list_query and not any(w in low for w in ["org", "organization", "dataset", "datasource"]):
@@ -2994,6 +3233,16 @@ class AIClient:
             last_ym = time_ctx["last_ym"]
             limit = time_ctx["limit"]
 
+            # If LLM identified a target_ym from typos or context that regex missed, incorporate it
+            if intent_info.get("target_ym") and not is_specific:
+                target_ym = intent_info["target_ym"]
+                is_specific = True
+                try:
+                    t_yr, t_mo = int(target_ym.split("-")[0]), int(target_ym.split("-")[1])
+                    target_label = f"{FULL_NAMES[t_mo]} {t_yr}"
+                except Exception:
+                    target_label = f"Month {target_ym}"
+
             # If this is a follow-up turn without its own specific date, inherit the previous target date
             if is_followup and not is_specific and prior_cost_query:
                 prev_t_ctx = parse_query_time_context(prior_cost_query)
@@ -3010,6 +3259,10 @@ class AIClient:
 
             # ── Extract or inherit requested AWS service ──────────────────────
             requested_service, requested_service_disp = extract_requested_service(last_msg)
+            if not requested_service and intent_info.get("service"):
+                requested_service = intent_info["service"]
+                requested_service_disp = PCODE_TO_DISPLAY.get(requested_service, requested_service)
+
             # Only reset requested_service if explicitly asking for all services or negating, AND no specific service was named
             is_explicit_all_svcs = any(w in low for w in [
                 "all service", "all the service", "all the services", "all services",
@@ -3033,7 +3286,7 @@ class AIClient:
                         break
 
             # ── Extract or inherit requested cloud provider (aws, azure, gcp, all) ──
-            active_cloud = extract_requested_cloud(last_msg)
+            active_cloud = extract_requested_cloud(last_msg) or intent_info.get("cloud")
             if not active_cloud and is_followup:
                 for u_msg in reversed(prior_user_msgs):
                     c = extract_requested_cloud(u_msg)
@@ -3205,6 +3458,250 @@ class AIClient:
                     f"{chr(10).join(table_lines)}\n"
                     f"{insights_block}\n"
                     f"*Source: CloudHealth Anomaly Detection (`{ds_name}`). Monitored via live CloudHealth FlexReports.*"
+                )
+
+            # 3-Region. Region & Location Spend Breakdown (AWS, Azure, GCP, Multi-Cloud)
+            is_region_or_location_query = (
+                any(w in low for w in ["region", "regions", "regional", "location", "locations", "geography", "geographic"]) or
+                "region" in intent_info.get("breakdowns", []) or
+                "location" in intent_info.get("breakdowns", [])
+            ) and not any(w in low for w in ["anomaly", "anomalies", "recommendation", "recommendations"])
+
+            if is_region_or_location_query and mcp:
+                partial_notice = ""
+                if time_ctx.get("timeframe_days"):
+                    t_days = time_ctx["timeframe_days"]
+                    svc_scope_label = time_ctx.get("target_label", f"Last {t_days} Days")
+                    if time_ctx.get("daily_range"):
+                        svc_time_range = time_ctx["daily_range"]
+                    else:
+                        svc_time_range = {"last": t_days, "qualifier": "DAY"}
+                    svc_granularity = "DAILY"
+                    partial_notice = (
+                        f"> ⚠️ **FinOps Ingestion Notice**: Current date (`{today_str}`) is excluded from closed analysis as in-flight; "
+                        f"yesterday's data (`{yesterday_str}`) is preliminary/partial across all cloud providers due to standard 24–48h billing ingestion latency.\n\n"
+                    )
+                elif is_specific:
+                    svc_time_range = {"from": target_ym, "to": target_ym}
+                    svc_scope_label = target_label
+                    svc_granularity = "MONTHLY"
+                elif re.search(r'\b(quarter|quater|qtr)\b', low):
+                    today_d = datetime.date.today()
+                    cur_q = (today_d.month - 1) // 3 + 1
+                    if any(w in low for w in ["last quarter", "previous quarter", "prior quarter"]):
+                        q, yr = (cur_q - 1, today_d.year) if cur_q > 1 else (4, today_d.year - 1)
+                    else:
+                        q, yr = cur_q, today_d.year
+                    q_start_month = (q - 1) * 3 + 1
+                    svc_time_range = {"from": f"{yr}-{q_start_month:02d}", "to": f"{yr}-{q_start_month + 2:02d}"}
+                    svc_scope_label = f"Q{q} {yr}"
+                    svc_granularity = "MONTHLY"
+                else:
+                    svc_scope_label = target_label or "Last Month"
+                    svc_time_range = {"from": last_ym, "to": current_ym}
+                    svc_granularity = "MONTHLY"
+
+                wants_location = any(w in low for w in ["location", "locations"]) and not any(w in low for w in ["region", "regions"])
+                dim_label = "Location" if wants_location else "Region"
+
+                cloud_target = active_cloud
+                if not cloud_target:
+                    if requested_service and PCODE_TO_PROVIDER.get(str(requested_service)):
+                        cloud_target = PCODE_TO_PROVIDER[str(requested_service)]
+                    elif any(w in low for w in ["all cloud", "all clouds", "multi-cloud", "multicloud", "cross-cloud", "every cloud"]):
+                        cloud_target = "all"
+                    elif "azure" in low:
+                        cloud_target = "azure"
+                    elif "gcp" in low or "google" in low:
+                        cloud_target = "gcp"
+                    elif "aws" in low or "amazon" in low:
+                        cloud_target = "aws"
+                    else:
+                        cloud_target = "aws" if not any(w in low for w in ["azure", "gcp"]) else "all"
+
+                cust_suffix = f" for {named_customer}" if named_customer else ""
+                reg_rows = []
+                # ── AWS ──
+                if cloud_target == "aws":
+                    col = "product_location" if wants_location else "product_region"
+                    col_alias = "location" if wants_location else "region"
+                    where_clause = ""
+                    prov_title = "AWS"
+                    if requested_service:
+                        pcode = str(requested_service)
+                        pdisp = requested_service_disp or pcode
+                        where_clause = f"WHERE lineItem_ProductCode = '{pcode}'"
+                        title = f"CloudHealth Spend Analysis: {pdisp} (AWS) Spend by {dim_label}{cust_suffix} — {svc_scope_label}"
+                    else:
+                        title = f"CloudHealth Spend Analysis: AWS Spend by {dim_label}{cust_suffix} — {svc_scope_label}"
+
+                    sql = f"SELECT {col} AS {col_alias}, SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR {where_clause} GROUP BY {col} ORDER BY cost DESC"
+                    try:
+                        q_input = {"sqlStatement": sql, "dataGranularity": svc_granularity, "limit": limit, "timeRange": svc_time_range}
+                        if named_customer_crn:
+                            q_input["channelCustomerId"] = named_customer_crn
+                        res = mcp.call_tool("execute_datasource_query", {
+                            "queryInput": q_input,
+                            "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                        })
+                        raw_csv = json.loads(res.get("content", [{}])[0].get("text", "{}")).get("csv", "")
+                        for r in csv.DictReader(io.StringIO(raw_csv)):
+                            c = float(r.get("cost") or 0.0)
+                            reg = r.get(col_alias) or "unknown"
+                            if c > 0:
+                                reg_rows.append((reg, c))
+                    except Exception as e:
+                        logger.warning(f"[AWS Region Query] {e}")
+
+                # ── Azure ──
+                elif cloud_target == "azure":
+                    prov_title = "Azure"
+                    where_clause = ""
+                    if requested_service:
+                        pcode = str(requested_service)
+                        pdisp = requested_service_disp or pcode
+                        where_clause = f"WHERE ServiceName = '{pcode}'"
+                        title = f"CloudHealth Spend Analysis: {pdisp} (Azure) Spend by Region{cust_suffix} — {svc_scope_label}"
+                    else:
+                        title = f"CloudHealth Spend Analysis: Azure Spend by Region{cust_suffix} — {svc_scope_label}"
+
+                    sql = f"SELECT RegionId AS region, SUM(EffectiveCost) AS cost FROM AZURE_FOCUS_COST_AND_USAGE {where_clause} GROUP BY RegionId ORDER BY cost DESC"
+                    try:
+                        q_input = {"sqlStatement": sql, "dataGranularity": svc_granularity, "limit": limit, "timeRange": svc_time_range}
+                        if named_customer_crn:
+                            q_input["channelCustomerId"] = named_customer_crn
+                        res = mcp.call_tool("execute_datasource_query", {
+                            "queryInput": q_input,
+                            "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                        })
+                        raw_csv = json.loads(res.get("content", [{}])[0].get("text", "{}")).get("csv", "")
+                        for r in csv.DictReader(io.StringIO(raw_csv)):
+                            c = float(r.get("cost") or 0.0)
+                            reg = r.get("region") or "unassigned"
+                            if c > 0:
+                                reg_rows.append((reg, c))
+                    except Exception as e:
+                        logger.warning(f"[Azure Region Query] {e}")
+
+                # ── GCP ──
+                elif cloud_target == "gcp":
+                    prov_title = "GCP"
+                    where_clause = ""
+                    if requested_service:
+                        pcode = str(requested_service)
+                        pdisp = requested_service_disp or pcode
+                        where_clause = f"WHERE ServiceName = '{pcode}'"
+                        title = f"CloudHealth Spend Analysis: {pdisp} (GCP) Spend by Region{cust_suffix} — {svc_scope_label}"
+                    else:
+                        title = f"CloudHealth Spend Analysis: GCP Spend by Region{cust_suffix} — {svc_scope_label}"
+
+                    sql = f"SELECT RegionId AS region, SUM(EffectiveCost) AS cost FROM GCP_FOCUS_COST_AND_USAGE {where_clause} GROUP BY RegionId ORDER BY cost DESC"
+                    try:
+                        q_input = {"sqlStatement": sql, "dataGranularity": svc_granularity, "limit": limit, "timeRange": svc_time_range}
+                        if named_customer_crn:
+                            q_input["channelCustomerId"] = named_customer_crn
+                        res = mcp.call_tool("execute_datasource_query", {
+                            "queryInput": q_input,
+                            "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                        })
+                        raw_csv = json.loads(res.get("content", [{}])[0].get("text", "{}")).get("csv", "")
+                        for r in csv.DictReader(io.StringIO(raw_csv)):
+                            c = float(r.get("cost") or 0.0)
+                            reg = r.get("region") or "unknown"
+                            if c > 0:
+                                reg_rows.append((reg, c))
+                    except Exception as e:
+                        logger.warning(f"[GCP Region Query] {e}")
+
+                # ── Multi-Cloud ──
+                else:
+                    prov_title = "Multi-Cloud"
+                    title = f"CloudHealth Spend Analysis: Multi-Cloud Spend by Region{cust_suffix} — {svc_scope_label}"
+                    sql = "SELECT provider AS provider, RegionId AS region, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE GROUP BY provider, RegionId ORDER BY cost DESC"
+                    try:
+                        q_input = {"sqlStatement": sql, "dataGranularity": svc_granularity, "limit": limit, "timeRange": svc_time_range}
+                        if named_customer_crn:
+                            q_input["channelCustomerId"] = named_customer_crn
+                        res = mcp.call_tool("execute_datasource_query", {
+                            "queryInput": q_input,
+                            "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                        })
+                        raw_csv = json.loads(res.get("content", [{}])[0].get("text", "{}")).get("csv", "")
+                        for r in csv.DictReader(io.StringIO(raw_csv)):
+                            c = float(r.get("cost") or 0.0)
+                            p = r.get("provider") or "Cloud"
+                            reg = r.get("region") or "unknown"
+                            if c > 0:
+                                reg_rows.append((f"{p} ({reg})", c))
+                    except Exception as e:
+                        logger.warning(f"[MultiCloud Region Query] {e}")
+
+                if not reg_rows:
+                    return (
+                        f"### 🌐 CloudHealth Spend Analysis: {dim_label} Breakdown ({prov_title}{cust_suffix})\n\n"
+                        f"No live billing data was returned for `{svc_scope_label}` across regions. "
+                        f"This usually means there was no recorded cloud spend in this period, or the connected CloudHealth account doesn't have visibility into it.\n\n"
+                        f"*Source: {'AWS_CUR' if cloud_target == 'aws' else 'FOCUS Datasets'} via CloudHealth FlexReports.*"
+                    )
+
+                total_reg_spend = sum(c for _, c in reg_rows)
+                tbl_lines = [
+                    f"| {idx} | **{reg}** | ${c:,.2f} | {((c / total_reg_spend) * 100 if total_reg_spend else 0):.1f}% |"
+                    for idx, (reg, c) in enumerate(reg_rows[:limit], 1)
+                ]
+                table = (
+                    f"| # | {dim_label} | Cost | % of {prov_title} Spend |\n"
+                    f"|:---|:---|:---|:---|\n"
+                    f"{chr(10).join(tbl_lines)}\n\n"
+                    f"| **Total Analyzed Spend** | | **${total_reg_spend:,.2f}** | **100.0%** |"
+                )
+
+                # Chart Generation
+                chart_type = (intent_info.get("chart_types") or [None])[0] or _detect_chart_type(low) or "bar"
+                c_kind = chart_type if chart_type in ["pie", "doughnut", "bar", "horizontal-bar"] else "bar"
+                chart_labels = [reg for reg, _ in reg_rows[:12]]
+                chart_values = [round(c, 2) for _, c in reg_rows[:12]]
+                chart_md = _chart_block(c_kind, f"{prov_title} Spend by {dim_label}{cust_suffix} — {svc_scope_label}", chart_labels, values=chart_values, horizontal=(c_kind == "horizontal-bar"), stacked=True)
+
+                # LLM Insight Pass or OptimNow Doctrine Fallback
+                insight_md = ""
+                if self.engine != "direct":
+                    try:
+                        sys_msg = {
+                            "role": "system",
+                            "content": (
+                                "You are Cleo, an expert FinOps AI. Analyze the regional/location cloud spend table returned to the user.\n"
+                                "Provide 2 concise, actionable FinOps bullet insights highlighting:\n"
+                                "1. Primary regional concentration (name top region and % of spend).\n"
+                                "2. Cross-region network egress risk ($0.02/GB) or multi-region commitment alignment (Savings Plans / RIs).\n"
+                                "Follow strict bullet titling rules (bold short title before colon)."
+                            )
+                        }
+                        user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{table}"}
+                        llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
+                        if llm_ans:
+                            insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
+                    except Exception as e:
+                        logger.debug(f"[LLM Commentary] {e}")
+
+                if not insight_md:
+                    top_reg_name, top_reg_cost = reg_rows[0]
+                    top_pct = (top_reg_cost / total_reg_spend * 100) if total_reg_spend else 0
+                    insight_md = (
+                        f"\n\n**💡 FinOps Insights:**\n"
+                        f"- **Primary Regional Concentration**: Spend is heavily anchored in **{top_reg_name}** representing **${top_reg_cost:,.2f} ({top_pct:.1f}%)** of total analyzed spend. Ensure Compute Savings Plans and regional reservations match this deployment hub.\n"
+                        f"- **Multi-Region & Egress Governance (OptimNow Doctrine)**: Multi-region footprints incur inter-region data transfer fees ($0.02/GB) and replicated storage overhead. Verify whether secondary regions require active-active compute or can be consolidated to minimize cross-region egress."
+                    )
+
+                wants_table = _detect_wants_table(low)
+                tbl_md = f"{table}\n\n" if wants_table else ""
+                return (
+                    f"### 📊 {title}\n\n"
+                    f"{partial_notice}"
+                    f"{tbl_md}"
+                    f"{chart_md}\n"
+                    f"{insight_md}\n\n"
+                    f"💡 *Live FinOps data retrieved from CloudHealth ({prov_title}).*"
                 )
 
             # 3-RDS-IT. Dedicated RDS Instance Type, Engine & Spend Analysis via AWS_RDS_COST_AND_USAGE & AWS_CUR
