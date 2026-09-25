@@ -143,7 +143,7 @@ from cleo_agent import (
     STANDARD_CH_TOOLS, LOCAL_CLIENT_ID, LOCAL_REDIRECT_URI,
     LOCAL_MODELS, PUBLIC_ENGINES, get_installed_ollama_models, OLLAMA_BASE_URL,
     MLX_MODELS, get_installed_mlx_models, call_mlx_generate, unload_mlx_models, estimate_token_count,
-    crawl_and_cache_all_datasource_metadata
+    crawl_and_cache_all_datasource_metadata, split_thinking_and_response
 )
 
 def unload_ollama_models(model_name: Optional[str] = None):
@@ -186,6 +186,27 @@ def _on_process_shutdown():
 
 atexit.register(_on_process_shutdown)
 
+# ── Idle LLM unload watchdog ──────────────────────────────────────────────────
+# Unload local model from memory after 75s of inactivity; reload happens
+# automatically on the next chat request via lazy-load in call_mlx_generate.
+_last_activity: float = 0.0
+_IDLE_UNLOAD_SECS = 75  # midpoint of 60-90s window
+
+def _idle_watchdog():
+    while True:
+        time.sleep(30)
+        if _last_activity and (time.time() - _last_activity) > _IDLE_UNLOAD_SECS:
+            try:
+                from cleo_agent import _mlx_models_cache
+                if _mlx_models_cache:
+                    logger.info("💤 [Idle Watchdog] No activity for 75s — unloading local LLM from memory.")
+                    unload_mlx_models()
+                    unload_ollama_models()
+            except Exception as e:
+                logger.debug(f"[Idle Watchdog] {e}")
+
+threading.Thread(target=_idle_watchdog, daemon=True, name="idle-unload-watchdog").start()
+
 # Ensure workspace virtualenv site-packages are accessible
 _cleo_root = os.path.dirname(os.path.abspath(__file__))
 _venv_lib = os.path.join(_cleo_root, ".venv", "lib")
@@ -223,10 +244,17 @@ app = FastAPI(
 
 # Check for local MLX models on Apple Silicon
 _init_mlx = get_installed_mlx_models()
-_has_mlx_qwen = any("Qwen2.5-7B-Instruct-4bit" in m["repo_id"] for m in _init_mlx)
-if _has_mlx_qwen:
+_ready_mlx = {m["repo_id"]: m for m in _init_mlx if m.get("downloaded")}
+if "mlx-community/Qwen3.5-9B-MLX-4bit" in _ready_mlx:
+    _init_engine_key = "mlx:mlx-community/Qwen3.5-9B-MLX-4bit"
+    _init_engine_label = "Qwen3.5-9B-4bit (MLX Default)"
+elif "mlx-community/Qwen2.5-7B-Instruct-4bit" in _ready_mlx:
     _init_engine_key = "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit"
     _init_engine_label = "Qwen2.5-7B-Instruct-4bit (MLX Default)"
+elif _ready_mlx:
+    first_repo = list(_ready_mlx.keys())[0]
+    _init_engine_key = f"mlx:{first_repo}"
+    _init_engine_label = f"{first_repo.split('/')[-1]} (MLX)"
 else:
     _init_engine_key = "ollama:qwen2.5:7b"
     _init_engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
@@ -359,18 +387,136 @@ _last_error: str       = ""
 
 VERIFIER_CACHE_FILE = os.path.expanduser("~/.cleo/pkce_verifier.json")
 
+def _format_bytes(b: int) -> str:
+    """Formats byte count to human-readable string (KB, MB, GB)."""
+    if b >= 1024 ** 3:
+        return f"{b / (1024 ** 3):.2f} GB"
+    elif b >= 1024 ** 2:
+        return f"{b / (1024 ** 2):.1f} MB"
+    elif b >= 1024:
+        return f"{round(b / 1024)} KB"
+    return f"{b} B"
+
+def _get_hf_blobs_size(repo_id: str) -> int:
+    """Calculates the total size of downloaded blobs on disk for an HF repo."""
+    try:
+        hf_cache = os.environ.get("HUGGINGFACE_HUB_CACHE") or os.path.expanduser(
+            os.path.join(os.environ.get("HF_HOME", "~/.cache/huggingface"), "hub")
+        )
+        repo_folder = f"models--{repo_id.replace('/', '--')}"
+        blobs_dir = os.path.join(hf_cache, repo_folder, "blobs")
+        if not os.path.isdir(blobs_dir):
+            return 0
+        total = 0
+        with os.scandir(blobs_dir) as it:
+            for entry in it:
+                try:
+                    if entry.is_file(follow_symlinks=False) and not entry.name.endswith(".lock"):
+                        total += entry.stat().st_size
+                except OSError:
+                    pass
+        return total
+    except Exception:
+        return 0
+
 def _bg_pull_mlx_model(repo_id: str):
     global _model_downloads
-    _model_downloads[repo_id] = {"status": "downloading", "progress": 15, "status_detail": "Connecting to Hugging Face...", "error": ""}
+    _model_downloads[repo_id] = {
+        "status": "downloading",
+        "progress": 1,
+        "status_detail": "Connecting to Hugging Face...",
+        "error": ""
+    }
+
+    # 1. Determine total size in bytes
+    total_bytes = 0
     try:
-        from huggingface_hub import snapshot_download
-        _model_downloads[repo_id] = {"status": "downloading", "progress": 40, "status_detail": "Downloading weights to local cache...", "error": ""}
-        snapshot_download(repo_id=repo_id)
-        _model_downloads[repo_id] = {"status": "completed", "progress": 100, "status_detail": "Download complete", "error": ""}
-        logger.info(f"✅ [MLX Download Complete] {repo_id}")
+        from huggingface_hub import HfApi
+        api = HfApi()
+        info = api.model_info(repo_id, files_metadata=True, timeout=5.0)
+        total_bytes = sum(s.size for s in (info.siblings or []) if s.size)
     except Exception as e:
-        logger.error(f"❌ [MLX Download Failed] {repo_id}: {e}")
-        _model_downloads[repo_id] = {"status": "failed", "progress": 0, "error": str(e), "status_detail": f"Failed: {e}"}
+        logger.debug(f"[MLX Download] Could not get model metadata for {repo_id}: {e}")
+
+    if not total_bytes or total_bytes <= 0:
+        known_sizes = {
+            "mlx-community/Qwen3.5-9B-MLX-4bit": 5977074591,
+            "mlx-community/Qwen3.5-4B-4bit": 3061130647,
+            "mlx-community/Qwen2.5-7B-Instruct-4bit": 4600000000,
+            "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit": 19800000000,
+        }
+        total_bytes = known_sizes.get(repo_id, int(3.0 * (1024 ** 3)))
+
+    total_str = _format_bytes(total_bytes)
+    _model_downloads[repo_id]["status_detail"] = f"Starting download ({total_str})..."
+
+    # 2. Start snapshot_download in a background worker thread
+    worker_error = []
+    def _worker():
+        try:
+            from huggingface_hub import snapshot_download
+            snapshot_download(repo_id=repo_id)
+        except Exception as err:
+            worker_error.append(err)
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+
+    # 3. Sample disk progress in real-time while download proceeds
+    last_bytes = _get_hf_blobs_size(repo_id)
+    last_time = time.time()
+    speed_mb = 0.0
+
+    while thread.is_alive():
+        time.sleep(0.4)
+        curr_bytes = _get_hf_blobs_size(repo_id)
+        now = time.time()
+        dt = now - last_time
+
+        if dt >= 0.8:
+            diff = max(0, curr_bytes - last_bytes)
+            instant_speed = (diff / (1024 * 1024)) / dt
+            speed_mb = (0.7 * speed_mb) + (0.3 * instant_speed) if speed_mb > 0 else instant_speed
+            last_bytes = curr_bytes
+            last_time = now
+
+        curr_str = _format_bytes(curr_bytes)
+        pct = min(99.0, round((curr_bytes / total_bytes) * 100, 1)) if total_bytes > 0 else 5.0
+        pct = max(1.0, pct)
+
+        if speed_mb >= 0.1:
+            detail = f"Downloading: {curr_str} / {total_str} ({speed_mb:.1f} MB/s)"
+        elif curr_bytes > 0:
+            detail = f"Downloading: {curr_str} / {total_str}"
+        else:
+            detail = "Downloading weights to local cache..."
+
+        _model_downloads[repo_id] = {
+            "status": "downloading",
+            "progress": pct,
+            "status_detail": detail,
+            "error": ""
+        }
+
+    thread.join()
+
+    if worker_error:
+        err = worker_error[0]
+        logger.error(f"❌ [MLX Download Failed] {repo_id}: {err}")
+        _model_downloads[repo_id] = {
+            "status": "failed",
+            "progress": 0,
+            "error": str(err),
+            "status_detail": f"Failed: {err}"
+        }
+    else:
+        logger.info(f"✅ [MLX Download Complete] {repo_id}")
+        _model_downloads[repo_id] = {
+            "status": "completed",
+            "progress": 100,
+            "status_detail": "Download complete",
+            "error": ""
+        }
 
 def _check_ollama_alive() -> bool:
     try:
@@ -727,7 +873,10 @@ def _bg_pull_model(model_name: str):
                         raw_pct = (completed / total) * 100
                         scaled_pct = round(15 + (raw_pct * 0.84), 1)
                         _model_downloads[model_name]["progress"] = min(99.0, scaled_pct)
-                    if status_text:
+                        comp_str = _format_bytes(completed)
+                        tot_str = _format_bytes(total)
+                        _model_downloads[model_name]["status_detail"] = f"Downloading: {comp_str} / {tot_str}"
+                    elif status_text:
                         _model_downloads[model_name]["status_detail"] = status_text
                     if status_text == "success":
                         _model_downloads[model_name]["status"] = "completed"
@@ -822,18 +971,33 @@ def init_mcp_if_authenticated() -> bool:
         
         cfg = _load_config()
         mlx_inst = get_installed_mlx_models()
-        has_mlx = any("Qwen2.5-7B-Instruct-4bit" in m["repo_id"] for m in mlx_inst)
-        default_engine = "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit" if has_mlx else "ollama:qwen2.5:7b"
+        ready_mlx = {m["repo_id"]: m for m in mlx_inst if m.get("downloaded")}
+        if "mlx-community/Qwen3.5-9B-MLX-4bit" in ready_mlx:
+            default_engine = "mlx:mlx-community/Qwen3.5-9B-MLX-4bit"
+        elif "mlx-community/Qwen2.5-7B-Instruct-4bit" in ready_mlx:
+            default_engine = "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit"
+        elif ready_mlx:
+            default_engine = f"mlx:{list(ready_mlx.keys())[0]}"
+        else:
+            default_engine = "ollama:qwen2.5:7b"
 
         engine_key = cfg.get("AI_ENGINE") or os.environ.get("AI_ENGINE", default_engine)
         _active_engine_key = engine_key
         
         if engine_key == "direct":
             _engine_label = "Direct FinOps Router"
+        elif engine_key == "mlx:mlx-community/Qwen3.5-9B-MLX-4bit":
+            _engine_label = "Qwen3.5-9B-4bit (MLX Default)"
+        elif engine_key == "mlx:mlx-community/Qwen3.5-4B-4bit":
+            _engine_label = "Qwen3.5-4B-4bit (MLX)"
         elif engine_key == "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit":
-            _engine_label = "Qwen2.5-7B-Instruct-4bit (MLX Default)"
+            _engine_label = "Qwen2.5-7B-Instruct-4bit (MLX)"
         elif engine_key.startswith("mlx:"):
             _engine_label = f"{engine_key.removeprefix('mlx:').split('/')[-1]} (MLX)"
+        elif engine_key in ("ollama:hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q4_K_M", "ollama:qwen3.5:9b"):
+            _engine_label = "Qwen3.5-9B-4bit (Ollama)"
+        elif engine_key in ("ollama:hf.co/bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M", "ollama:qwen3.5:4b"):
+            _engine_label = "Qwen3.5-4B-4bit (Ollama)"
         elif engine_key == "ollama:qwen2.5:7b":
             _engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
         elif engine_key.startswith("ollama:"):
@@ -1238,33 +1402,34 @@ async def mcp_endpoint(request: Request):
 def get_tools():
     return {"tools": _tools}
 
-_cached_customers = None
+_customers_cache: dict = {"token": None, "data": []}
 
 @app.get("/api/customers")
 def get_channel_customers():
-    """Returns dynamic list of active partner channel customers."""
-    global _cached_customers
-    if _cached_customers is not None:
-        return {"customers": _cached_customers}
-    if not _mcp:
+    """Returns org list; re-fetches only when the auth token changes."""
+    global _customers_cache
+    token = get_access_token(interactive=False) or ""
+    if _customers_cache["token"] == token and token:
+        return {"customers": _customers_cache["data"]}
+    if not _mcp or not token:
         return {"customers": []}
     try:
-        res = _mcp.call_tool("list_channel_customers", {})
-        txt = res.get("content", [{}])[0].get("text", "[]")
-        custs = json.loads(txt)
-        cleaned = []
-        for c in custs:
-            if isinstance(c, dict) and c.get("name"):
-                cleaned.append({
-                    "id": c.get("customerId", ""),
-                    "name": c.get("name", "").strip(),
-                    "status": c.get("status", "ACTIVE")
-                })
-        _cached_customers = cleaned
+        # list_orgs works in all tenants; list_channel_customers only in partner channels
+        res = _mcp.call_tool("list_orgs", {})
+        txt = (res.get("content") or [{}])[0].get("text", "") if isinstance(res, dict) else ""
+        if not txt:
+            raise ValueError("empty list_orgs response")
+        orgs = json.loads(txt)
+        cleaned = [
+            {"id": o.get("id", ""), "name": (o.get("name") or "").strip(), "status": "ACTIVE"}
+            for o in (orgs if isinstance(orgs, list) else [])
+            if isinstance(o, dict) and o.get("name")
+        ]
+        _customers_cache = {"token": token, "data": cleaned}
         return {"customers": cleaned}
     except Exception as e:
         logger.warning(f"[API Customers] {e}")
-        return {"customers": []}
+        return {"customers": _customers_cache["data"]}  # return stale on error
 
 @app.get("/api/engines")
 def list_engines():
@@ -1277,20 +1442,39 @@ def list_engines():
     mlx_list = []
     for mm in MLX_MODELS:
         repo_id = mm["repo_id"]
-        is_inst = repo_id in installed_mlx_map
         inst_meta = installed_mlx_map.get(repo_id, {})
+        is_inst = inst_meta.get("downloaded", False)
+        is_active_download = inst_meta.get("is_downloading", False)
         dl_info = _model_downloads.get(repo_id, {})
+        is_downloading = dl_info.get("status") == "downloading" or is_active_download
+
+        if is_downloading:
+            status = "downloading"
+            progress = dl_info.get("progress", 0) or 5
+            status_detail = dl_info.get("status_detail") or "Downloading model weights..."
+            is_downloaded = False
+        elif is_inst:
+            status = "completed"
+            progress = 100
+            status_detail = "Download complete"
+            is_downloaded = True
+        else:
+            status = dl_info.get("status", "")
+            progress = dl_info.get("progress", 0)
+            status_detail = dl_info.get("status_detail", "")
+            is_downloaded = False
+
         mlx_list.append({
             "id": mm["id"],
             "model_id": repo_id,
             "name": mm["name"],
-            "size": inst_meta.get("size") or mm["size"],
+            "size": inst_meta.get("size") if is_downloaded else mm["size"],
             "tier": mm["tier"],
             "desc": mm["desc"],
-            "downloaded": is_inst,
-            "download_status": "completed" if is_inst else dl_info.get("status", ""),
-            "download_progress": 100 if is_inst else dl_info.get("progress", 0),
-            "status_detail": dl_info.get("status_detail", ""),
+            "downloaded": is_downloaded,
+            "download_status": status,
+            "download_progress": progress,
+            "status_detail": status_detail,
             "error": dl_info.get("error", "")
         })
 
@@ -1304,6 +1488,22 @@ def list_engines():
         mid = m["id"]
         is_downloaded = any(mid in name or name.startswith(mid) for name in installed_names)
         dl_info = _model_downloads.get(mid, {})
+        is_downloading = dl_info.get("status") == "downloading"
+
+        if is_downloading:
+            status = "downloading"
+            progress = dl_info.get("progress", 0) or 5
+            status_detail = dl_info.get("status_detail") or "Downloading model weights..."
+            is_downloaded = False
+        elif is_downloaded:
+            status = "completed"
+            progress = 100
+            status_detail = "Download complete"
+        else:
+            status = dl_info.get("status", "")
+            progress = dl_info.get("progress", 0)
+            status_detail = dl_info.get("status_detail", "")
+
         local_list.append({
             "id": f"ollama:{mid}",
             "model_id": mid,
@@ -1312,9 +1512,9 @@ def list_engines():
             "tier": m["tier"],
             "desc": m["desc"],
             "downloaded": is_downloaded,
-            "download_status": "completed" if is_downloaded else dl_info.get("status", ""),
-            "download_progress": 100 if is_downloaded else dl_info.get("progress", 0),
-            "status_detail": dl_info.get("status_detail", ""),
+            "download_status": status,
+            "download_progress": progress,
+            "status_detail": status_detail,
             "error": dl_info.get("error", "")
         })
 
@@ -1324,7 +1524,7 @@ def list_engines():
     # Detected MLX models in cache not in curated catalog
     catalog_mlx_repos = {mm["repo_id"] for mm in MLX_MODELS}
     for repo_id, meta in installed_mlx_map.items():
-        if repo_id not in catalog_mlx_repos:
+        if repo_id not in catalog_mlx_repos and meta.get("downloaded", False):
             short_name = repo_id.split("/")[-1]
             system_models.append({
                 "id": f"mlx:{repo_id}",
@@ -1400,16 +1600,34 @@ class EngineSelection(BaseModel):
 @app.post("/api/engine")
 def set_engine(req: EngineSelection):
     global _active_engine_key, _engine_label, _ai
+
+    if req.engine.startswith("mlx:"):
+        repo_id = req.engine.removeprefix("mlx:").strip()
+        if _model_downloads.get(repo_id, {}).get("status") == "downloading":
+            raise HTTPException(status_code=400, detail=f"Model '{repo_id}' is currently downloading. Please wait for the download to finish.")
+    elif req.engine.startswith("ollama:"):
+        model_part = req.engine.split(":", 1)[1]
+        if _model_downloads.get(model_part, {}).get("status") == "downloading":
+            raise HTTPException(status_code=400, detail=f"Model '{model_part}' is currently downloading. Please wait for the download to finish.")
+
     old_engine = _active_engine_key
     _active_engine_key = req.engine
     
     if req.engine == "direct":
         _engine_label = "Direct FinOps Router"
+    elif req.engine == "mlx:mlx-community/Qwen3.5-9B-MLX-4bit":
+        _engine_label = "Qwen3.5-9B-4bit (MLX Default)"
+    elif req.engine == "mlx:mlx-community/Qwen3.5-4B-4bit":
+        _engine_label = "Qwen3.5-4B-4bit (MLX)"
     elif req.engine == "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit":
-        _engine_label = "Qwen2.5-7B-Instruct-4bit (MLX Default)"
+        _engine_label = "Qwen2.5-7B-Instruct-4bit (MLX)"
     elif req.engine.startswith("mlx:"):
         model_part = req.engine.removeprefix("mlx:").split("/")[-1]
         _engine_label = f"{model_part} (MLX)"
+    elif req.engine in ("ollama:hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q4_K_M", "ollama:qwen3.5:9b"):
+        _engine_label = "Qwen3.5-9B-4bit (Ollama)"
+    elif req.engine in ("ollama:hf.co/bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M", "ollama:qwen3.5:4b"):
+        _engine_label = "Qwen3.5-4B-4bit (Ollama)"
     elif req.engine == "ollama:qwen2.5:7b":
         _engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
     elif req.engine.startswith("ollama:"):
@@ -1499,6 +1717,7 @@ class ToolCallLog(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+    thinking: Optional[str] = None
     session_id: str
     tool_calls: list[ToolCallLog]
     title: Optional[str] = None
@@ -1506,9 +1725,22 @@ class ChatResponse(BaseModel):
     tokens: Optional[int] = None
     tokens_per_sec: Optional[float] = None
 
+_cancelled_sessions: set[str] = set()
+
+class StopChatRequest(BaseModel):
+    session_id: Optional[str] = None
+
+@app.post("/chat/stop")
+def stop_chat(req: StopChatRequest):
+    if req.session_id:
+        _cancelled_sessions.add(req.session_id)
+        logger.info(f"[Chat] Stop signal received for session: {req.session_id}")
+    return {"status": "ok", "stopped": True}
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
-    global _mcp, _ai, _tools
+    global _mcp, _ai, _tools, _last_activity
+    _last_activity = time.time()  # reset idle watchdog countdown
     if not _mcp or not _tools:
         if not init_mcp_if_authenticated():
             raise HTTPException(
@@ -1529,9 +1761,10 @@ def chat(req: ChatRequest):
     session_id = req.session_id
     if session_id in (None, "", "active", "current"):
         session_id = _get_active_session_id()
-    if not session_id or session_id == "new" or session_id not in _sessions:
+    if not session_id or session_id == "new":
         session_id = str(uuid.uuid4())
 
+    _cancelled_sessions.discard(session_id)
     now_iso = datetime.now(timezone.utc).isoformat()
 
     if session_id not in _sessions:
@@ -1572,6 +1805,8 @@ def chat(req: ChatRequest):
     original_call_tool = _mcp.call_tool
 
     def tracked_call_tool(name: str, arguments: dict) -> dict:
+        if session_id in _cancelled_sessions:
+            raise RuntimeError("Query cancelled by user.")
         result = original_call_tool(name, arguments)
         tool_log.append(ToolCallLog(
             tool=name,
@@ -1584,8 +1819,16 @@ def chat(req: ChatRequest):
     t0 = time.perf_counter()
     try:
         response = run_agent_turn(_mcp, _ai, messages)
+    except Exception as e:
+        if session_id in _cancelled_sessions or "cancelled by user" in str(e).lower():
+            logger.info(f"[Chat] Query cancelled by user for session {session_id}")
+            if messages and messages[-1].get("role") == "user" and messages[-1].get("content") == req.message:
+                messages.pop()
+            raise HTTPException(status_code=499, detail="Query cancelled by user.")
+        raise
     finally:
         _mcp.call_tool = original_call_tool
+        _cancelled_sessions.discard(session_id)
 
     duration_secs = max(0.01, round(time.perf_counter() - t0, 2))
     stats = getattr(_ai, "last_stats", {}) or {}
@@ -1600,10 +1843,18 @@ def chat(req: ChatRequest):
 
     now_ts = int(datetime.now(timezone.utc).timestamp())
 
+    # Separate any internal reasoning / thinking process so the UI stays clean
+    thinking = getattr(_ai, "last_thinking", "") or ""
+    clean_resp, extra_thinking = split_thinking_and_response(response)
+    if extra_thinking:
+        thinking = (thinking + "\n\n" + extra_thinking).strip() if thinking else extra_thinking
+        response = clean_resp
+
     # Persist assistant response to session messages for multi-turn conversational context
     messages.append({
         "role": "assistant",
         "content": response,
+        "thinking": thinking,  # Preserved for export and troubleshooting
         "timestamp": now_ts,
         "duration_secs": duration_secs,
         "tokens": total_tokens,
@@ -1619,6 +1870,7 @@ def chat(req: ChatRequest):
 
     return ChatResponse(
         response=response,
+        thinking=thinking,
         session_id=session_id,
         tool_calls=tool_log,
         title=session_entry.get("title"),
