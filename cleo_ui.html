@@ -1903,6 +1903,30 @@
       box-shadow: none;
       transform: none;
     }
+    .send-btn.stop-mode {
+      background: #dc2626 !important;
+      border-color: #ef4444 !important;
+      color: #ffffff !important;
+      cursor: pointer !important;
+      box-shadow: 0 0 10px rgba(220, 38, 38, 0.5) !important;
+      animation: stopPulse 1.8s infinite ease-in-out;
+    }
+    .send-btn.stop-mode:hover {
+      background: #b91c1c !important;
+      border-color: #f87171 !important;
+      transform: scale(1.06) !important;
+    }
+    .send-btn.stop-mode:active {
+      transform: scale(0.92) !important;
+    }
+    @keyframes stopPulse {
+      0%, 100% {
+        box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+      }
+      50% {
+        box-shadow: 0 0 14px rgba(239, 68, 68, 0.85);
+      }
+    }
 
     /* ── Telemetry Components & Cards ── */
     .telemetry-content {
@@ -2856,6 +2880,55 @@
     let logPollTimer = null;
     let downloadPollTimer = null;
     let currentConfigEngine = null;
+    let isGenerating = false;
+    let currentAbortController = null;
+
+    function setGeneratingState(generating) {
+      isGenerating = generating;
+      const sendBtn = document.getElementById('send-btn');
+      if (!sendBtn) return;
+      if (generating) {
+        sendBtn.classList.add('stop-mode');
+        sendBtn.disabled = false;
+        sendBtn.title = 'Stop query (Escape)';
+        sendBtn.setAttribute('aria-label', 'Stop query');
+        sendBtn.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="5" y="5" width="14" height="14" rx="3"></rect>
+          </svg>
+        `;
+      } else {
+        sendBtn.classList.remove('stop-mode');
+        const input = document.getElementById('prompt-input');
+        sendBtn.disabled = !input || !input.value.trim();
+        sendBtn.title = 'Send message (Enter, Shift+Enter for new line)';
+        sendBtn.setAttribute('aria-label', 'Send message');
+        sendBtn.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="19" x2="12" y2="5"></line>
+            <polyline points="5 12 12 5 19 12"></polyline>
+          </svg>
+        `;
+      }
+    }
+
+    function stopQuery() {
+      if (!isGenerating) return;
+      if (currentAbortController) {
+        try {
+          currentAbortController.abort();
+        } catch (_) {}
+      }
+      const activeSid = (currentSessionId && currentSessionId !== 'new') ? currentSessionId : null;
+      if (activeSid) {
+        fetch('/chat/stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: activeSid })
+        }).catch(() => {});
+      }
+      setGeneratingState(false);
+    }
 
     // ── App-Themed Dialog System (Replaces Native confirm / alert) ──
     let appDialogResolver = null;
@@ -3120,9 +3193,13 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"></path></svg>
                 <span class="pin-menu-label">Pin this chat</span>
               </button>
-              <button type="button" class="assistant-menu-item" onclick="exportConversationMarkdown(); closeAssistantMoreMenus();">
+              <button type="button" class="assistant-menu-item" onclick="exportMessageMarkdown(this); closeAssistantMoreMenus();">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                <span>Export Markdown</span>
+                <span>Export Markdown (This Turn)</span>
+              </button>
+              <button type="button" class="assistant-menu-item" onclick="exportConversationMarkdown(); closeAssistantMoreMenus();">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                <span>Export Full Chat</span>
               </button>
             </div>
           </div>
@@ -3147,6 +3224,7 @@
     }
 
     async function switchSession(sid) {
+      if (isGenerating) stopQuery();
       if (!sid || sid === 'new') return;
       currentSessionId = sid;
       localStorage.setItem('cleo_session_id', sid);
@@ -3178,6 +3256,9 @@
             appendMessage('user', escapeHtml(msg.content));
           } else if (msg.role === 'assistant') {
             const msgEl = appendMessage('cleo', '');
+            if (msg.thinking) {
+              msgEl.dataset.thinking = msg.thinking;
+            }
             const bubble = msgEl.querySelector('.bubble');
             const msgIndex = stream.querySelectorAll('.message.cleo').length - 1;
             const timeStr = msg.timestamp ? new Date(msg.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
@@ -3212,6 +3293,7 @@
     }
 
     function newSession() {
+      if (isGenerating) stopQuery();
       currentSessionId = 'new';
       localStorage.setItem('cleo_session_id', 'new');
 
@@ -3661,6 +3743,33 @@
     }
     document.addEventListener('click', () => closeAssistantMoreMenus());
 
+    function exportMessageMarkdown(btn) {
+      const msgEl = btn.closest('.message');
+      if (!msgEl) return;
+      const clone = msgEl.querySelector('.bubble')?.cloneNode(true);
+      if (!clone) return;
+      clone.querySelector('.bubble-header')?.remove();
+      clone.querySelector('.assistant-msg-actions')?.remove();
+      clone.querySelectorAll('.cleo-chart-wrap')?.forEach(c => c.remove());
+      clone.querySelectorAll('.followup-chips')?.forEach(c => c.remove());
+      const thinking = msgEl.dataset.thinking || '';
+      let md = `# Cleo FinOps Turn Export\n*Exported: ${new Date().toLocaleString()}*\n\n---\n\n`;
+      if (thinking) {
+        md += `### 🧠 Reasoning & Thinking Process (Troubleshooting Trace)\n\`\`\`\n${thinking}\n\`\`\`\n\n### Response\n`;
+      } else {
+        md += `### Response\n`;
+      }
+      md += `${clone.innerText.trim()}\n`;
+      const blob = new Blob([md], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cleo-turn-${Date.now()}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Exported Markdown with troubleshooting trace');
+    }
+
     function exportConversationMarkdown() {
       const msgs = document.querySelectorAll('#chat-stream .message');
       if (!msgs.length) {
@@ -3680,7 +3789,12 @@
             clone.querySelector('.assistant-msg-actions')?.remove();
             clone.querySelectorAll('.cleo-chart-wrap')?.forEach(c => c.remove());
             clone.querySelectorAll('.followup-chips')?.forEach(c => c.remove());
-            md += `### 🤖 Cleo FinOps Agent\n${clone.innerText.trim()}\n\n---\n\n`;
+            const thinking = m.dataset.thinking || '';
+            md += `### 🤖 Cleo FinOps Agent\n\n`;
+            if (thinking) {
+              md += `#### 🧠 Reasoning & Thinking Process (Troubleshooting Trace)\n\`\`\`\n${thinking}\n\`\`\`\n\n#### Response\n`;
+            }
+            md += `${clone.innerText.trim()}\n\n---\n\n`;
           }
         }
       });
@@ -3691,7 +3805,7 @@
       a.download = `cleo-conversation-${Date.now()}.md`;
       a.click();
       URL.revokeObjectURL(url);
-      showToast('Conversation exported as Markdown');
+      showToast('Conversation exported as Markdown (with troubleshooting trace)');
     }
 
     async function togglePinSession(e, sid) {
@@ -3776,12 +3890,12 @@
           const progress = m.download_progress || 0;
           
           let actionBtn = '';
-          if (isActive) {
+          if (isDownloading) {
+            actionBtn = `<span style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:#38bdf8; font-weight:600;"><span class="spinning-loader" style="width:10px;height:10px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:4px;"></span>${progress > 0 ? progress + '%' : 'Downloading'}</span>`;
+          } else if (isActive && m.downloaded) {
             actionBtn = `<span class="btn-status-active"><span class="active-dot"></span>Active</span>`;
           } else if (m.downloaded) {
             actionBtn = `<button class="btn-model-action" onclick="switchEngine('${m.id}')">Select</button>`;
-          } else if (isDownloading) {
-            actionBtn = `<span style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:#38bdf8; font-weight:600;"><span class="spinning-loader" style="width:10px;height:10px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:4px;"></span>${progress}%</span>`;
           } else {
             const dlId = isOllama ? m.model_id : m.id;
             actionBtn = `
@@ -3810,7 +3924,7 @@
           }
 
           return `
-            <div class="model-row ${isActive ? 'active' : ''}">
+            <div class="model-row ${(isActive && m.downloaded) ? 'active' : ''}">
               <div style="flex:1;">
                 <div class="model-meta-row">
                   <span class="model-name">${escapeHtml(m.name)}</span>
@@ -3872,7 +3986,8 @@
         }
 
         const hasDownloading = (data.local_models || []).some(m => m.download_status === 'downloading') ||
-                               (data.mlx_models || []).some(m => m.download_status === 'downloading');
+                               (data.mlx_models || []).some(m => m.download_status === 'downloading') ||
+                               (data.system_models || []).some(m => m.download_status === 'downloading');
         if (hasDownloading && !downloadPollTimer) {
           downloadPollTimer = setInterval(pollDownloads, 1200);
         }
@@ -3901,7 +4016,7 @@
 
             const configTag = p.configured
               ? `<span class="status-indicator-pill online"><span class="indicator-dot"></span>Configured</span>`
-              : `<span class="status-indicator-pill offline"><span class="indicator-dot"></span>Missing Key</span>`;
+              : `<span class="status-indicator-pill offline" style="cursor:pointer;" onclick="openTokenModal('${p.id}', '${p.name}', '${p.env_var}')" title="Configure API Key"><span class="indicator-dot"></span>Configure API Key</span>`;
 
             return `
               <div class="model-row ${isActive ? 'active' : ''}">
@@ -5217,16 +5332,18 @@
         }];
 
         const datasets = rawDatasets.map((ds, i) => {
-          const color = isPie
+          const color = ds.borderColor || (isPie
             ? labels.map((_, j) => _CHART_PALETTE[j % _CHART_PALETTE.length])
-            : _CHART_PALETTE[i % _CHART_PALETTE.length];
+            : _CHART_PALETTE[i % _CHART_PALETTE.length]);
           return {
             ...ds,
-            backgroundColor: isPie ? color : color,
-            borderColor: isPie ? '#0b0f17' : 'rgba(11, 15, 23, 0.4)',
-            borderWidth: isPie ? 2 : (isStacked ? 0.75 : 1.5),
+            backgroundColor: isPie ? color : (ds.backgroundColor || color),
+            borderColor: isPie ? '#0b0f17' : (ds.borderColor || (type === 'line' ? color : 'rgba(11, 15, 23, 0.4)')),
+            borderWidth: isPie ? 2 : (type === 'line' ? 2.5 : (isStacked ? 0.75 : 1.5)),
             borderRadius: (isBar && !isStacked) ? 4 : 0,
-            pointBackgroundColor: color,
+            pointBackgroundColor: ds.borderColor || color,
+            pointRadius: type === 'line' ? 4 : 0,
+            pointHoverRadius: type === 'line' ? 6 : 0,
             tension: 0.3,
             fill: type === 'line' ? false : undefined
           };
@@ -5276,6 +5393,13 @@
 
     function renderMarkdown(text) {
       if (!text) return '';
+      // Strip internal thinking process / reasoning trace from UI rendering
+      if (text.includes('</think>')) {
+        text = text.split('</think>')[1].trim();
+      }
+      text = text.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+      text = text.replace(/^(?:[#*`\s]*thinking(?:\s+process)?[:*`\s]*\n)[\s\S]*?(?=\n\s*(?:---\s*\n+|\*{3,}\s*\n+|(?:Final\s+(?:Response|Answer|Output|Observations?):?\s*\n+)|(?=[*•-]\s+\*\*)|(?=\d+\.\s+\*\*)|(?=###\s+)|(?=Here\s+(?:are|is)\s+)))/i, '').trim();
+
       // Normalize table formatting: collapse empty lines between markdown table rows
       text = text.replace(/(\|.+?\|)\s*\n\s*(?=\|)/g, '$1\n');
       if (typeof marked !== 'undefined' && marked.parse) {
@@ -5461,7 +5585,7 @@
       const targetHeight = Math.max(24, Math.min(scrollHeight, 240));
       input.style.height = targetHeight + 'px';
       input.style.overflowY = scrollHeight > 240 ? 'auto' : 'hidden';
-      if (sendBtn) {
+      if (sendBtn && !isGenerating) {
         sendBtn.disabled = !input.value.trim();
       }
     }
@@ -5510,6 +5634,10 @@
 
     async function handleSend(e) {
       if (e) e.preventDefault();
+      if (isGenerating) {
+        stopQuery();
+        return;
+      }
       const input = document.getElementById('prompt-input');
       const text = input.value.trim();
       if (!text) return;
@@ -5525,25 +5653,43 @@
 
       appendMessage('user', escapeHtml(text));
 
-      const sendBtn = document.getElementById('send-btn');
-      if (sendBtn) sendBtn.disabled = true;
+      currentAbortController = new AbortController();
+      setGeneratingState(true);
 
       const thinkingMsg = getThinkingMessage(text);
       const thinkingEl = appendMessage('cleo', `<div class="thinking"><span class="thinking-spinner"></span> ${thinkingMsg}</div>`);
 
       try {
-        const payloadSessionId = (currentSessionId && currentSessionId !== 'new') ? currentSessionId : null;
+        if (!currentSessionId || currentSessionId === 'new') {
+          currentSessionId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('sess-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9));
+          localStorage.setItem('cleo_session_id', currentSessionId);
+        }
+        const payloadSessionId = currentSessionId;
         const startTime = performance.now();
         const res = await fetch('/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, session_id: currentSessionId === 'new' ? 'new' : payloadSessionId })
+          body: JSON.stringify({ message: text, session_id: payloadSessionId }),
+          signal: currentAbortController.signal
         });
 
         if (!res.ok) {
-          const err = await res.json();
-          thinkingEl.querySelector('.bubble').innerHTML = `<span style="color:#f87171;">${err.detail || 'Request failed'}</span>`;
-          if (sendBtn) sendBtn.disabled = !input.value.trim();
+          if (res.status === 499) {
+            const bubble = thinkingEl.querySelector('.bubble');
+            if (bubble) {
+              bubble.innerHTML = `
+                <div style="display:inline-flex; align-items:center; gap:8px; padding:6px 12px; background:rgba(239, 68, 68, 0.08); border:1px solid rgba(239, 68, 68, 0.25); border-radius:6px; color:#f87171; font-size:0.82rem; font-family:'JetBrains Mono', monospace;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="5" y="5" width="14" height="14" rx="2.5"></rect>
+                  </svg>
+                  <span>Query stopped by user.</span>
+                </div>
+              `;
+            }
+            return;
+          }
+          const err = await res.json().catch(() => ({ detail: 'Request failed' }));
+          thinkingEl.querySelector('.bubble').innerHTML = `<span style="color:#f87171;">${escapeHtml(err.detail || 'Request failed')}</span>`;
           return;
         }
 
@@ -5561,6 +5707,9 @@
         const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         let formattedOutput = getBubbleHeaderHTML(data.tool_calls || [], timeStr, durationSecs, msgIndex, tokens, tokensPerSec);
         formattedOutput += renderMarkdown(data.response);
+        if (data.thinking) {
+          thinkingEl.dataset.thinking = data.thinking;
+        }
         const bubble = thinkingEl.querySelector('.bubble');
         bubble.innerHTML = formattedOutput;
         renderCharts(bubble);   // convert chart code-blocks → Chart.js canvases
@@ -5598,11 +5747,29 @@
         // Refresh history drawer list to reflect new title/turn
         await loadHistoryList();
       } catch (err) {
-        thinkingEl.querySelector('.bubble').innerHTML = `<span style="color:#f87171;">Network error: ${err.message}</span>`;
+        if (err.name === 'AbortError' || currentAbortController?.signal?.aborted) {
+          const bubble = thinkingEl.querySelector('.bubble');
+          if (bubble) {
+            bubble.innerHTML = `
+              <div style="display:inline-flex; align-items:center; gap:8px; padding:6px 12px; background:rgba(239, 68, 68, 0.08); border:1px solid rgba(239, 68, 68, 0.25); border-radius:6px; color:#f87171; font-size:0.82rem; font-family:'JetBrains Mono', monospace;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="5" y="5" width="14" height="14" rx="2.5"></rect>
+                </svg>
+                <span>Query stopped by user.</span>
+              </div>
+            `;
+          }
+        } else {
+          thinkingEl.querySelector('.bubble').innerHTML = `<span style="color:#f87171;">Network error: ${escapeHtml(err.message)}</span>`;
+        }
       } finally {
+        setGeneratingState(false);
+        currentAbortController = null;
         const inputNow = document.getElementById('prompt-input');
-        if (sendBtn) sendBtn.disabled = !inputNow.value.trim();
-        inputNow.focus();
+        if (inputNow) {
+          updateInputHeight();
+          inputNow.focus();
+        }
       }
     }
 
@@ -5622,6 +5789,26 @@
         }
       });
     }
+
+    // Stop query on Send button click during generation
+    const sendBtnEl = document.getElementById('send-btn');
+    if (sendBtnEl) {
+      sendBtnEl.addEventListener('click', (e) => {
+        if (isGenerating) {
+          e.preventDefault();
+          e.stopPropagation();
+          stopQuery();
+        }
+      });
+    }
+
+    // Global escape key to abort query if running
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && isGenerating) {
+        e.preventDefault();
+        stopQuery();
+      }
+    });
 
     // ── Dynamic Channel Customer Fetching ──
     async function fetchChannelCustomers() {
