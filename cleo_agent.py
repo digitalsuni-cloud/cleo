@@ -224,8 +224,10 @@ MLX_MODELS = [
 ]
 
 LOCAL_MODELS = [
-    {"id": "hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q4_K_M", "name": "Qwen3.5-9B-4bit", "size": "5.5 GB", "tier": "default", "desc": "Default recommended local model for FinOps (~5.5 GB RAM)"},
-    {"id": "hf.co/bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M", "name": "Qwen3.5-4B-4bit", "size": "2.6 GB", "tier": "smaller", "desc": "Lightweight & ultra-fast local model (~2.6 GB RAM)"},
+    {"id": "qwen2.5:7b", "name": "Qwen2.5-7B-Instruct-4bit", "size": "4.7 GB", "tier": "default", "desc": "Default recommended local model for FinOps (~5 GB RAM)"},
+    {"id": "qwen2.5:3b", "name": "Qwen2.5-3B-Instruct-4bit", "size": "1.9 GB", "tier": "smaller", "desc": "Lightweight & ultra-fast local model (~2 GB RAM)"},
+    {"id": "hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q4_K_M", "name": "Qwen3.5-9B-4bit (GGUF)", "size": "5.5 GB", "tier": "bigger", "desc": "Qwen3.5 local model via HuggingFace (~5.5 GB RAM)"},
+    {"id": "hf.co/bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M", "name": "Qwen3.5-4B-4bit (GGUF)", "size": "2.6 GB", "tier": "smaller", "desc": "Lightweight Qwen3.5 local model via HuggingFace (~2.6 GB RAM)"},
 ]
 
 PUBLIC_ENGINES = [

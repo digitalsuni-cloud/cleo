@@ -155,27 +155,43 @@ def unload_ollama_models(model_name: Optional[str] = None):
         if model_name:
             targets.append(model_name.removeprefix("ollama:").strip())
         else:
-            req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/ps")
-            with urllib.request.urlopen(req, timeout=2.0) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                for item in data.get("models", []):
-                    name = item.get("name") or item.get("model")
-                    if name:
-                        targets.append(name)
+            try:
+                req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/ps")
+                with urllib.request.urlopen(req, timeout=2.0) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    for item in data.get("models", []):
+                        name = item.get("name") or item.get("model")
+                        if name:
+                            targets.append(name)
+            except urllib.error.HTTPError as he:
+                if he.code == 404:
+                    logger.debug("[Ollama Unload] /api/ps returned 404 (no running models or older Ollama version).")
+                else:
+                    logger.debug(f"[Ollama Unload] /api/ps returned HTTP {he.code}: {he}")
+            except Exception as pe:
+                logger.debug(f"[Ollama Unload] /api/ps check skipped: {pe}")
 
         for m in targets:
-            logger.info(f"🧹 [Ollama Unload] Evicting model '{m}' from VRAM/RAM...")
-            payload = json.dumps({"model": m, "keep_alive": 0}).encode("utf-8")
-            req = urllib.request.Request(
-                f"{OLLAMA_BASE_URL}/api/generate",
-                data=payload,
-                headers={"Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(req, timeout=3.0) as resp:
-                pass
-            logger.info(f"✅ [Ollama Unload] Model '{m}' evicted from memory.")
+            try:
+                logger.info(f"🧹 [Ollama Unload] Evicting model '{m}' from VRAM/RAM...")
+                payload = json.dumps({"model": m, "keep_alive": 0}).encode("utf-8")
+                req = urllib.request.Request(
+                    f"{OLLAMA_BASE_URL}/api/generate",
+                    data=payload,
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(req, timeout=3.0) as resp:
+                    pass
+                logger.info(f"✅ [Ollama Unload] Model '{m}' evicted from memory.")
+            except urllib.error.HTTPError as he:
+                if he.code == 404:
+                    logger.debug(f"[Ollama Unload] Model '{m}' is not currently loaded in Ollama (404 Not Found).")
+                else:
+                    logger.warning(f"Could not evict Ollama model '{m}': {he}")
+            except Exception as me:
+                logger.debug(f"[Ollama Unload] Error evicting '{m}': {me}")
     except Exception as e:
-        logger.warning(f"Could not evict Ollama models: {e}")
+        logger.debug(f"Could not evict Ollama models: {e}")
 
 def _on_process_shutdown():
     try:
@@ -256,8 +272,28 @@ elif _ready_mlx:
     _init_engine_key = f"mlx:{first_repo}"
     _init_engine_label = f"{first_repo.split('/')[-1]} (MLX)"
 else:
-    _init_engine_key = "ollama:qwen2.5:7b"
-    _init_engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
+    # Linux / Non-MLX environment: prefer installed Ollama models
+    installed_ollama = [m.get("name", "") for m in get_installed_ollama_models()]
+    if any("qwen2.5:7b" in n for n in installed_ollama):
+        _init_engine_key = "ollama:qwen2.5:7b"
+        _init_engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
+    elif any("qwen2.5:3b" in n for n in installed_ollama):
+        _init_engine_key = "ollama:qwen2.5:3b"
+        _init_engine_label = "Qwen2.5-3B-Instruct-4bit (Ollama)"
+    elif any("Qwen3.5-9B" in n for n in installed_ollama):
+        match = next(n for n in installed_ollama if "Qwen3.5-9B" in n)
+        _init_engine_key = f"ollama:{match}"
+        _init_engine_label = "Qwen3.5-9B-4bit (Ollama)"
+    elif any("Qwen3.5-4B" in n for n in installed_ollama):
+        match = next(n for n in installed_ollama if "Qwen3.5-4B" in n)
+        _init_engine_key = f"ollama:{match}"
+        _init_engine_label = "Qwen3.5-4B-4bit (Ollama)"
+    elif installed_ollama:
+        _init_engine_key = f"ollama:{installed_ollama[0]}"
+        _init_engine_label = f"{installed_ollama[0]} (Ollama)"
+    else:
+        _init_engine_key = "ollama:qwen2.5:7b"
+        _init_engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
 
 # Global runtime state
 _mcp: Optional[MCPClient] = None
@@ -859,6 +895,7 @@ def _bg_pull_model(model_name: str):
     url = f"{OLLAMA_BASE_URL}/api/pull"
     payload = json.dumps({"name": model_name, "stream": True}).encode("utf-8")
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    success_seen = False
     try:
         with urllib.request.urlopen(req, timeout=1800.0) as resp:
             for line in resp:
@@ -866,6 +903,19 @@ def _bg_pull_model(model_name: str):
                     continue
                 try:
                     chunk = json.loads(line.decode("utf-8"))
+                    if "error" in chunk:
+                        err_msg = chunk["error"]
+                        if model_name.startswith("hf.co/") and ("manifest" in err_msg.lower() or "file does not exist" in err_msg.lower() or "not found" in err_msg.lower()):
+                            err_msg += " (Ollama 0.3.12+ required for hf.co models; select 'qwen2.5:3b' instead)"
+                        logger.error(f"❌ [Ollama Pull Error] Model '{model_name}': {err_msg}")
+                        _model_downloads[model_name] = {
+                            "status": "failed",
+                            "progress": 0,
+                            "error": err_msg,
+                            "status_detail": f"Failed: {err_msg}"
+                        }
+                        return
+
                     completed = chunk.get("completed", 0)
                     total = chunk.get("total", 0)
                     status_text = chunk.get("status", "")
@@ -879,11 +929,25 @@ def _bg_pull_model(model_name: str):
                     elif status_text:
                         _model_downloads[model_name]["status_detail"] = status_text
                     if status_text == "success":
+                        success_seen = True
                         _model_downloads[model_name]["status"] = "completed"
                         _model_downloads[model_name]["progress"] = 100
                         _model_downloads[model_name]["status_detail"] = "Download complete"
                 except Exception:
                     pass
+
+        if not success_seen:
+            existing_err = _model_downloads[model_name].get("error")
+            err_msg = existing_err or "Ollama download stream ended before completion"
+            logger.error(f"❌ [Ollama Download Incomplete] Model '{model_name}': {err_msg}")
+            _model_downloads[model_name] = {
+                "status": "failed",
+                "progress": 0,
+                "error": err_msg,
+                "status_detail": f"Failed: {err_msg}"
+            }
+            return
+
         _model_downloads[model_name]["status"] = "completed"
         _model_downloads[model_name]["progress"] = 100
         _model_downloads[model_name]["status_detail"] = "Download complete"
