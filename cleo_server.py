@@ -24,8 +24,23 @@ def _is_python_ready(py_bin: str) -> bool:
         return False
 
 def _setup_and_activate_venv():
-    # If running outside our .venv, ensure .venv is built and fully healthy, then switch to it.
+    # If running outside our .venv, check if .venv is ready or if active environment is already ready.
     if os.path.abspath(sys.executable) != os.path.abspath(_venv_python):
+        # 1. If .venv is already built and fully ready, switch into it
+        if _is_python_ready(_venv_python):
+            if sys.argv and sys.argv[0] != "-c":
+                if os.name == "nt":
+                    subprocess.check_call([_venv_python] + sys.argv)
+                    sys.exit(0)
+                else:
+                    os.execv(_venv_python, [_venv_python] + sys.argv)
+            return
+
+        # 2. If the user's active environment ALREADY has required packages, use it directly (skip unnecessary venv build)
+        if _is_python_ready(sys.executable):
+            return
+
+        # 3. Otherwise, set up .venv
         if not _is_python_ready(_venv_python):
             # Check if pip works inside the existing venv
             has_pip = False
@@ -73,12 +88,34 @@ def _setup_and_activate_venv():
             # Install requirements inside .venv
             if os.path.exists(_venv_python):
                 req_file = os.path.join(_base_dir, "requirements.txt")
-                if os.path.exists(req_file):
-                    print(f"📦 Installing required packages from requirements.txt ...")
-                    subprocess.check_call([_venv_python, "-m", "pip", "install", "--disable-pip-version-check", "-r", req_file, "--progress-bar", "on"])
-                else:
-                    print("⚠️  No requirements.txt found. Installing fallback packages...")
-                    subprocess.check_call([_venv_python, "-m", "pip", "install", "--disable-pip-version-check", "fastapi", "uvicorn[standard]", "httpx", "--progress-bar", "on"])
+                cmd = [_venv_python, "-m", "pip", "install", "--disable-pip-version-check"]
+                pip_args = ["-r", req_file, "--progress-bar", "on"] if os.path.exists(req_file) else ["fastapi", "uvicorn[standard]", "httpx", "--progress-bar", "on"]
+                
+                print(f"📦 Installing required packages from requirements.txt ...")
+                try:
+                    subprocess.check_call(cmd + pip_args)
+                except subprocess.CalledProcessError:
+                    if _is_python_ready(sys.executable):
+                        print("ℹ️  Package installation into .venv was blocked by network/proxy, but active Python environment is ready. Continuing with active Python...")
+                        return
+
+                    # Retry once with trusted-host flags
+                    print("⚠️  Direct PyPI download failed. Retrying with trusted host flags...")
+                    try:
+                        subprocess.check_call(cmd + ["--trusted-host", "pypi.org", "--trusted-host", "files.pythonhosted.org"] + pip_args)
+                    except subprocess.CalledProcessError:
+                        print("\n" + "=" * 70)
+                        print("❌ [Cleo Dependency Installation Failed]")
+                        print("PyPI returned an error (e.g. HTTP 403 Forbidden) while downloading packages.")
+                        print("This commonly happens on corporate laptops (VPN, Zscaler, Netskope) or restricted proxies.")
+                        print("\nRecommended Solutions:")
+                        print("1. If on corporate VPN, temporarily disconnect or configure your corporate PyPI mirror:")
+                        print("   export PIP_INDEX_URL=\"<your-corporate-pypi-mirror-url>\"")
+                        print("2. Or install packages directly using your system/corporate-configured pip:")
+                        print("   pip install fastapi \"uvicorn[standard]\" httpx")
+                        print("   python3 cleo_server.py")
+                        print("=" * 70 + "\n")
+                        sys.exit(1)
 
                 import platform
                 try:
@@ -98,7 +135,7 @@ def _setup_and_activate_venv():
                 print("✅ Setup complete! Starting Cleo Server...\n")
 
         # Relaunch script using the venv python if available
-        if os.path.exists(_venv_python):
+        if os.path.exists(_venv_python) and _is_python_ready(_venv_python):
             if sys.argv and sys.argv[0] != "-c":
                 if os.name == "nt":
                     subprocess.check_call([_venv_python] + sys.argv)
