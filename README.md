@@ -55,16 +55,19 @@ cd cleo-main
 
 ### Step 2 — Start Cleo
 
-```bash
-python3 cleo_server.py
-```
+Start Cleo using the one-click launcher for your operating system:
 
-That's it. Cleo will:
-- Create a Python virtual environment automatically (`.venv/`)
-- Install all required packages automatically
-- Start the web interface at **http://localhost:8080**
+| Platform | Command / Action |
+|---|---|
+| **Windows (File Explorer)** | **Double-click `run.bat`** |
+| **Windows (Command Prompt / PowerShell)** | `run` *(or `.\run.ps1`)* |
+| **macOS & Linux** | `./run.sh` *(or `./run`)* |
+| *Manual Fallback (Any OS)* | `python3 cleo_server.py` *(or `python cleo_server.py`)* |
 
-> On **Windows**, use `python cleo_server.py` instead of `python3`.
+Cleo will automatically:
+- Locate your Python 3 environment
+- Create an isolated virtual environment (`.venv/`) and install dependencies if needed
+- Start the server and **automatically open your browser** to **http://127.0.0.1:8080**
 
 You should see output like:
 ```
