@@ -2568,6 +2568,195 @@ def parse_query_time_context(query: str) -> dict:
         "daily_range": daily_range
     }
 
+def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None) -> dict:
+    """
+    Reads full conversational history to detect if the current request is a comparative,
+    substitution, or continuation turn (e.g. 'give me the similar data for azure',
+    'same for azure', 'what about gcp', 'do the same for ec2', 'now for customer Acme').
+    Pulls analysis type (forecast, monthly trend, anomalies, etc.), timeframes,
+    and dimensions from prior turns and substitutes the newly requested target entity.
+    """
+    if not messages or len(messages) < 2:
+        return {"is_continuation": False}
+
+    last_msg = messages[-1].get("content", "") if messages else ""
+    low = last_msg.lower().strip()
+
+    # 1. Check for continuation / comparison triggers
+    has_similar_term = bool(re.search(
+        r'\b(?:simillar|similar|same|equivalent|comparable|identical)\s+(?:data|numbers?|spend|cost|trend|forecast|projection|breakdown|results?|metrics?|analysis|view)\b'
+        r'|\b(?:give\s+me|show\s+me|get\s+me|display|fetch|provide|what\s+is)?\s*(?:the\s+)?(?:simillar|similar|same)\s+(?:data|spend|cost|numbers?|forecast|projection|trend)?\s*(?:for|in|on|with|across|of)?\s*(?:aws|azure|gcp|google|ec2|rds|s3|lambda|dynamo|bedrock|customer|[a-z0-9_-]+)'
+        r'|\b(?:same|simillar|similar)\s+(?:for|in|on|with|to)\b'
+        r'|\b(?:do\s+the\s+same|show\s+the\s+same|can\s+you\s+do\s+the\s+same|repeat\s+(?:the\s+same|this|that))\b'
+        r'|\b(?:what\s+about|how\s+about|and\s+for|now\s+for|what\s+is\s+the\s+same)\b',
+        low
+    ))
+
+    words = low.split()
+    is_short_pivot = False
+    if len(words) <= 6:
+        has_cloud_or_svc = (
+            any(c in low for c in ["azure", "aws", "gcp", "google cloud"]) or
+            any(s in low for s in ["ec2", "rds", "s3", "lambda", "dynamo", "bedrock"])
+        )
+        if has_cloud_or_svc and (
+            any(p in low for p in ["what about", "how about", "and for", "now for", "for ", "instead", "too", "also", "as well", "simillar", "similar", "same", "show "]) or
+            len(words) <= 3
+        ):
+            is_short_pivot = True
+
+    if not (has_similar_term or is_short_pivot):
+        return {"is_continuation": False}
+
+    prior_user_msgs = [m.get("content", "") for m in messages[:-1] if m.get("role") == "user"]
+    prior_assistant_msgs = [m.get("content", "") for m in messages[:-1] if m.get("role") == "assistant"]
+
+    if not prior_user_msgs and not prior_assistant_msgs:
+        return {"is_continuation": False}
+
+    last_user = prior_user_msgs[-1] if prior_user_msgs else ""
+    last_user_low = last_user.lower()
+    last_asst = prior_assistant_msgs[-1] if prior_assistant_msgs else ""
+    last_asst_head = last_asst.split("\n")[0].lower() if last_asst else ""
+    last_asst_body = last_asst[:2500].lower() if last_asst else ""
+
+    # Detect newly requested entity in current prompt
+    new_cloud = extract_requested_cloud(last_msg)
+    new_svc, new_svc_disp = extract_requested_service(last_msg)
+    new_customer = None
+    if cust_map:
+        for cname in cust_map.keys():
+            if cname.lower() in low:
+                new_customer = cname
+                break
+
+    # Prior Query Type Detection
+    prior_type = None
+    inherited_target_year = None
+    inherited_period_title = None
+    inherited_timeframe_months = None
+    inherited_target_ym = None
+
+    # Check for Forecast:
+    is_prior_forecast = (
+        "cost forecast:" in last_asst_head or
+        "spend projection" in last_asst_head or
+        "projected spend" in last_asst_body or
+        "forecast period" in last_asst_body or
+        "forecast generated via" in last_asst_body or
+        ("forecast" in last_user_low and any(w in last_user_low for w in ["2027", "2028", "2029", "2030", "next year", "upcoming year", "future", "project"]))
+    )
+
+    if is_prior_forecast:
+        prior_type = "forecast"
+        m_yr = re.search(r'\b(202[7-9]|203\d)\b', last_asst_head + " " + last_asst_body + " " + last_user_low)
+        if m_yr:
+            inherited_target_year = int(m_yr.group(1))
+            inherited_period_title = f"FY {inherited_target_year}"
+        elif "next 6 months" in (last_asst_head + " " + last_user_low):
+            inherited_period_title = "Next 6 Months"
+        elif "next quarter" in (last_asst_head + " " + last_user_low):
+            inherited_period_title = "Next Quarter"
+        else:
+            inherited_target_year = 2027
+            inherited_period_title = f"FY {inherited_target_year}"
+
+    # Check for Monthly Trend:
+    elif (
+        "monthly spend trend" in last_asst_head or
+        "monthly breakdown" in last_asst_head or
+        "month-over-month" in last_asst_head or
+        "waterfall" in last_asst_head or
+        ("mom progression" in last_asst_body and not is_prior_forecast) or
+        any(w in last_user_low for w in ["monthly trend", "month-over-month", "monthly cost", "monthly spend", "waterfall"])
+    ):
+        prior_type = "monthly_trend"
+        m_m = re.search(r'last\s*(\d{1,2})\s*months?', last_asst_head + " " + last_user_low)
+        inherited_timeframe_months = int(m_m.group(1)) if m_m else 6
+
+    # Check for Cost Anomalies:
+    elif (
+        "anomaly detection" in last_asst_head or
+        "anomalies" in last_asst_head or
+        "cost anomalies" in last_asst_body or
+        any(w in last_user_low for w in ["anomal", "cost spike", "spend spike", "unusual spend"])
+    ):
+        prior_type = "anomalies"
+
+    # Check for Region / Location Breakdown:
+    elif (
+        "spend by region" in last_asst_head or
+        "spend by location" in last_asst_head or
+        any(w in last_user_low for w in ["by region", "by location", "regions", "regional"])
+    ):
+        prior_type = "region_breakdown"
+
+    # Check for Service Instance / Subcategory Breakdown:
+    elif (
+        "spend by instance type" in last_asst_head or
+        "spend by engine" in last_asst_head or
+        "spend by storage class" in last_asst_head or
+        "spend by volume type" in last_asst_head or
+        any(w in last_user_low for w in ["instance type", "engine type", "storage class", "volume type"])
+    ):
+        prior_type = "service_breakdown"
+
+    # Check for Top Services:
+    elif (
+        "top aws services" in last_asst_head or
+        "top azure services" in last_asst_head or
+        "top gcp services" in last_asst_head or
+        "top services by spend" in last_asst_head or
+        "top services" in last_user_low
+    ):
+        prior_type = "top_services"
+
+    # Check for Customer Spend:
+    elif (
+        "channel customers" in last_asst_head or
+        "customer spend" in last_asst_head or
+        "top channel customer" in last_asst_head or
+        ("customer" in last_user_low and any(w in last_user_low for w in ["top", "spend", "cost", "breakdown"]))
+    ):
+        prior_type = "customer_spend"
+
+    if not prior_type:
+        return {"is_continuation": False}
+
+    # Synthesize expanded query representation
+    prov_disp = "Azure" if new_cloud == "azure" else ("GCP" if new_cloud == "gcp" else ("AWS" if new_cloud == "aws" else (new_svc_disp or "Cloud")))
+    if prior_type == "forecast":
+        yr_label = inherited_period_title or f"FY {inherited_target_year or 2027}"
+        expanded_query = f"give me the forecast for {prov_disp} cost for {yr_label} and break it down monthly"
+    elif prior_type == "monthly_trend":
+        expanded_query = f"give me the monthly spend trend and breakdown for {prov_disp} for the last {inherited_timeframe_months or 6} months"
+    elif prior_type == "anomalies":
+        expanded_query = f"show top cost anomalies detected for {prov_disp}"
+    elif prior_type == "region_breakdown":
+        expanded_query = f"show {prov_disp} spend breakdown by region"
+    elif prior_type == "service_breakdown":
+        expanded_query = f"show {prov_disp} spend breakdown"
+    elif prior_type == "top_services":
+        expanded_query = f"show top services by spend for {prov_disp}"
+    elif prior_type == "customer_spend":
+        expanded_query = f"show spend breakdown for customer {new_customer or 'target'}"
+    else:
+        expanded_query = last_msg
+
+    return {
+        "is_continuation": True,
+        "prior_query_type": prior_type,
+        "inherited_target_year": inherited_target_year or 2027,
+        "inherited_target_period_title": inherited_period_title or f"FY {inherited_target_year or 2027}",
+        "inherited_timeframe_months": inherited_timeframe_months or 12,
+        "inherited_target_ym": inherited_target_ym,
+        "new_cloud": new_cloud,
+        "new_service": new_svc,
+        "new_service_disp": new_svc_disp,
+        "new_customer": new_customer,
+        "expanded_query": expanded_query
+    }
+
 def _deterministic_understand_query(messages: list[dict], cust_map: dict = None) -> dict:
     """
     Fast, deterministic intent and parameter extraction used as baseline and fallback.
@@ -2580,24 +2769,28 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     prior_user_msgs = [m["content"] for m in messages[:-1] if m.get("role") == "user"]
     prior_assistant_msgs = [m["content"] for m in messages[:-1] if m.get("role") == "assistant"]
 
+    # Detect contextual continuations (e.g. 'give me the similar data for azure')
+    cont_ctx = _detect_contextual_continuation(messages, cust_map=cust_map)
+
     # Customer detection
-    customer = None
-    if cust_map:
+    customer = cont_ctx.get("new_customer")
+    if not customer and cust_map:
         for cname in cust_map.keys():
             if cname.lower() in low:
                 customer = cname
                 break
 
     # Cloud detection
-    cloud = extract_requested_cloud(last_msg)
+    cloud = cont_ctx.get("new_cloud") or extract_requested_cloud(last_msg)
 
     # Service detection
-    service = None
-    svc_match = extract_requested_service(last_msg)
-    if svc_match and svc_match[0]:
-        service = svc_match[0]
-        if not cloud:
-            cloud = getattr(svc_match, "provider", None) or PCODE_TO_PROVIDER.get(service)
+    service = cont_ctx.get("new_service")
+    if not service:
+        svc_match = extract_requested_service(last_msg)
+        if svc_match and svc_match[0]:
+            service = svc_match[0]
+            if not cloud:
+                cloud = getattr(svc_match, "provider", None) or PCODE_TO_PROVIDER.get(service)
 
     if not service:
         if cloud == "azure":
@@ -2647,7 +2840,18 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
 
     timeframe_months = None
     timeframe_days = None
-    if has_explicit_months:
+    if cont_ctx.get("is_continuation"):
+        if cont_ctx.get("prior_query_type") == "forecast":
+            timeframe_months = 12
+            timeframe_days = None
+        elif cont_ctx.get("prior_query_type") == "monthly_trend":
+            timeframe_months = cont_ctx.get("inherited_timeframe_months", 6)
+            timeframe_days = None
+        elif has_explicit_months:
+            timeframe_months = int(m_months.group(1)) if m_months else 12
+        elif has_explicit_days:
+            timeframe_days = int(m_days.group(1)) if m_days else 30
+    elif has_explicit_months:
         timeframe_months = int(m_months.group(1)) if m_months else 12
     elif has_explicit_days:
         timeframe_days = int(m_days.group(1)) if m_days else 30
@@ -2744,7 +2948,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     elif is_anomaly:
         intent = "anomalies"
         is_new_data_fetch = True
-    elif service or customer or has_fetch_verb or any(w in low for w in ["spend", "cost", "usage", "billed", "hours", "breakdown"]):
+    elif service or customer or has_fetch_verb or any(w in low for w in ["spend", "cost", "usage", "billed", "hours", "breakdown"]) or cont_ctx.get("is_continuation"):
         intent = "fetch_data"
         is_new_data_fetch = True
     else:
@@ -2768,7 +2972,11 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
 
     # Best default dimension based on Multi-Cloud Matrix
     target_dimension = None
-    if any(w in low for w in ["storageclass", "storage class", "tier"]):
+    if cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") in ("forecast", "monthly_trend"):
+        # Forecast and monthly trends do not default to subcategory breakdowns
+        target_dimension = None
+        breakdowns = []
+    elif any(w in low for w in ["storageclass", "storage class", "tier"]):
         breakdowns.append("storage_class")
         target_dimension = "product_storageClass"
     if any(w in low for w in ["volumetype", "volume type", "gp2", "gp3", "ebs type"]):
@@ -2778,7 +2986,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         breakdowns.append("service_subcategory")
         target_dimension = "ServiceSubcategory"
 
-    if not target_dimension:
+    if not target_dimension and not (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") in ("forecast", "monthly_trend")):
         if service == "AmazonEC2":
             target_dimension = "product_InstanceType"
             if "instance_type" not in breakdowns:
@@ -2809,6 +3017,9 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     include_chart = not is_no_chart_requested(low)
     include_mom = not is_no_mom_requested(low)
 
+    if cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "forecast":
+        target_ym = f"{cont_ctx['inherited_target_year']}-01"
+
     return {
         "intent": intent,
         "cloud": cloud,
@@ -2824,7 +3035,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "include_chart": include_chart,
         "include_mom": include_mom,
         "is_new_data_fetch": is_new_data_fetch,
-        "corrected_query": last_msg
+        "corrected_query": cont_ctx.get("expanded_query") or last_msg
     }
 
 class AIClient:
@@ -2933,6 +3144,7 @@ class AIClient:
         low = last_msg.lower()
         cust_map = getattr(self, "_cust_map_cache", {})
 
+        cont_ctx = _detect_contextual_continuation(messages, cust_map=cust_map)
         det_info = _deterministic_understand_query(messages, cust_map=cust_map)
         if self.engine == "direct":
             return det_info
@@ -2994,11 +3206,20 @@ class AIClient:
             "6. REFORMAT ONLY: is_new_data_fetch is false and intent is 'reformat_previous' ONLY when the user asks purely to re-render the immediately preceding table into a different chart format (e.g. 'show that as a pie chart') without requesting new data or changing service.\n"
             "7. UNSUPPORTED CAPABILITY: Set intent to 'unsupported_capability' and is_new_data_fetch to false if user asks for tenant users, user accounts, IAM users, passwords, or identity management in the tenant (CloudHealth MCP does not manage user accounts).\n"
             "8. NEGATIVE CONSTRAINTS & FORMATTING: Set 'include_chart'=false if the user says 'without chart', 'no chart', 'without mom chart', 'table only', 'only table', 'skip chart', 'do not chart'. Set 'include_mom'=false if user says 'without mom', 'no mom', 'without mom chart', 'without variance', 'no variance'. Default both to true when not excluded.\n"
+            "9. CONVERSATIONAL CONTINUATION & COMPARATIVE QUERIES ('similar data for X', 'same for Y', 'what about Z'):\n"
+            "   When the user asks for 'similar data', 'simillar data', 'same data', 'same for X', or 'what about Y', ALWAYS inspect recent chat history (Previous User Query & Previous Assistant Topic).\n"
+            "   Inherit the exact query intent (e.g. if prior was a 2027 forecast, current is ALSO a 2027 forecast; if prior was a 6-month monthly trend, current is a 6-month trend), timeframe, and breakdown structure, updating ONLY the entity specified by the user (e.g. cloud provider changed to Azure).\n"
+            "   In 'corrected_query', write out the fully expanded contextual question (e.g. 'forecast for Azure cost for FY 2027 and break it down monthly').\n"
         )
 
         cust_list_snippet = f"Known Channel Customers: {', '.join(list(cust_map.keys())[:25])}\n\n" if cust_map else ""
+        cont_line = ""
+        if cont_ctx.get("is_continuation"):
+            cont_line = f"Detected Continuation Context: User is asking for similar/same data to the prior turn. Prior analysis was '{cont_ctx['prior_query_type']}' ({cont_ctx.get('inherited_target_period_title') or ''}). In 'corrected_query', synthesize the complete expanded question (e.g. '{cont_ctx.get('expanded_query')}').\n\n"
+
         user_prompt = (
             f"Recent Context:\n{context_str}\n\n"
+            f"{cont_line}"
             f"{cust_list_snippet}"
             f"Current User Query: \"{last_msg}\"\n\n"
             "JSON Analysis:"
@@ -3026,6 +3247,14 @@ class AIClient:
                     inc_chart = bool(parsed.get("include_chart", det_info["include_chart"])) and not is_no_chart_requested(low)
                     inc_mom = bool(parsed.get("include_mom", det_info["include_mom"])) and not is_no_mom_requested(low)
 
+                    if cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "forecast":
+                        if not parsed.get("cloud") and cont_ctx.get("new_cloud"):
+                            parsed["cloud"] = cont_ctx["new_cloud"]
+                        parsed["timeframe_months"] = 12
+                        parsed["target_ym"] = f"{cont_ctx['inherited_target_year']}-01"
+                        if not parsed.get("corrected_query") or any(w in parsed["corrected_query"].lower() for w in ["similar", "simillar", "same"]):
+                            parsed["corrected_query"] = cont_ctx["expanded_query"]
+
                     return {
                         "intent": parsed.get("intent", det_info["intent"]),
                         "cloud": parsed.get("cloud") or det_info.get("cloud"),
@@ -3041,7 +3270,7 @@ class AIClient:
                         "include_chart": inc_chart,
                         "include_mom": inc_mom,
                         "is_new_data_fetch": bool(parsed.get("is_new_data_fetch", det_info["is_new_data_fetch"])),
-                        "corrected_query": parsed.get("corrected_query") or last_msg
+                        "corrected_query": parsed.get("corrected_query") or cont_ctx.get("expanded_query") or last_msg
                     }
         except Exception as ex:
             logger.warning(f"[LLM-First Intent Analysis] Fallback to deterministic: {ex}")
@@ -3558,15 +3787,16 @@ class AIClient:
 
         curr_t_ctx = parse_query_time_context(last_msg)
         word_count = len(last_msg.strip().split())
+        cont_ctx = _detect_contextual_continuation(messages, cust_map=getattr(self, "_cust_map_cache", {}))
         has_continuation_prefix = any(low.startswith(p) for p in [
             "and ", "now ", "also ", "then ", "what about", "how about", "and for", "now in", "instead", "switch to",
             "and what about", "and what is", "and what's", "and whats", "and in", "what if", "can you compare", "compare with",
             "now show", "and show", "show me", "give me"
-        ]) or any(w in low for w in ["for that", "for them", "of that", "of them", "same period", "same customer"])
+        ]) or any(w in low for w in ["for that", "for them", "of that", "of them", "same period", "same customer", "similar", "simillar", "same data", "do the same", "same for", "similar for", "simillar for"]) or cont_ctx.get("is_continuation")
 
         has_cust_pronoun = bool(re.search(r'\b(their|theirs|them|that customer|this customer|same customer|that tenant|this tenant|same tenant|that client|this client|same client)\b', low))
 
-        has_pronoun_ref = bool(re.search(r'\b(their|theirs|they|them|its|it|this|that|these|those|above|the above|previous|same data|this data|that data|of it|of this|of that|from above|similar|simillar|same)\b', low))
+        has_pronoun_ref = bool(re.search(r'\b(their|theirs|they|them|its|it|this|that|these|those|above|the above|previous|same data|this data|that data|of it|of this|of that|from above|similar|simillar|same)\b', low)) or cont_ctx.get("is_continuation")
 
         is_short_filter_tweak = (word_count <= 6) and (
             curr_t_ctx["is_specific"] or
@@ -3582,9 +3812,9 @@ class AIClient:
 
         is_standalone_request = (
             any(w in low for w in ["recommendation", "recommendations", "optimize", "optimization", "rightsizer", "reduce cost", "save money", "anomal", "spike"]) or
-            (bool(re.search(r'\b(?:fetch|get|show|give|list|display|find)\b', low)) and not has_pronoun_ref) or
+            (bool(re.search(r'\b(?:fetch|get|show|give|list|display|find)\b', low)) and not has_pronoun_ref and not cont_ctx.get("is_continuation")) or
             bool(re.search(r'\b\d+\s*days?\b', low)) or
-            (word_count > 6 and not has_continuation_prefix and not is_clarification and not has_cust_pronoun and not has_pronoun_ref)
+            (word_count > 6 and not has_continuation_prefix and not is_clarification and not has_cust_pronoun and not has_pronoun_ref and not cont_ctx.get("is_continuation"))
         )
 
         # ── Resolve channel customer list (cached) ───────────────────────
@@ -3613,7 +3843,7 @@ class AIClient:
         prior_cost_query = ""
         for u_msg in reversed(prior_user_msgs):
             u_low = u_msg.lower()
-            if any(w in u_low for w in ["cost", "spend", "bill", "usage", "trend", "breakdown", "customer", "channel", "tenant", "service", "aws"]):
+            if any(w in u_low for w in ["cost", "spend", "bill", "usage", "trend", "breakdown", "customer", "channel", "tenant", "service", "aws", "forecast", "projection", "predict", "azure", "gcp"]):
                 prior_cost_query = u_msg
                 break
 
@@ -3621,7 +3851,7 @@ class AIClient:
         is_prior_cost_query = bool(prior_cost_query)
         is_prior_cust_query = any(w in prior_cost_low for w in ["customer", "channel", "tenant", "client"]) or any(c.lower() in prior_cost_low for c in cust_map)
 
-        is_followup = bool((is_prior_cost_query or has_pronoun_ref) and (has_continuation_prefix or is_short_filter_tweak or is_clarification or has_pronoun_ref) and not is_standalone_request)
+        is_followup = bool((is_prior_cost_query or has_pronoun_ref or cont_ctx.get("is_continuation")) and (has_continuation_prefix or is_short_filter_tweak or is_clarification or has_pronoun_ref or cont_ctx.get("is_continuation")) and not is_standalone_request)
 
         # ── Check if a specific customer name is in the query or inherited ──
         named_customer = None
@@ -3882,6 +4112,16 @@ class AIClient:
                         break
             if requested_service and not active_cloud:
                 active_cloud = PCODE_TO_PROVIDER.get(str(requested_service))
+            if cont_ctx.get("new_cloud") and not active_cloud:
+                active_cloud = cont_ctx["new_cloud"]
+            if cont_ctx.get("new_service") and not requested_service:
+                requested_service = cont_ctx["new_service"]
+                requested_service_disp = cont_ctx.get("new_service_disp")
+            if requested_service and active_cloud:
+                svc_prov = PCODE_TO_PROVIDER.get(str(requested_service))
+                if svc_prov and svc_prov != active_cloud:
+                    requested_service = None
+                    requested_service_disp = None
 
             # Prior topic check from conversational history
             prior_topic = ""
@@ -3891,6 +4131,15 @@ class AIClient:
                 "monthly spend trend" in prior_topic
                 or "monthly breakdown" in prior_topic
                 or "month-over-month" in prior_topic
+            )
+            was_forecast = (
+                "forecast" in prior_topic
+                or "spend projection" in prior_topic
+                or "cost projection" in prior_topic
+                or "projected spend" in prior_topic
+                or (prior_assistant_msgs and any(w in prior_assistant_msgs[-1].lower() for w in [
+                    "forecast period", "projected spend", "cost forecast", "cloudhealth cost forecast"
+                ]))
             )
 
             # Forward-looking cost forecast / budget projection query (e.g. "forecast for AWS cost for the year 2027 and break it down monthly")
@@ -3914,7 +4163,11 @@ class AIClient:
                     "next quarter", "future quarter", "upcoming quarter"
                 ])
             )
-            is_future_forecast = is_forecast_term and has_future_target
+            is_future_forecast = (
+                (is_forecast_term and has_future_target)
+                or (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "forecast")
+                or (was_forecast and (is_followup or cont_ctx.get("is_continuation")))
+            )
 
             # Monthly spend trend / breakdown query across providers (NOT a service breakdown and NOT a future forecast)
             is_monthly_trend_query = (
@@ -3943,6 +4196,7 @@ class AIClient:
                         or any(w in low for w in ["chart", "bar", "line", "table", "data", "this", "that", "same", "reformat"])
                     ))
                     or _detect_chart_type(low) in ("waterfall", "line")
+                    or (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "monthly_trend")
                 )
             )
 
@@ -3955,6 +4209,10 @@ class AIClient:
                     target_year = int(m_yr.group(1))
                     forecast_months = [f"{target_year}-{m:02d}" for m in range(1, 13)]
                     target_period_title = f"FY {target_year}"
+                elif cont_ctx.get("is_continuation") and cont_ctx.get("inherited_target_year"):
+                    target_year = cont_ctx["inherited_target_year"]
+                    forecast_months = [f"{target_year}-{m:02d}" for m in range(1, 13)]
+                    target_period_title = cont_ctx.get("inherited_target_period_title") or f"FY {target_year}"
                 elif any(w in low for w in ["next year", "upcoming year", "coming year", "following year", "future year"]):
                     target_year = now_dt.year + 1
                     forecast_months = [f"{target_year}-{m:02d}" for m in range(1, 13)]
@@ -3990,7 +4248,7 @@ class AIClient:
                     baseline_months_count = 12
 
                 # 3. Provider & Dataset Resolution
-                prov_key = active_cloud or ("azure" if "azure" in low else ("gcp" if "gcp" in low else ("all" if any(w in low for w in ["all cloud", "all clouds", "multicloud", "multi-cloud"]) else "aws")))
+                prov_key = active_cloud or cont_ctx.get("new_cloud") or ("azure" if "azure" in low else ("gcp" if "gcp" in low else ("all" if any(w in low for w in ["all cloud", "all clouds", "multicloud", "multi-cloud"]) else "aws")))
                 if prov_key == "azure":
                     if requested_service:
                         sql_fc = f"SELECT Month AS month, SUM(EffectiveCost) AS cost FROM AZURE_FOCUS_COST_AND_USAGE WHERE ServiceCategory = '{requested_service}' OR ServiceName = '{requested_service}' GROUP BY Month ORDER BY month DESC"
@@ -4035,9 +4293,9 @@ class AIClient:
                     res_fc = mcp.call_tool("execute_datasource_query", q_params_fc)
                     raw_csv = json.loads(res_fc.get("content", [{}])[0].get("text", "{}")).get("csv", "")
                     for r in csv.DictReader(io.StringIO(raw_csv)):
-                        m_str = (r.get("month") or r.get("timeInterval_Month") or "").strip()
+                        m_str = (r.get("month") or r.get("Month") or r.get("timeInterval_Month") or "").strip()
                         try:
-                            c_val = float(r.get("cost") or 0.0)
+                            c_val = float(r.get("cost") or r.get("EffectiveCost") or r.get("lineItem_UnblendedCost") or 0.0)
                         except (ValueError, TypeError):
                             c_val = 0.0
                         if m_str and c_val > 0:
@@ -4251,7 +4509,7 @@ class AIClient:
             is_anomaly_query = any(w in low for w in [
                 "anomal", "cost spike", "spend spike", "spike in cost",
                 "spikes", "unusual spend", "abnormal spend", "abnormal cost", "unusual cost"
-            ])
+            ]) or (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "anomalies")
             if is_anomaly_query:
                 is_azure = (active_cloud == "azure") or ("azure" in low)
                 ds_name = "AZURE_COST_ANOMALY" if is_azure else "AWS_COST_ANOMALY"
@@ -4417,8 +4675,9 @@ class AIClient:
                 any(w in intent_info.get("corrected_query", "").lower() for w in ["region", "regions", "location", "locations"])
             )
             is_region_or_location_query = (
-                user_explicit_region and
-                ("region" in intent_info.get("breakdowns", []) or "location" in intent_info.get("breakdowns", []) or user_explicit_region)
+                (user_explicit_region and
+                ("region" in intent_info.get("breakdowns", []) or "location" in intent_info.get("breakdowns", []) or user_explicit_region))
+                or (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "region_breakdown")
             ) and not any(w in low for w in ["anomaly", "anomalies", "recommendation", "recommendations"])
 
             if is_region_or_location_query and mcp:
