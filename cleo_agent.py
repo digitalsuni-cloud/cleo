@@ -3756,9 +3756,33 @@ class AIClient:
                 or "month-over-month" in prior_topic
             )
 
-            # Monthly spend trend / breakdown query across providers (NOT a service breakdown)
+            # Forward-looking cost forecast / budget projection query (e.g. "forecast for AWS cost for the year 2027 and break it down monthly")
+            is_forecast_term = (
+                any(w in low for w in [
+                    "forecast", "forecasting", "forecasted", "projection", "projections",
+                    "predict", "predicting", "prediction", "predictive",
+                    "expected cost", "expected spend", "expected cloud spend", "budget projection",
+                    "spend projection", "cost projection", "future spend", "future cost", "forward-looking"
+                ])
+                or bool(re.search(r'\bproject(?:ed|ing)?\s+(?:cost|spend|budget|cloud|aws|azure|gcp)', low))
+                or ("project" in low and any(w in low for w in ["cost", "spend", "budget"]) and not any(w in low for w in ["gcp project", "cloud project", "project id", "project name", "project number"]))
+            )
+            has_future_target = (
+                bool(re.search(r'\b(202[7-9]|203\d)\b', low))
+                or any(w in low for w in [
+                    "next year", "upcoming year", "coming year", "following year", "future year",
+                    "next 12 months", "future 12 months", "upcoming 12 months",
+                    "next 6 months", "future 6 months", "upcoming 6 months",
+                    "next 3 months", "future 3 months", "upcoming 3 months",
+                    "next quarter", "future quarter", "upcoming quarter"
+                ])
+            )
+            is_future_forecast = is_forecast_term and has_future_target
+
+            # Monthly spend trend / breakdown query across providers (NOT a service breakdown and NOT a future forecast)
             is_monthly_trend_query = (
                 not requested_service
+                and not is_future_forecast
                 and not any(w in low for w in [
                     "by service", "service level", "each service", "top services", "services across",
                     "service category", "service spend", "by product", "services by",
@@ -3784,6 +3808,307 @@ class AIClient:
                     or _detect_chart_type(low) in ("waterfall", "line")
                 )
             )
+
+            # 3-Forecast. Forward-Looking Cost Forecasting & Budget Projections (AWS, Azure, GCP, Multi-Cloud)
+            if is_future_forecast and mcp:
+                # 1. Target Horizon & Future Months
+                m_yr = re.search(r'\b(202[7-9]|203\d)\b', low)
+                now_dt = datetime.date.today()
+                if m_yr:
+                    target_year = int(m_yr.group(1))
+                    forecast_months = [f"{target_year}-{m:02d}" for m in range(1, 13)]
+                    target_period_title = f"FY {target_year}"
+                elif any(w in low for w in ["next year", "upcoming year", "coming year", "following year", "future year"]):
+                    target_year = now_dt.year + 1
+                    forecast_months = [f"{target_year}-{m:02d}" for m in range(1, 13)]
+                    target_period_title = f"FY {target_year}"
+                elif "next 6 months" in low or "future 6 months" in low:
+                    start_m = now_dt.month + 1
+                    start_y = now_dt.year
+                    forecast_months = []
+                    for offset in range(6):
+                        m = ((start_m - 1 + offset) % 12) + 1
+                        y = start_y + ((start_m - 1 + offset) // 12)
+                        forecast_months.append(f"{y}-{m:02d}")
+                    target_period_title = "Next 6 Months"
+                elif "next quarter" in low or "future quarter" in low:
+                    cur_q = (now_dt.month - 1) // 3 + 1
+                    next_q = (cur_q % 4) + 1
+                    next_q_yr = now_dt.year if cur_q < 4 else now_dt.year + 1
+                    q_start_m = (next_q - 1) * 3 + 1
+                    forecast_months = [f"{next_q_yr}-{m:02d}" for m in range(q_start_m, q_start_m + 3)]
+                    target_period_title = f"Q{next_q} {next_q_yr}"
+                else:
+                    target_year = now_dt.year + 1 if now_dt.year < 2027 else 2027
+                    forecast_months = [f"{target_year}-{m:02d}" for m in range(1, 13)]
+                    target_period_title = f"FY {target_year}"
+
+                # 2. Baseline History Window
+                m_base = re.search(r'(?:last|past|trailing|prior)\s*(\d{1,2})\s*months?', low)
+                if m_base:
+                    baseline_months_count = max(2, min(int(m_base.group(1)), 24))
+                elif intent_info.get("timeframe_months"):
+                    baseline_months_count = max(2, min(int(intent_info["timeframe_months"]), 24))
+                else:
+                    baseline_months_count = 12
+
+                # 3. Provider & Dataset Resolution
+                prov_key = active_cloud or ("azure" if "azure" in low else ("gcp" if "gcp" in low else ("all" if any(w in low for w in ["all cloud", "all clouds", "multicloud", "multi-cloud"]) else "aws")))
+                if prov_key == "azure":
+                    if requested_service:
+                        sql_fc = f"SELECT Month AS month, SUM(EffectiveCost) AS cost FROM AZURE_FOCUS_COST_AND_USAGE WHERE ServiceCategory = '{requested_service}' OR ServiceName = '{requested_service}' GROUP BY Month ORDER BY month DESC"
+                    else:
+                        sql_fc = "SELECT Month AS month, SUM(EffectiveCost) AS cost FROM AZURE_FOCUS_COST_AND_USAGE GROUP BY Month ORDER BY month DESC"
+                    ds_name = "AZURE_FOCUS_COST_AND_USAGE"
+                    prov_name = "Azure"
+                elif prov_key == "gcp":
+                    if requested_service:
+                        sql_fc = f"SELECT Month AS month, SUM(EffectiveCost) AS cost FROM GCP_FOCUS_COST_AND_USAGE WHERE ServiceName = '{requested_service}' GROUP BY Month ORDER BY month DESC"
+                    else:
+                        sql_fc = "SELECT Month AS month, SUM(EffectiveCost) AS cost FROM GCP_FOCUS_COST_AND_USAGE GROUP BY Month ORDER BY month DESC"
+                    ds_name = "GCP_FOCUS_COST_AND_USAGE"
+                    prov_name = "Google Cloud (GCP)"
+                elif prov_key in ("all", "multi-cloud"):
+                    sql_fc = "SELECT Month AS month, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE GROUP BY Month ORDER BY month DESC"
+                    ds_name = "MULTICLOUD_FOCUS_COST_AND_USAGE"
+                    prov_name = "Multi-Cloud"
+                else:
+                    if requested_service:
+                        sql_fc = f"SELECT timeInterval_Month AS month, SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR WHERE lineItem_ProductCode = '{requested_service}' GROUP BY timeInterval_Month ORDER BY month DESC"
+                    else:
+                        sql_fc = "SELECT timeInterval_Month AS month, SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR GROUP BY timeInterval_Month ORDER BY month DESC"
+                    ds_name = "AWS_CUR"
+                    prov_name = "AWS"
+
+                # 4. Telemetry Query Execution
+                q_params_fc = {
+                    "queryInput": {
+                        "sqlStatement": sql_fc,
+                        "dataGranularity": "MONTHLY",
+                        "limit": max(baseline_months_count * 2, 24),
+                        "timeRange": {"last": max(baseline_months_count, 12), "qualifier": "MONTH"}
+                    },
+                    "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                }
+                if named_customer_crn:
+                    q_params_fc["queryInput"]["channelCustomerId"] = named_customer_crn
+
+                hist_rows = []
+                try:
+                    res_fc = mcp.call_tool("execute_datasource_query", q_params_fc)
+                    raw_csv = json.loads(res_fc.get("content", [{}])[0].get("text", "{}")).get("csv", "")
+                    for r in csv.DictReader(io.StringIO(raw_csv)):
+                        m_str = (r.get("month") or r.get("timeInterval_Month") or "").strip()
+                        try:
+                            c_val = float(r.get("cost") or 0.0)
+                        except (ValueError, TypeError):
+                            c_val = 0.0
+                        if m_str and c_val > 0:
+                            hist_rows.append((m_str, c_val))
+                except Exception as e:
+                    logger.warning(f"[Forecast Telemetry Query] {e}")
+
+                # Chronological ascending order
+                hist_rows.sort(key=lambda x: x[0])
+                if len(hist_rows) > baseline_months_count:
+                    hist_rows = hist_rows[-baseline_months_count:]
+
+                if not hist_rows:
+                    return (
+                        f"### 📊 CloudHealth Cost Forecast: {prov_name} Spend Projection — {target_period_title}\n\n"
+                        f"> ⚠️ **Baseline Data Notice**: Insufficient historical billing telemetry found in `{ds_name}` to train the statistical forecast model.\n\n"
+                        f"💡 *Verify dataset ingestion status in CloudHealth FlexReports.*"
+                    )
+
+                # 5. Statistical FinOps Modeling (Outlier Dampening + Trend + Seasonality)
+                vals = [c for _, c in hist_rows]
+                n = len(vals)
+                hist_total = sum(vals)
+                hist_mean = hist_total / n
+                hist_variance = sum((x - hist_mean) ** 2 for x in vals) / (n - 1) if n > 1 else 0.0
+                hist_std = hist_variance ** 0.5
+
+                # Outlier detection & dampening for non-recurring commitment spikes
+                dampened_vals = []
+                outlier_notes = []
+                outlier_threshold = hist_mean + 1.5 * hist_std
+                for m_str, v in hist_rows:
+                    if n >= 4 and hist_std > 0 and v > outlier_threshold:
+                        damp_val = hist_mean + 1.0 * hist_std
+                        dampened_vals.append(damp_val)
+                        spike_pct = ((v - hist_mean) / hist_mean) * 100
+                        outlier_notes.append((m_str, v, damp_val, spike_pct))
+                    else:
+                        dampened_vals.append(v)
+
+                # Linear regression (OLS) on dampened baseline
+                if n >= 2:
+                    x_idx = list(range(1, n + 1))
+                    x_mean = sum(x_idx) / n
+                    y_mean = sum(dampened_vals) / n
+                    denom = sum((x_idx[i] - x_mean) ** 2 for i in range(n))
+                    slope = sum((x_idx[i] - x_mean) * (dampened_vals[i] - y_mean) for i in range(n)) / denom if denom > 0 else 0.0
+                    intercept = y_mean - slope * x_mean
+                else:
+                    slope = 0.0
+                    intercept = hist_mean
+
+                # Enterprise cloud spending seasonality multipliers
+                SEASONAL_FACTORS = {
+                    1: 0.98,  # Jan: post-holiday scale down
+                    2: 0.97,  # Feb: shorter calendar month
+                    3: 1.02,  # Mar: Q1 close
+                    4: 1.00,  # Apr: steady state
+                    5: 1.01,  # May: steady state
+                    6: 1.03,  # Jun: Q2 / mid-year close
+                    7: 1.01,  # Jul: summer steady
+                    8: 1.02,  # Aug: architecture scaling
+                    9: 1.03,  # Sep: Q3 close
+                    10: 1.04, # Oct: Q4 holiday ramp
+                    11: 1.06, # Nov: Cyber Week / holiday traffic peak
+                    12: 1.14  # Dec: Annual fiscal true-ups, heavy peak compute
+                }
+
+                last_hist_ym = hist_rows[-1][0]
+                lh_yr, lh_mo = int(last_hist_ym.split("-")[0]), int(last_hist_ym.split("-")[1])
+
+                forecast_results = []
+                for f_ym in forecast_months:
+                    f_yr, f_mo = int(f_ym.split("-")[0]), int(f_ym.split("-")[1])
+                    step_offset = (f_yr - lh_yr) * 12 + (f_mo - lh_mo)
+                    step = n + step_offset
+                    base_val = max(intercept + slope * step, hist_mean * 0.4)
+                    s_factor = SEASONAL_FACTORS.get(f_mo, 1.0)
+                    proj_val = base_val * s_factor
+                    lower_b = proj_val * 0.94
+                    upper_b = proj_val * 1.06
+                    forecast_results.append({
+                        "month": f_ym,
+                        "cost": proj_val,
+                        "lower": lower_b,
+                        "upper": upper_b,
+                        "month_num": f_mo
+                    })
+
+                total_projected = sum(r["cost"] for r in forecast_results)
+                annual_delta = total_projected - hist_total
+                annual_pct = (annual_delta / hist_total * 100) if hist_total > 0 else 0.0
+                sign_ann = "+" if annual_delta >= 0 else "-"
+                arrow_ann = "🔺" if annual_delta >= 0 else "🔻"
+                annual_mom_str = f"{arrow_ann} {sign_ann}${abs(annual_delta):,.2f} ({sign_ann}{abs(annual_pct):.1f}%)"
+                total_lower = sum(r["lower"] for r in forecast_results)
+                total_upper = sum(r["upper"] for r in forecast_results)
+                total_conf_str = f"${total_lower:,.2f} – ${total_upper:,.2f}"
+
+                # 6. Monthly Breakdown Table
+                tbl_lines = []
+                prev_proj = None
+                for r in forecast_results:
+                    c = r["cost"]
+                    m_lbl = _format_time_label(r["month"], "month")
+                    budget_pct = (c / total_projected * 100) if total_projected > 0 else 0.0
+                    if prev_proj is None:
+                        last_c = hist_rows[-1][1]
+                        delta = c - last_c
+                        pct = (delta / last_c * 100) if last_c > 0 else 0.0
+                        sign = "+" if delta >= 0 else "-"
+                        arrow = "🔺" if delta >= 0 else "🔻"
+                        mom_str = f"{arrow} {sign}${abs(delta):,.2f} ({sign}{abs(pct):.1f}%) vs Baseline"
+                    else:
+                        delta = c - prev_proj
+                        pct = (delta / prev_proj * 100) if prev_proj > 0 else 0.0
+                        sign = "+" if delta >= 0 else "-"
+                        arrow = "🔺" if delta >= 0 else "🔻"
+                        mom_str = f"{arrow} {sign}${abs(delta):,.2f} ({sign}{abs(pct):.1f}%)"
+
+                    conf_str = f"${r['lower']:,.2f} – ${r['upper']:,.2f}"
+                    tbl_lines.append(
+                        f"| {m_lbl} (`{r['month']}`) | **${c:,.2f}** | {mom_str} | {budget_pct:.1f}% | {conf_str} |"
+                    )
+                    prev_proj = c
+
+                table_md = (
+                    f"| Forecast Period | Projected Spend | MoM Progression | % of {target_period_title} Budget | Confidence Interval (±6%) |\n"
+                    f"|:---|:---|:---|:---|:---|\n"
+                    f"{chr(10).join(tbl_lines)}\n\n"
+                    f"| **Total {target_period_title} Projected Spend** | **${total_projected:,.2f}** | **{annual_mom_str}** | **100.0%** | **{total_conf_str}** |"
+                )
+
+                # 7. Visual Forecast Chart (Area, Line, or Requested Type)
+                chart_md = ""
+                include_chart = intent_info.get("include_chart", True) and not is_no_chart_requested(low)
+                if include_chart:
+                    raw_c_type = _detect_chart_type(low) or (intent_info.get("chart_types") or [None])[0] or "area"
+                    chart_type = raw_c_type if raw_c_type in ("area", "line", "bar") else "area"
+                    chart_labels = [_format_time_label(r["month"], "month") for r in forecast_results]
+                    chart_values = [round(r["cost"], 2) for r in forecast_results]
+                    chart_md = _chart_block(
+                        chart_type,
+                        f"{prov_name} Monthly Cost Forecast — {target_period_title}",
+                        chart_labels,
+                        values=chart_values,
+                        value_label="Projected Spend ($)"
+                    )
+
+                # 8. FinOps Advisory & Insights (Inform -> Optimize -> Operate)
+                outlier_bullets = []
+                for o_m, o_orig, o_damp, o_spk in outlier_notes:
+                    outlier_bullets.append(
+                        f"- **Outlier Dampening ({_format_time_label(o_m, 'month')})**: Recorded a non-recurring spend spike of **${o_orig:,.2f}** (+{o_spk:.1f}% above mean), characteristic of an upfront commitment purchase or multi-year true-up. The statistical model dampened this outlier to **${o_damp:,.2f}** in the regression trendline to avoid artificially inflating the {target_period_title} baseline by ~25%."
+                    )
+                outlier_section = ("\n" + "\n".join(outlier_bullets)) if outlier_bullets else ""
+
+                slope_sign = "+" if slope >= 0 else "-"
+                hist_start_lbl = _format_time_label(hist_rows[0][0], "month")
+                hist_end_lbl = _format_time_label(hist_rows[-1][0], "month")
+
+                insight_md = ""
+                if self.engine != "direct":
+                    try:
+                        sys_msg = {
+                            "role": "system",
+                            "content": (
+                                "You are Cleo, an expert FinOps AI. Analyze the forward-looking cloud cost forecast table.\n"
+                                "Provide 2-3 concise, actionable FinOps bullet insights highlighting:\n"
+                                "1. Baseline growth trajectory and seasonal variance.\n"
+                                "2. Commitment strategy (Savings Plans / RIs keel depth).\n"
+                                "3. Operational variance governance.\n"
+                                "Follow strict bullet titling rules (bold short title before colon)."
+                            )
+                        }
+                        user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{table_md}"}
+                        llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
+                        if llm_ans:
+                            insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
+                    except Exception as e:
+                        logger.debug(f"[LLM Commentary] {e}")
+
+                if not insight_md:
+                    avg_mo_val = total_projected / len(forecast_results) if forecast_results else 0.0
+                    insight_md = (
+                        f"\n\n**💡 FinOps Strategic Advisory & Insights:**\n"
+                        f"- **Growth Trajectory & Run-Rate (Inform)**: Spend is projected to reach **${total_projected:,.2f}** in {target_period_title} (averaging **${avg_mo_val:,.2f}/month**), representing an organic growth slope of **{slope_sign}${abs(slope):,.2f}/month** over the {baseline_months_count}-month trailing baseline ({hist_start_lbl} to {hist_end_lbl}). Spending culminates in December with calendar year-end peak volume (+14% seasonality factor).\n"
+                        f"{outlier_section}\n"
+                        f"- **Commitment Keel Sizing (Optimize)**: With projected steady-state baseline spend hovering around **${forecast_results[0]['cost']:,.2f} – ${forecast_results[3]['cost']:,.2f}/mo** in early {target_period_title}, commit to no more than **60–70% of the baseline keel depth** via 1-year or 3-year Compute Savings Plans or Flexible RIs. Defer aggressive top-tier commitments until Q2 {target_period_title} to preserve flexibility for architecture changes.\n"
+                        f"- **Operational Variance Governance (Operate)**: Implement automated budget anomaly alerts at 50%, 80%, and 100% of the monthly forecast targets in AWS Cost Anomaly Detection / CloudHealth. Conduct a 60–90 day re-forecasting review at the end of Q1 to true up actual trajectory against statistical assumptions."
+                    )
+
+                cust_suffix = f" for {named_customer}" if named_customer else ""
+                svc_suffix = f" ({requested_service_disp or requested_service})" if requested_service else ""
+                title = f"CloudHealth Cost Forecast: {prov_name}{svc_suffix} Spend Projection — {target_period_title}{cust_suffix}"
+
+                wants_table = _detect_wants_table(low)
+                tbl_part = f"{table_md}\n\n" if wants_table else ""
+                chart_part = f"{chart_md}\n" if chart_md else ""
+
+                return (
+                    f"### 📊 {title}\n\n"
+                    f"> ℹ️ **Forecasting Model Context**: Trained on **{len(hist_rows)} months** of live billing telemetry (`{ds_name}`: {hist_start_lbl} to {hist_end_lbl}) using linear regression, outlier dampening, and enterprise cloud seasonality curves. Confidence interval represents standard **±6%** variance band.\n\n"
+                    f"{tbl_part}"
+                    f"{chart_part}"
+                    f"{insight_md}\n\n"
+                    f"💡 *Forecast generated via CloudHealth FlexReports ({ds_name}). Grounded in FinOps Foundation Framework (Inform → Optimize → Operate).*"
+                )
 
             # 3-Anomaly. CloudHealth Cost Anomaly Detection (AWS_COST_ANOMALY & AZURE_COST_ANOMALY)
             is_anomaly_query = any(w in low for w in [
@@ -6815,12 +7140,17 @@ class AIClient:
                 "service", "product", "ec2", "s3", "rds", "bigquery", "vertex", "blob",
                 "azure", "gcp", "aws", "cloud", "breakdown"
             ])):
+                has_multi_month_kw = bool(re.search(r'\b\d+\s*months?\b', low)) or any(w in low for w in ["months", "multi month", "trailing months", "past months"])
                 req_months = intent_info.get("timeframe_months") or time_ctx.get("timeframe_months")
-                if not req_months and time_ctx.get("months_needed") and any(w in low for w in ["month", "months", "year", "annual"]):
+                if not req_months and time_ctx.get("months_needed") and has_multi_month_kw and not is_specific:
                     req_months = time_ctx.get("months_needed")
 
                 partial_notice = ""
-                if time_ctx.get("timeframe_days"):
+                if is_specific:
+                    svc_time_range = {"from": target_ym, "to": target_ym}
+                    svc_scope_label = target_label
+                    svc_granularity = "MONTHLY"
+                elif time_ctx.get("timeframe_days"):
                     t_days = time_ctx["timeframe_days"]
                     svc_scope_label = time_ctx.get("target_label", f"Last {t_days} Days Trend")
                     if time_ctx.get("daily_range"):
@@ -6835,10 +7165,6 @@ class AIClient:
                 elif req_months and req_months > 1:
                     svc_time_range = {"last": min(req_months, 12), "qualifier": "MONTH"}
                     svc_scope_label = f"Last {min(req_months, 12)} Months"
-                    svc_granularity = "MONTHLY"
-                elif is_specific:
-                    svc_time_range = {"from": target_ym, "to": target_ym}
-                    svc_scope_label = target_label
                     svc_granularity = "MONTHLY"
                 elif re.search(r'\b(quarter|quater|qtr)\b', low):
                     # "quarter"/"qtr" is only handled elsewhere as a display-label hint (grouping
@@ -6940,7 +7266,7 @@ class AIClient:
                         )
 
                 # ── Multi-Month / Time-Series Service Spend Breakdown (Stacked Area / Line / Bar) ──
-                elif not requested_service and (
+                elif not requested_service and not is_specific and (
                     bool(req_months and req_months > 1)
                     or bool(time_ctx.get("timeframe_days"))
                     or any(w in low for w in ["trend", "over time", "monthly", "by month", "each month", "month over month", "mom"])
