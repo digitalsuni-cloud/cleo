@@ -6,28 +6,28 @@ setlocal EnableDelayedExpansion
 
 cd /d "%~dp0"
 
-rem 1. Check for Python in local virtualenv
-if exist ".venv\Scripts\python.exe" (
-    set "PY_CMD=.venv\Scripts\python.exe"
-    goto :run_cleo
-)
-
-rem 2. Check for system Python (py launcher, python, or python3)
-where py >nul 2>nul
-if %errorlevel% equ 0 (
-    set "PY_CMD=py -3"
-    goto :run_cleo
-)
-
-where python >nul 2>nul
+rem 1. Check for working system Python (python, py launcher, or python3)
+python -c "import sys" >nul 2>nul
 if %errorlevel% equ 0 (
     set "PY_CMD=python"
     goto :run_cleo
 )
 
-where python3 >nul 2>nul
+py -3 -c "import sys" >nul 2>nul
+if %errorlevel% equ 0 (
+    set "PY_CMD=py -3"
+    goto :run_cleo
+)
+
+python3 -c "import sys" >nul 2>nul
 if %errorlevel% equ 0 (
     set "PY_CMD=python3"
+    goto :run_cleo
+)
+
+rem 2. Fall back to local virtualenv Python if present
+if exist ".venv\Scripts\python.exe" (
+    set "PY_CMD=.venv\Scripts\python.exe"
     goto :run_cleo
 )
 
