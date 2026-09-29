@@ -2051,6 +2051,65 @@
     }
 
     /* Engine Modal Specific */
+    .system-hw-card {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border: 1px solid rgba(56, 189, 248, 0.22);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .system-hw-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .system-hw-title {
+      font-size: 0.74rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .system-hw-badges {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .system-hw-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      font-weight: 500;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: rgba(56, 189, 248, 0.08);
+      color: #bae6fd;
+      border: 1px solid rgba(56, 189, 248, 0.2);
+    }
+    .system-hw-recommendation {
+      font-size: 0.75rem;
+      color: #cbd5e1;
+      line-height: 1.45;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: rgba(16, 185, 129, 0.06);
+      border: 1px solid rgba(16, 185, 129, 0.22);
+      padding: 9px 12px;
+      border-radius: 6px;
+    }
+    .system-hw-rec-text {
+      flex: 1;
+    }
+
     .engine-section {
       display: flex;
       flex-direction: column;
@@ -2683,8 +2742,42 @@
         </button>
       </div>
       <div style="overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 20px; max-height: calc(85vh - 90px);">
+        <!-- System Hardware & Recommended Engine Card -->
+        <div id="system-hw-card" class="system-hw-card" style="display: none;">
+          <div class="system-hw-header">
+            <div class="system-hw-title">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                <line x1="6" y1="18" x2="6.01" y2="18"></line>
+              </svg>
+              <span>Host Hardware &amp; Recommended Engine</span>
+            </div>
+            <div id="system-hw-badges" class="system-hw-badges">
+            </div>
+          </div>
+          <div id="system-hw-recommendation" class="system-hw-recommendation">
+            <div style="display: flex; align-items: flex-start; gap: 8px; flex: 1;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; margin-top:2px;">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+              </svg>
+              <div class="system-hw-rec-text">
+                <div style="font-weight:600; color:#f1f5f9; margin-bottom:2px;">
+                  Recommended: <span id="system-rec-model-name" style="color:#34d399;">Analyzing...</span>
+                </div>
+                <div id="system-rec-reason" style="font-size:0.71rem; color:#94a3b8;">
+                  Detecting host OS and RAM...
+                </div>
+              </div>
+            </div>
+            <div id="system-rec-action" style="flex-shrink:0;">
+            </div>
+          </div>
+        </div>
+
         <!-- Apple Silicon MLX Models Section -->
-        <div class="engine-section">
+        <div id="mlx-models-section" class="engine-section" style="display: none;">
           <div class="engine-section-header">
             <div class="engine-section-title">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" x2="6.01" y1="6" y2="6"></line><line x1="6" x2="6.01" y1="18" y2="18"></line></svg>
@@ -2705,11 +2798,11 @@
           <div class="engine-section-header">
             <div class="engine-section-title">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 18h6"></path><path d="M10 14h4"></path></svg>
-              <span>Local Runtime (Ollama)</span>
+              <span id="local-runtime-title">Local Runtime (Ollama)</span>
             </div>
             <div id="modal-ollama-status"></div>
           </div>
-          <p class="engine-section-desc">
+          <p id="local-runtime-desc" class="engine-section-desc">
             Ollama daemon running locally on localhost:11434 with zero network egress.
           </p>
           <div id="local-models-list" class="model-list">
@@ -3876,11 +3969,96 @@
           if (data.active_engine.startsWith('mlx')) {
             aiEngineSub.textContent = 'Apple Silicon Metal (Active)';
           } else if (data.active_engine.startsWith('ollama')) {
-            aiEngineSub.textContent = data.ollama_running ? 'Ollama Local (Active)' : 'Ollama Not Detected';
+            const hostPC = data.system_info?.is_windows ? 'PC ' : '';
+            aiEngineSub.textContent = data.ollama_running ? `Ollama ${hostPC}Local (Active)` : 'Ollama Not Detected';
           } else if (data.active_engine === 'direct') {
             aiEngineSub.textContent = 'Deterministic Direct Router';
           } else {
             aiEngineSub.textContent = 'Cloud LLM Provider';
+          }
+        }
+
+        // Populate Host Hardware & Recommendation
+        const hwCard = document.getElementById('system-hw-card');
+        const hwBadges = document.getElementById('system-hw-badges');
+        const recModelName = document.getElementById('system-rec-model-name');
+        const recReason = document.getElementById('system-rec-reason');
+        const recAction = document.getElementById('system-rec-action');
+        const mlxSection = document.getElementById('mlx-models-section');
+        const localTitle = document.getElementById('local-runtime-title');
+        const localDesc = document.getElementById('local-runtime-desc');
+
+        if (data.system_info) {
+          const s = data.system_info;
+          if (hwCard) hwCard.style.display = 'flex';
+          
+          if (hwBadges) {
+            const osIcon = s.is_windows ? '⊞' : (s.is_mac ? '' : '🐧');
+            hwBadges.innerHTML = `
+              <span class="system-hw-badge" title="Operating System">${osIcon} ${escapeHtml(s.os_display || s.os)}</span>
+              <span class="system-hw-badge" title="Physical Memory (RAM)">💾 ${s.total_ram_gb ? s.total_ram_gb + ' GB RAM' : 'RAM Detected'}</span>
+              <span class="system-hw-badge" title="Processor Architecture">⚙ ${escapeHtml(s.chip_label || s.machine)}</span>
+            `;
+          }
+
+          if (recModelName) {
+            recModelName.textContent = s.recommended_model_name || 'Qwen2.5-7B-Instruct';
+          }
+          if (recReason) {
+            recReason.textContent = s.recommendation_reason || data.recommendation_reason || '';
+          }
+
+          if (recAction) {
+            const recEngId = s.recommended_engine_id || data.recommended_engine;
+            const isRecActive = (data.active_engine === recEngId);
+            if (isRecActive) {
+              recAction.innerHTML = `<span class="btn-status-active"><span class="active-dot"></span>Active</span>`;
+            } else {
+              const allModels = [...(data.mlx_models || []), ...(data.local_models || []), ...(data.system_models || [])];
+              const recModelObj = allModels.find(m => m.id === recEngId);
+              if (recModelObj && recModelObj.downloaded) {
+                recAction.innerHTML = `<button class="btn-model-action" onclick="switchEngine('${recEngId}')">Select</button>`;
+              } else if (recModelObj) {
+                const dlId = recModelObj.framework === 'Ollama' ? recModelObj.model_id : recModelObj.id;
+                recAction.innerHTML = `
+                  <button class="btn-model-action btn-model-download" onclick="downloadModel('${dlId}')">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                      <polyline points="7 10 12 15 17 10"></polyline>
+                      <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span>Download</span>
+                  </button>
+                `;
+              } else {
+                recAction.innerHTML = `<button class="btn-model-action" onclick="switchEngine('${recEngId}')">Select</button>`;
+              }
+            }
+          }
+
+          // Adapt sections based on OS and architecture
+          if (mlxSection) {
+            if (s.is_apple_silicon && data.mlx_available) {
+              mlxSection.style.display = 'flex';
+            } else {
+              mlxSection.style.display = 'none';
+            }
+          }
+
+          if (localTitle && localDesc) {
+            if (s.is_windows) {
+              localTitle.textContent = 'Local PC Runtime (Ollama)';
+              localDesc.textContent = 'High-performance local inference on Windows via Ollama (supports NVIDIA CUDA, AMD ROCm, DirectML, and AVX2 CPU). Zero data egress.';
+            } else if (s.is_linux) {
+              localTitle.textContent = 'Local Linux Runtime (Ollama)';
+              localDesc.textContent = 'Local inference on Linux via Ollama (supports NVIDIA CUDA, ROCm, and AVX2 CPU). Zero data egress.';
+            } else if (s.is_apple_silicon) {
+              localTitle.textContent = 'Local Runtime (Ollama GGUF)';
+              localDesc.textContent = 'Ollama daemon running locally on localhost:11434 with zero network egress.';
+            } else {
+              localTitle.textContent = 'Local Runtime (Ollama)';
+              localDesc.textContent = 'Ollama daemon running locally on localhost:11434 with zero network egress.';
+            }
           }
         }
 
@@ -3912,8 +4090,12 @@
           }
 
           let tierBadge = '';
-          if (m.tier === 'default') {
-            tierBadge = `<span class="tier-tag tier-tag-rec">Recommended</span>`;
+          const isRec = (m.tier === 'recommended') || (data.recommended_engine && m.id === data.recommended_engine);
+          if (isRec) {
+            const hostLabel = data.system_info?.is_windows ? 'for your PC' : (data.system_info?.is_mac ? 'for your Mac' : 'for your Hardware');
+            tierBadge = `<span class="tier-tag tier-tag-rec" title="${escapeHtml(data.recommendation_reason || '')}">⭐ Recommended ${hostLabel}</span>`;
+          } else if (m.tier === 'default') {
+            tierBadge = `<span class="tier-tag tier-tag-rec">Standard</span>`;
           } else if (m.tier === 'smaller') {
             tierBadge = `<span class="tier-tag tier-tag-subtle">Lightweight</span>`;
           } else if (m.tier === 'bigger') {

@@ -254,7 +254,8 @@ from cleo_agent import (
     STANDARD_CH_TOOLS, LOCAL_CLIENT_ID, LOCAL_REDIRECT_URI,
     LOCAL_MODELS, PUBLIC_ENGINES, get_installed_ollama_models, OLLAMA_BASE_URL,
     MLX_MODELS, get_installed_mlx_models, call_mlx_generate, unload_mlx_models, estimate_token_count,
-    crawl_and_cache_all_datasource_metadata, split_thinking_and_response
+    crawl_and_cache_all_datasource_metadata, split_thinking_and_response,
+    detect_system_info
 )
 
 def unload_ollama_models(model_name: Optional[str] = None):
@@ -1148,18 +1149,28 @@ def init_mcp_if_authenticated() -> bool:
         threading.Thread(target=crawl_and_cache_all_datasource_metadata, args=(_mcp,), daemon=True).start()
         
         cfg = _load_config()
-        mlx_inst = get_installed_mlx_models()
-        ready_mlx = {m["repo_id"]: m for m in mlx_inst if m.get("downloaded")}
-        if "mlx-community/Qwen3.5-9B-MLX-4bit" in ready_mlx:
-            default_engine = "mlx:mlx-community/Qwen3.5-9B-MLX-4bit"
-        elif "mlx-community/Qwen2.5-7B-Instruct-4bit" in ready_mlx:
-            default_engine = "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit"
-        elif ready_mlx:
-            default_engine = f"mlx:{list(ready_mlx.keys())[0]}"
+        sys_info = detect_system_info()
+        is_apple_silicon = sys_info["is_apple_silicon"]
+        rec_engine = sys_info["recommended_engine_id"]
+
+        if is_apple_silicon:
+            mlx_inst = get_installed_mlx_models()
+            ready_mlx = {m["repo_id"]: m for m in mlx_inst if m.get("downloaded")}
+            if "mlx-community/Qwen3.5-9B-MLX-4bit" in ready_mlx:
+                default_engine = "mlx:mlx-community/Qwen3.5-9B-MLX-4bit"
+            elif "mlx-community/Qwen2.5-7B-Instruct-4bit" in ready_mlx:
+                default_engine = "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit"
+            elif ready_mlx:
+                default_engine = f"mlx:{list(ready_mlx.keys())[0]}"
+            else:
+                default_engine = rec_engine
         else:
-            default_engine = "ollama:qwen2.5:7b"
+            default_engine = rec_engine or "ollama:qwen2.5:7b"
 
         engine_key = cfg.get("AI_ENGINE") or os.environ.get("AI_ENGINE", default_engine)
+        if not is_apple_silicon and engine_key.startswith("mlx:"):
+            logger.info(f"[Engine] MLX engine '{engine_key}' not supported on {sys_info['os_display']}. Falling back to '{default_engine}'.")
+            engine_key = default_engine
         _active_engine_key = engine_key
         
         if engine_key == "direct":
@@ -1612,49 +1623,54 @@ def get_channel_customers():
 @app.get("/api/engines")
 def list_engines():
     cfg = _load_config()
+    sys_info = detect_system_info()
+    is_apple_silicon = sys_info["is_apple_silicon"]
+    rec_engine_id = sys_info["recommended_engine_id"]
     
-    # 1. Curated Local MLX Models (Apple Silicon)
-    mlx_installed = get_installed_mlx_models()
-    installed_mlx_map = {m["repo_id"]: m for m in mlx_installed}
-    
+    # 1. Curated Local MLX Models (Apple Silicon only)
     mlx_list = []
-    for mm in MLX_MODELS:
-        repo_id = mm["repo_id"]
-        inst_meta = installed_mlx_map.get(repo_id, {})
-        is_inst = inst_meta.get("downloaded", False)
-        is_active_download = inst_meta.get("is_downloading", False)
-        dl_info = _model_downloads.get(repo_id, {})
-        is_downloading = dl_info.get("status") == "downloading" or is_active_download
+    installed_mlx_map = {}
+    if is_apple_silicon:
+        mlx_installed = get_installed_mlx_models()
+        installed_mlx_map = {m["repo_id"]: m for m in mlx_installed}
+        for mm in MLX_MODELS:
+            repo_id = mm["repo_id"]
+            inst_meta = installed_mlx_map.get(repo_id, {})
+            is_inst = inst_meta.get("downloaded", False)
+            is_active_download = inst_meta.get("is_downloading", False)
+            dl_info = _model_downloads.get(repo_id, {})
+            is_downloading = dl_info.get("status") == "downloading" or is_active_download
 
-        if is_downloading:
-            status = "downloading"
-            progress = dl_info.get("progress", 0) or 5
-            status_detail = dl_info.get("status_detail") or "Downloading model weights..."
-            is_downloaded = False
-        elif is_inst:
-            status = "completed"
-            progress = 100
-            status_detail = "Download complete"
-            is_downloaded = True
-        else:
-            status = dl_info.get("status", "")
-            progress = dl_info.get("progress", 0)
-            status_detail = dl_info.get("status_detail", "")
-            is_downloaded = False
+            if is_downloading:
+                status = "downloading"
+                progress = dl_info.get("progress", 0) or 5
+                status_detail = dl_info.get("status_detail") or "Downloading model weights..."
+                is_downloaded = False
+            elif is_inst:
+                status = "completed"
+                progress = 100
+                status_detail = "Download complete"
+                is_downloaded = True
+            else:
+                status = dl_info.get("status", "")
+                progress = dl_info.get("progress", 0)
+                status_detail = dl_info.get("status_detail", "")
+                is_downloaded = False
 
-        mlx_list.append({
-            "id": mm["id"],
-            "model_id": repo_id,
-            "name": mm["name"],
-            "size": inst_meta.get("size") if is_downloaded else mm["size"],
-            "tier": mm["tier"],
-            "desc": mm["desc"],
-            "downloaded": is_downloaded,
-            "download_status": status,
-            "download_progress": progress,
-            "status_detail": status_detail,
-            "error": dl_info.get("error", "")
-        })
+            tier = "recommended" if mm["id"] == rec_engine_id else mm["tier"]
+            mlx_list.append({
+                "id": mm["id"],
+                "model_id": repo_id,
+                "name": mm["name"],
+                "size": inst_meta.get("size") if is_downloaded else mm["size"],
+                "tier": tier,
+                "desc": mm["desc"],
+                "downloaded": is_downloaded,
+                "download_status": status,
+                "download_progress": progress,
+                "status_detail": status_detail,
+                "error": dl_info.get("error", "")
+            })
 
     # 2. Curated Local Ollama Models
     ollama_models = get_installed_ollama_models()
@@ -1682,12 +1698,13 @@ def list_engines():
             progress = dl_info.get("progress", 0)
             status_detail = dl_info.get("status_detail", "")
 
+        tier = "recommended" if f"ollama:{mid}" == rec_engine_id else m["tier"]
         local_list.append({
             "id": f"ollama:{mid}",
             "model_id": mid,
             "name": m["name"],
             "size": m["size"],
-            "tier": m["tier"],
+            "tier": tier,
             "desc": m["desc"],
             "downloaded": is_downloaded,
             "download_status": status,
@@ -1699,23 +1716,24 @@ def list_engines():
     # 3. LLMs Already Available in the System (Other detected MLX & Ollama models)
     system_models = []
 
-    # Detected MLX models in cache not in curated catalog
-    catalog_mlx_repos = {mm["repo_id"] for mm in MLX_MODELS}
-    for repo_id, meta in installed_mlx_map.items():
-        if repo_id not in catalog_mlx_repos and meta.get("downloaded", False):
-            short_name = repo_id.split("/")[-1]
-            system_models.append({
-                "id": f"mlx:{repo_id}",
-                "model_id": repo_id,
-                "name": f"{short_name} (MLX)",
-                "framework": "MLX",
-                "size": meta.get("size", "Local"),
-                "tier": "installed",
-                "desc": f"Detected in Apple Silicon cache: {repo_id}",
-                "downloaded": True,
-                "download_status": "completed",
-                "download_progress": 100
-            })
+    # Detected MLX models in cache not in curated catalog (Apple Silicon only)
+    if is_apple_silicon:
+        catalog_mlx_repos = {mm["repo_id"] for mm in MLX_MODELS}
+        for repo_id, meta in installed_mlx_map.items():
+            if repo_id not in catalog_mlx_repos and meta.get("downloaded", False):
+                short_name = repo_id.split("/")[-1]
+                system_models.append({
+                    "id": f"mlx:{repo_id}",
+                    "model_id": repo_id,
+                    "name": f"{short_name} (MLX)",
+                    "framework": "MLX",
+                    "size": meta.get("size", "Local"),
+                    "tier": "installed",
+                    "desc": f"Detected in Apple Silicon cache: {repo_id}",
+                    "downloaded": True,
+                    "download_status": "completed",
+                    "download_progress": 100
+                })
 
     # Detected Ollama models in daemon not in curated catalog
     catalog_ollama_ids = {lm["id"] for lm in LOCAL_MODELS}
@@ -1758,7 +1776,10 @@ def list_engines():
     return {
         "active_engine": _active_engine_key,
         "active_label": _engine_label,
-        "mlx_available": True,
+        "system_info": sys_info,
+        "recommended_engine": rec_engine_id,
+        "recommendation_reason": sys_info["recommendation_reason"],
+        "mlx_available": is_apple_silicon,
         "mlx_models": mlx_list,
         "ollama_running": ollama_running,
         "ollama_installed": bool(_find_ollama_bin()),
