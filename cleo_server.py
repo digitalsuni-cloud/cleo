@@ -47,6 +47,18 @@ def _setup_and_activate_venv():
 
         # 3. Otherwise, set up .venv
         if not _is_python_ready(_venv_python):
+            # Check if existing .venv was created with the same Python version; if not, recreate it
+            if os.path.exists(_venv_python):
+                try:
+                    v_ver = subprocess.check_output([_venv_python, "-c", "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"], text=True).strip()
+                    s_ver = f"{sys.version_info[0]}.{sys.version_info[1]}"
+                    if v_ver != s_ver:
+                        import shutil
+                        shutil.rmtree(_venv_dir, ignore_errors=True)
+                except Exception:
+                    import shutil
+                    shutil.rmtree(_venv_dir, ignore_errors=True)
+
             # Check if pip works inside the existing venv
             has_pip = False
             if os.path.exists(_venv_python):
@@ -169,10 +181,36 @@ def _setup_and_activate_venv():
     except ImportError:
         print("📦 Installing required packages into active environment...")
         req_file = os.path.join(_base_dir, "requirements.txt")
-        if os.path.exists(req_file):
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "-r", req_file, "--progress-bar", "on"])
-        else:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "fastapi", "uvicorn[standard]", "httpx", "--progress-bar", "on"])
+        pip_args = ["-r", req_file, "--progress-bar", "on"] if os.path.exists(req_file) else ["fastapi", "uvicorn[standard]", "httpx", "--progress-bar", "on"]
+        cmd = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check"]
+
+        installed_ok = False
+        # Try flags: with --break-system-packages for PEP 668 / Homebrew 3.12+, --user for permissions, and fallback mirror if direct PyPI is blocked by corporate proxy
+        for extra_flags in [
+            ["--break-system-packages"],
+            ["--user", "--break-system-packages"],
+            [],
+            ["--user"],
+            ["--break-system-packages", "--index-url", "https://mirrors.aliyun.com/pypi/simple/", "--trusted-host", "mirrors.aliyun.com"],
+            ["--user", "--break-system-packages", "--index-url", "https://mirrors.aliyun.com/pypi/simple/", "--trusted-host", "mirrors.aliyun.com"],
+            ["--index-url", "https://mirrors.aliyun.com/pypi/simple/", "--trusted-host", "mirrors.aliyun.com"],
+            ["--user", "--index-url", "https://mirrors.aliyun.com/pypi/simple/", "--trusted-host", "mirrors.aliyun.com"],
+        ]:
+            try:
+                subprocess.check_call(cmd + extra_flags + pip_args)
+                installed_ok = True
+                break
+            except subprocess.CalledProcessError:
+                continue
+
+        if not installed_ok:
+            print("\n" + "=" * 70)
+            print("❌ [Cleo Dependency Installation Failed]")
+            print("Could not install required packages into active Python environment.")
+            print("Try running manually:")
+            print("   python3 -m pip install --break-system-packages fastapi \"uvicorn[standard]\" httpx")
+            print("=" * 70 + "\n")
+            sys.exit(1)
 
         # Refresh sys.path with user site-packages and invalidate caches
         _us = site.getusersitepackages() if hasattr(site, "getusersitepackages") else None
@@ -860,10 +898,13 @@ def _install_ollama(status_cb=None) -> tuple[bool, str]:
             except ImportError:
                 if status_cb:
                     status_cb(82, "Installing decompression helper...")
-                subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "zstandard", "-q"],
-                    capture_output=True, timeout=45
-                )
+                for extra_flag in [["--break-system-packages"], ["--user", "--break-system-packages"], []]:
+                    res = subprocess.run(
+                        [sys.executable, "-m", "pip", "install"] + extra_flag + ["zstandard", "-q"],
+                        capture_output=True, timeout=45
+                    )
+                    if res.returncode == 0:
+                        break
                 try:
                     import zstandard as zstd
                 except ImportError:
