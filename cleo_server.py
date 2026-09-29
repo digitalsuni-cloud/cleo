@@ -99,20 +99,33 @@ def _setup_and_activate_venv():
                         print("ℹ️  Package installation into .venv was blocked by network/proxy, but active Python environment is ready. Continuing with active Python...")
                         return
 
-                    # Retry once with trusted-host flags
-                    print("⚠️  Direct PyPI download failed. Retrying with trusted host flags...")
-                    try:
-                        subprocess.check_call(cmd + ["--trusted-host", "pypi.org", "--trusted-host", "files.pythonhosted.org"] + pip_args)
-                    except subprocess.CalledProcessError:
+                    # Retry with alternative mirror (bypasses corporate proxy/Blue Coat blocks on files.pythonhosted.org)
+                    print("⚠️  Direct PyPI download failed (corporate proxy / Blue Coat block detected). Retrying via mirror index...")
+                    mirror_ok = False
+                    for mirror_url, mirror_host in [
+                        ("https://mirrors.aliyun.com/pypi/simple/", "mirrors.aliyun.com"),
+                        ("https://pypi.tuna.tsinghua.edu.cn/simple", "pypi.tuna.tsinghua.edu.cn")
+                    ]:
+                        try:
+                            print(f"🔄 Retrying installation via {mirror_host} ...")
+                            subprocess.check_call(cmd + ["--index-url", mirror_url, "--trusted-host", mirror_host] + pip_args)
+                            mirror_ok = True
+                            break
+                        except subprocess.CalledProcessError:
+                            continue
+
+                    if not mirror_ok:
                         print("\n" + "=" * 70)
                         print("❌ [Cleo Dependency Installation Failed]")
-                        print("PyPI returned an error (e.g. HTTP 403 Forbidden) while downloading packages.")
-                        print("This commonly happens on corporate laptops (VPN, Zscaler, Netskope) or restricted proxies.")
+                        print("Corporate proxy policy (Blue Coat / Symantec / Zscaler) blocked PyPI downloads.")
                         print("\nRecommended Solutions:")
-                        print("1. If on corporate VPN, temporarily disconnect or configure your corporate PyPI mirror:")
-                        print("   export PIP_INDEX_URL=\"<your-corporate-pypi-mirror-url>\"")
-                        print("2. Or install packages directly using your system/corporate-configured pip:")
-                        print("   pip install fastapi \"uvicorn[standard]\" httpx")
+                        print("1. If connected to a corporate VPN, temporarily disconnect, run once, and reconnect:")
+                        print("   python3 cleo_server.py")
+                        print("2. Or use your company internal Artifactory PyPI mirror:")
+                        print("   export PIP_INDEX_URL=\"https://<your-company-artifactory>/api/pypi/pypi/simple\"")
+                        print("   python3 cleo_server.py")
+                        print("3. Or install dependencies using an alternative mirror manually:")
+                        print("   ./.venv/bin/python3 -m pip install -i https://mirrors.aliyun.com/pypi/simple/ fastapi \"uvicorn[standard]\" httpx")
                         print("   python3 cleo_server.py")
                         print("=" * 70 + "\n")
                         sys.exit(1)
