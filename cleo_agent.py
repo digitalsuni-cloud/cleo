@@ -2908,10 +2908,9 @@ class AIClient:
 
     def _reprocess_response(self, user_query: str, raw_response: str, messages: list[dict] = None) -> str:
         """
-        LLM Reprocessing & Verification Pass:
-        Evaluates the draft response against the user's query to ensure strict accuracy,
-        compliance with all requested constraints (including negative constraints like 'without chart'
-        or 'without MoM'), formatting integrity, and actionable FinOps observations.
+        Post-processing Pass:
+        Enforces negative constraints like 'without chart' or 'without MoM'
+        deterministically, preventing lossy LLM rewrites that drop charts or columns.
         """
         if not raw_response or not raw_response.strip():
             return raw_response
@@ -2920,74 +2919,15 @@ class AIClient:
         no_chart = is_no_chart_requested(low_query)
         no_mom = is_no_mom_requested(low_query)
 
-        # In direct engine or if LLM cannot be called, apply deterministic reprocessing
-        if self.engine == "direct":
-            processed = raw_response
-            if no_chart:
-                processed = re.sub(r'```chart.*?\n```', '', processed, flags=re.DOTALL)
-                processed = re.sub(r'<canvas.*?</canvas>', '', processed, flags=re.DOTALL)
-                processed = re.sub(r'\n{3,}', '\n\n', processed)
-            if no_mom:
-                processed = prune_mom_columns_from_markdown(processed)
-            return processed.strip()
-
-        # If LLM engine is configured, run the reprocessing / reflection pass through the LLM
-        system_instruction = (
-            "You are Cleo, an expert FinOps AI accuracy verifier. Your task is to review and reprocess the draft response "
-            "against the user's query, ensuring the final output is 100% accurate, strictly compliant with every instruction, "
-            "and free of any unwanted elements, contradictory titles, or formatting errors.\n\n"
-            "CRITICAL RULES:\n"
-            "1. CONSTRAINTS & NEGATIVE REQUESTS:\n"
-            "   - If the user asked 'without chart', 'no chart', 'table only', 'without MoM chart', or 'no graph': Ensure NO chart block (```chart ... ```) or canvas element is present in the response.\n"
-            "   - If the user asked 'without MoM', 'no MoM', 'without MoM chart', or 'without variance': Ensure the table contains only monthly spend figures and NO Month-over-Month variance columns.\n"
-            "   - If the user requested specific formatting, grouping, or exclusions, ensure the output complies.\n"
-            "2. DATA & NUMBER FIDELITY:\n"
-            "   - PRESERVE EXACT FINANCIAL DATA, dollar amounts, provider names, dates, and tables from the draft response. Do NOT alter, recalculate, or invent any numbers.\n"
-            "3. ACCURACY & POLISH:\n"
-            "   - Ensure table markdown syntax is well-formed.\n"
-            "   - If section headings contradict the user request (e.g. 'Month-over-Month Variance' when MoM was omitted), fix the heading to match (e.g. 'Monthly Spend by Cloud Provider').\n"
-            "   - Ensure 2 concise, high-value FinOps observations are included at the end.\n"
-            "4. OUTPUT FORMAT:\n"
-            "   - Output ONLY the final refined markdown response. Do not include conversational preambles like 'Here is the reprocessed response:'."
-        )
-
-        user_prompt = (
-            f"User Query: \"{user_query}\"\n\n"
-            f"Draft Response to Reprocess:\n"
-            f"{raw_response}\n\n"
-            f"Reprocessed Final Response:"
-        )
-
-        try:
-            target_stats = {}
-            llm_ans, err = self._call_active_llm([
-                {"role": "system", "content": system_instruction},
-                {"role": "user", "content": user_prompt}
-            ], stats_out=target_stats)
-            if llm_ans and not err:
-                clean_ans, proc_thinking = split_thinking_and_response(llm_ans)
-                if proc_thinking:
-                    self.last_thinking = (self.last_thinking + "\n\n" + proc_thinking).strip() if getattr(self, "last_thinking", None) else proc_thinking
-                if len(clean_ans.strip()) > 50 and ("|" in clean_ans or "#" in clean_ans or "$" in clean_ans):
-                    if no_chart:
-                        clean_ans = re.sub(r'```chart.*?\n```', '', clean_ans, flags=re.DOTALL)
-                        clean_ans = re.sub(r'<canvas.*?</canvas>', '', clean_ans, flags=re.DOTALL)
-                        clean_ans = re.sub(r'\n{3,}', '\n\n', clean_ans)
-                    if no_mom:
-                        clean_ans = prune_mom_columns_from_markdown(clean_ans)
-                    return clean_ans.strip()
-        except Exception as ex:
-            logger.warning(f"[LLM Reprocessing Pass] {ex}")
-
-        # Fallback to deterministic sanitization if LLM pass fails
-        fallback_resp = raw_response
+        processed = raw_response
         if no_chart:
-            fallback_resp = re.sub(r'```chart.*?\n```', '', fallback_resp, flags=re.DOTALL)
-            fallback_resp = re.sub(r'<canvas.*?</canvas>', '', fallback_resp, flags=re.DOTALL)
-            fallback_resp = re.sub(r'\n{3,}', '\n\n', fallback_resp)
+            processed = re.sub(r'```chart.*?\n```', '', processed, flags=re.DOTALL)
+            processed = re.sub(r'<canvas.*?</canvas>', '', processed, flags=re.DOTALL)
+            processed = re.sub(r'\n{3,}', '\n\n', processed)
         if no_mom:
-            fallback_resp = prune_mom_columns_from_markdown(fallback_resp)
-        return fallback_resp.strip()
+            processed = prune_mom_columns_from_markdown(processed)
+
+        return processed.strip()
 
     def generate(self, messages: list[dict], mcp: MCPClient = None) -> str:
         t0 = time.perf_counter()
@@ -3807,10 +3747,11 @@ class AIClient:
                     any(w in low for w in [
                         "monthly cost breakdown", "monthly spend breakdown", "monthly breakdown",
                         "monthly cost", "monthly spend", "monthly trend", "month trend", "3-month", "3 month", "3 months",
-                        "month-over-month", "month over month", "mom variance", "mom change",
+                        "month-over-month", "month over month", "mom variance", "mom change", "mom cost", "mom spend", "mom trend",
                         "waterfall", "trend over time", "spend over time", "cost over time",
                         "last 3 months", "last 6 months", "last 12 months", "trailing months"
                     ])
+                    or bool(re.search(r'\b(?:mom|dod|yoy)\b', low))
                     or bool(re.search(r'\b\d{1,2}\s*[- ]?months?\b', low))
                     or (any(w in low for w in ["trend", "trends"]) and any(w in low for w in ["month", "months", "monthly", "cloud", "spend", "cost", "all clouds"]))
                     or "monthly" in intent_info.get("corrected_query", "").lower()
