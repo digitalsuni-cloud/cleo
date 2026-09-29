@@ -1409,6 +1409,7 @@
     .cleo-chart-type-bar   .cleo-chart-canvas-wrap { max-height: 340px; }
     .cleo-chart-type-waterfall .cleo-chart-canvas-wrap { max-height: 320px; }
     .cleo-chart-type-line  .cleo-chart-canvas-wrap { max-height: 280px; }
+    .cleo-chart-type-area  .cleo-chart-canvas-wrap { max-height: 280px; }
     .cleo-chart-type-pie   .cleo-chart-canvas-wrap { max-height: 320px; max-width: 420px; margin: 0 auto; }
     .cleo-chart-type-doughnut .cleo-chart-canvas-wrap { max-height: 320px; max-width: 420px; margin: 0 auto; }
     .expanded-chart-canvas-wrap {
@@ -4888,6 +4889,21 @@
       if (/^\d{4}-\d{2}\b/.test(sample) || /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(sample)) return 'Month';
       return 'Category';
     }
+    function _toAlpha(hexOrRgb, alpha = 0.25) {
+      if (!hexOrRgb) return `rgba(2, 132, 199, ${alpha})`;
+      if (typeof hexOrRgb !== 'string') return hexOrRgb;
+      if (hexOrRgb.startsWith('rgba')) return hexOrRgb;
+      if (hexOrRgb.startsWith('rgb(')) return hexOrRgb.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`);
+      if (hexOrRgb.startsWith('#')) {
+        let hex = hexOrRgb.slice(1);
+        if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+        const r = parseInt(hex.substring(0, 2), 16) || 0;
+        const g = parseInt(hex.substring(2, 4), 16) || 0;
+        const b = parseInt(hex.substring(4, 6), 16) || 0;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+      return hexOrRgb;
+    }
     const _CHART_PALETTE = [
       '#0284c7', '#dc2626', '#ea580c', '#f59e0b', '#8b5cf6', '#84cc16',
       '#94a3b8', '#ec4899', '#14b8a6', '#eab308', '#06b6d4', '#6366f1',
@@ -5049,8 +5065,9 @@
       }
 
       setTimeout(() => {
+        const modalType = config.type === 'area' ? 'line' : config.type;
         _expandedChartInstance = new Chart(canvas, {
-          type: config.type,
+          type: modalType,
           data: config.data,
           options: modalOpts
         });
@@ -5292,10 +5309,11 @@
           return;
         }
 
-        // ── 2. Standard & Stacked Bar / Pie / Line Charts ──────────────────────
-        // Default to stacked vertical bar chart unless explicitly told otherwise
+        // ── 2. Standard & Stacked Bar / Pie / Line / Area Charts ──────────────
+        const isArea = type === 'area';
+        const isLine = type === 'line' || isArea;
         const isBar = type === 'bar' || type === 'horizontal-bar';
-        const isStacked = isBar && spec.stacked !== false;
+        const isStacked = (isBar && spec.stacked !== false) || (isArea && Boolean(spec.stacked));
 
         if (isPie) {
           delete opts.scales;
@@ -5306,6 +5324,14 @@
           if (isStacked) {
             opts.scales.x.stacked = true;
             opts.scales.y.stacked = true;
+          }
+        } else if (isArea) {
+          if (opts.scales?.y) {
+            opts.scales.y.beginAtZero = true;
+            if (isStacked) {
+              opts.scales.x.stacked = true;
+              opts.scales.y.stacked = true;
+            }
           }
         }
 
@@ -5337,15 +5363,15 @@
             : _CHART_PALETTE[i % _CHART_PALETTE.length]);
           return {
             ...ds,
-            backgroundColor: isPie ? color : (ds.backgroundColor || color),
-            borderColor: isPie ? '#0b0f17' : (ds.borderColor || (type === 'line' ? color : 'rgba(11, 15, 23, 0.4)')),
-            borderWidth: isPie ? 2 : (type === 'line' ? 2.5 : (isStacked ? 0.75 : 1.5)),
+            backgroundColor: isPie ? color : (isArea ? (ds.backgroundColor || _toAlpha(Array.isArray(color) ? color[0] : color, 0.28)) : (ds.backgroundColor || color)),
+            borderColor: isPie ? '#0b0f17' : (ds.borderColor || (isLine ? (Array.isArray(color) ? color[0] : color) : 'rgba(11, 15, 23, 0.4)')),
+            borderWidth: isPie ? 2 : (isLine ? 2.5 : (isStacked ? 0.75 : 1.5)),
             borderRadius: (isBar && !isStacked) ? 4 : 0,
-            pointBackgroundColor: ds.borderColor || color,
-            pointRadius: type === 'line' ? 4 : 0,
-            pointHoverRadius: type === 'line' ? 6 : 0,
-            tension: 0.3,
-            fill: type === 'line' ? false : undefined
+            pointBackgroundColor: ds.borderColor || (Array.isArray(color) ? color[0] : color),
+            pointRadius: isLine ? 3.5 : 0,
+            pointHoverRadius: isLine ? 6 : 0,
+            tension: 0.35,
+            fill: isArea ? (isStacked ? true : 'origin') : (type === 'line' ? false : undefined)
           };
         });
 
@@ -5356,7 +5382,7 @@
 
         const wrap = document.createElement('div');
         wrap.className = `cleo-chart-wrap cleo-chart-type-${type}`;
-        const chartType = isPie ? type : (isHorizontal ? 'bar' : (type === 'line' ? 'line' : 'bar'));
+        const chartType = isPie ? type : (isHorizontal ? 'bar' : (isLine ? 'line' : 'bar'));
         const chartTitle = spec.title || (type ? type.toUpperCase() + ' Chart' : 'Cost Chart');
         const chartConfig = {
           type: chartType,

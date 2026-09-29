@@ -17,6 +17,7 @@ import threading
 import datetime
 import calendar
 from concurrent.futures import ThreadPoolExecutor
+from collections import defaultdict
 from typing import Optional, Dict, Any, List
 
 # Use centralized verbose logger
@@ -867,11 +868,12 @@ def _detect_chart_type(low: str) -> Optional[str]:
         return "waterfall"
     if "waterfall" in low:
         return "waterfall"
-    if any(w in low for w in [
-        "doughnut chart", "donut chart", "doughnut graph", "donut graph",
+    if any(w in low for w in ["doughnut chart", "donut chart", "doughnut graph", "donut graph",
         "doughnut only", "donut only", "doughnut", "donut"
     ]):
         return "doughnut"
+    if any(w in low for w in ["area chart", "area graph", "stacked area", "area plot", "area only", "area"]):
+        return "area"
     if any(w in low for w in ["pie chart", "pie graph", "pie breakdown", "pie only", "pie"]):
         return "pie"
     # Trend → line chart (bare "trend" keyword or multi-month progression triggers line, not bar)
@@ -2533,15 +2535,17 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
 
     # Chart types
     chart_types = []
+    if any(w in low for w in ["area chart", "area graph", "stacked area", "area"]):
+        chart_types.append("area")
     if "pie" in low:
         chart_types.append("pie")
-    elif any(w in low for w in ["donut", "doughnut"]):
+    if any(w in low for w in ["donut", "doughnut"]):
         chart_types.append("donut")
-    elif any(w in low for w in ["bar", "column", "stacked"]):
+    if any(w in low for w in ["bar", "column", "stacked"]):
         chart_types.append("bar")
-    elif "line" in low:
+    if "line" in low:
         chart_types.append("line")
-    elif "waterfall" in low:
+    if "waterfall" in low:
         chart_types.append("waterfall")
 
     # Strict check for pure reformat without new service/data
@@ -2550,11 +2554,12 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
 
     is_pure_reformat = (
         bool(re.search(r'\b(?:chart|plot|graph|visualize)\s+(?:of\s+)?(?:it|this|that|above|the\s+above|same\s+data|previous\s+data)\b', low) or
-        re.search(r'\b(?:show|render|draw|display)\s+(?:it|this|that|above)\s+(?:as\s+a\s+|in\s+a\s+)?(?:chart|graph|plot|pie|donut|bar)\b', low) or
+        re.search(r'\b(?:show|render|draw|display)\s+(?:it|this|that|above)\s+(?:as\s+a\s+|in\s+a\s+)?(?:chart|graph|plot|pie|donut|bar|area)\b', low) or
         any(low.strip() == p for p in [
-            "pie chart", "donut chart", "doughnut chart", "bar chart", "waterfall chart",
+            "pie chart", "donut chart", "doughnut chart", "bar chart", "waterfall chart", "area chart",
             "pie chart please", "as a pie chart", "give me the pie chart of it", "give me the pie chart of the above data",
-            "chart it", "plot it", "graph it", "show as pie", "show as donut", "show in pie", "show as a pie chart"
+            "area chart please", "as an area chart", "give me the area chart of it", "give me the area chart of the above data",
+            "chart it", "plot it", "graph it", "show as pie", "show as donut", "show in pie", "show as a pie chart", "show as area"
         ])) and not (has_explicit_data_subject or has_fetch_verb)
     )
 
@@ -3169,16 +3174,17 @@ class AIClient:
 
         # ── 0d. Table & Chart Follow-up from Chat History (Zero-Hallucination History Memory) ──
         is_chart_transform = any(w in low for w in [
-            "pie chart", "donut chart", "doughnut chart", "bar chart", "line chart", "waterfall chart",
-            "show as pie", "show as donut", "show in pie", "show in a pie", "pie chart of",
-            "give me the pie chart", "give me a pie chart", "give me the bar chart", "give me the donut chart",
+            "pie chart", "donut chart", "doughnut chart", "bar chart", "line chart", "waterfall chart", "area chart", "area graph",
+            "show as pie", "show as donut", "show in pie", "show in a pie", "pie chart of", "area chart of",
+            "give me the pie chart", "give me a pie chart", "give me the bar chart", "give me the donut chart", "give me the area chart",
             "visualize this as", "visualize it as", "plot this as", "chart of it", "chart of the above", "chart of this"
         ]) or bool(
             re.search(r'\b(?:chart|plot|graph|visualize)\s+(?:of\s+)?(?:it|this|that|above|the\s+above|same\s+data|previous\s+data)\b', low) or
-            re.search(r'\b(?:show|render|draw|display)\s+(?:it|this|that|above)\s+(?:as\s+a\s+|in\s+a\s+)?(?:chart|graph|plot|pie|donut|bar)\b', low)
+            re.search(r'\b(?:show|render|draw|display)\s+(?:it|this|that|above)\s+(?:as\s+a\s+|in\s+a\s+)?(?:chart|graph|plot|pie|donut|bar|area)\b', low)
         ) or any(low.strip() == p for p in [
-            "pie chart", "donut chart", "doughnut chart", "bar chart", "waterfall chart",
+            "pie chart", "donut chart", "doughnut chart", "bar chart", "waterfall chart", "area chart",
             "pie chart please", "as a pie chart", "give me the pie chart of it", "give me the pie chart of the above data",
+            "area chart please", "as an area chart", "give me the area chart of it", "give me the area chart of the above data",
             "chart it", "plot it", "graph it"
         ])
 
@@ -3217,15 +3223,21 @@ class AIClient:
                 total = parsed_hist["total"]
 
                 if is_chart_transform:
-                    target_type = "pie"
+                    detected_types = []
+                    if any(w in low for w in ["area chart", "area graph", "stacked area", "area"]):
+                        detected_types.append("area")
+                    if any(w in low for w in ["pie chart", "pie graph", "pie"]):
+                        detected_types.append("pie")
                     if any(w in low for w in ["donut", "doughnut"]):
-                        target_type = "doughnut"
-                    elif any(w in low for w in ["bar", "column"]):
-                        target_type = "bar"
-                    elif "line" in low:
-                        target_type = "line"
-                    elif "waterfall" in low:
-                        target_type = "waterfall"
+                        detected_types.append("doughnut")
+                    if any(w in low for w in ["bar chart", "bar graph", "column chart", "bar", "column"]):
+                        detected_types.append("bar")
+                    if any(w in low for w in ["line chart", "line graph", "line"]):
+                        detected_types.append("line")
+                    if any(w in low for w in ["waterfall chart", "waterfall"]):
+                        detected_types.append("waterfall")
+
+                    target_types = detected_types if detected_types else ["pie"]
 
                     top_limit = 8
                     top_rows = rows[:top_limit]
@@ -3258,15 +3270,20 @@ class AIClient:
                         total_line = f"\n| **Total** | **All Categories** | **${total:,.2f}** | **100.0%**{total_blank} |\n"
                         table_block = f"{table_header}{total_line}\n"
 
-                    clean_title = re.sub(r'[:(]?\s*(?:Pie|Bar|Donut|Doughnut|Line|Waterfall)\s*Chart(?:\s*View)?\)?', '', parsed_hist['title'], flags=re.I).strip()
+                    clean_title = re.sub(r'[:(]?\s*(?:Pie|Bar|Donut|Doughnut|Line|Waterfall|Area)\s*Chart(?:\s*View)?\)?', '', parsed_hist['title'], flags=re.I).strip()
                     clean_title = re.sub(r'^[^\w\s]+', '', clean_title).strip()
-                    chart_title = f"{clean_title} ({target_type.capitalize()} Chart)"
-                    chart_block = _chart_block(target_type, chart_title, chart_labels, values=chart_values, value_label="Cost ($)")
 
-                    icon = "🥧" if target_type in ["pie", "doughnut"] else "📊"
+                    chart_blocks = []
+                    for t_type in target_types:
+                        chart_title = f"{clean_title} ({t_type.capitalize()} Chart)"
+                        chart_blocks.append(_chart_block(t_type, chart_title, chart_labels, values=chart_values, value_label="Cost ($)"))
+                    chart_block = "\n".join(chart_blocks)
+
+                    type_names = " & ".join(t.capitalize() for t in target_types)
+                    icon = "🥧" if target_types == ["pie"] or target_types == ["doughnut"] else "📊"
                     source_str = f" via `{parsed_hist['dataset_name']}`" if parsed_hist["dataset_name"] else ""
                     return (
-                        f"### {icon} {clean_title}: {target_type.capitalize()} Chart View\n\n"
+                        f"### {icon} {clean_title}: {type_names} Chart View\n\n"
                         f"Visualizing the spend distribution from your previous query ({parsed_hist['period']}):\n\n"
                         f"- **Billing Period**: {parsed_hist['period']}\n"
                         f"- **Total Spend Analyzed**: **${total:,.2f}** across **{len(rows)}** categories\n\n"
@@ -3742,7 +3759,12 @@ class AIClient:
             # Monthly spend trend / breakdown query across providers (NOT a service breakdown)
             is_monthly_trend_query = (
                 not requested_service
-                and not any(w in low for w in ["by service", "service level", "each service", "top services", "services across", "service category", "service spend", "by product", "services by"])
+                and not any(w in low for w in [
+                    "by service", "service level", "each service", "top services", "services across",
+                    "service category", "service spend", "by product", "services by",
+                    "service breakdown", "services breakdown", "breakdown by service",
+                    "breakdown of service", "breakdown of services", "service-level", "per service"
+                ])
                 and (
                     any(w in low for w in [
                         "monthly cost breakdown", "monthly spend breakdown", "monthly breakdown",
@@ -4132,7 +4154,7 @@ class AIClient:
 
                 # Chart Generation
                 chart_type = (intent_info.get("chart_types") or [None])[0] or _detect_chart_type(low) or "bar"
-                c_kind = chart_type if chart_type in ["pie", "doughnut", "bar", "horizontal-bar"] else "bar"
+                c_kind = chart_type if chart_type in ["pie", "doughnut", "bar", "horizontal-bar", "line", "area"] else "bar"
                 chart_labels = [reg for reg, _ in reg_rows[:12]]
                 chart_values = [round(c, 2) for _, c in reg_rows[:12]]
                 chart_md = _chart_block(c_kind, f"{prov_title} Spend by {dim_label}{cust_suffix} — {svc_scope_label}", chart_labels, values=chart_values, horizontal=(c_kind == "horizontal-bar"), stacked=True)
@@ -5502,7 +5524,7 @@ class AIClient:
                 if chart_type and ut_rows:
                     chart_labels = [r["usage_type"][:35] for r in ut_rows[:15]]
                     chart_values = [round(r["cost"], 2) for r in ut_rows[:15]]
-                    c_kind = chart_type if chart_type in ["doughnut", "pie", "bar", "horizontal-bar"] else "bar"
+                    c_kind = chart_type if chart_type in ["doughnut", "pie", "bar", "horizontal-bar", "line", "area"] else "bar"
                     chart_md = _chart_block(c_kind,
                         f"Usage Type Breakdown ({ut_period_label})",
                         chart_labels, chart_values,
@@ -6025,11 +6047,11 @@ class AIClient:
                                 wf_labels.append("Total Spend")
                                 wf_vals.append(round(float(m_rows[-1].get("cost") or 0), 2))
                                 chart_md = _build_waterfall_chart(f"{scope_name} Month-over-Month Spend Progression", wf_labels, wf_vals)
-                            elif chart_type == "line":
-                                # Trend: line chart of monthly totals + MoM variance waterfall
+                            elif chart_type in ("line", "area"):
+                                # Trend: line or area chart of monthly totals + MoM variance waterfall
                                 lbls = [_format_time_label(r["month"], t_format) for r in m_rows]
                                 vals = [round(float(r.get("cost") or 0), 2) for r in m_rows]
-                                chart_md = _chart_block("line", f"{scope_name} Monthly Cloud Spend Trend", lbls, values=vals, value_label="Cost ($)")
+                                chart_md = _chart_block(chart_type, f"{scope_name} Monthly Cloud Spend Trend", lbls, values=vals, value_label="Cost ($)")
                                 # MoM variance waterfall beneath
                                 mo_totals_g = {r["month"]: float(r.get("cost") or 0) for r in m_rows}
                                 sorted_mos_g = sorted(mo_totals_g.keys())
@@ -6038,7 +6060,7 @@ class AIClient:
                                 )
                                 chart_md += f"\n{variance_md}" if variance_md else ""
                             else:
-                                c_kind = chart_type if chart_type in ["pie", "doughnut", "bar", "horizontal-bar"] else "bar"
+                                c_kind = chart_type if chart_type in ["pie", "doughnut", "bar", "horizontal-bar", "area"] else "bar"
                                 lbls = [_format_time_label(r["month"], t_format) for r in m_rows]
                                 vals = [round(float(r.get("cost") or 0), 2) for r in m_rows]
                                 chart_md = _chart_block(c_kind, f"{scope_name} Monthly Cloud Spend", lbls, values=vals, horizontal=(c_kind == "horizontal-bar"), stacked=True)
@@ -6917,6 +6939,174 @@ class AIClient:
                             f"*Source: {'AWS_CUR' if prov == 'aws' else 'MULTICLOUD_FOCUS_COST_AND_USAGE'} via CloudHealth FlexReports.*"
                         )
 
+                # ── Multi-Month / Time-Series Service Spend Breakdown (Stacked Area / Line / Bar) ──
+                elif not requested_service and (
+                    bool(req_months and req_months > 1)
+                    or bool(time_ctx.get("timeframe_days"))
+                    or any(w in low for w in ["trend", "over time", "monthly", "by month", "each month", "month over month", "mom"])
+                    or any(ct in ("area", "line") for ct in (intent_info.get("chart_types") or [_detect_chart_type(low)]))
+                ) and not any(w in low for w in [
+                    "by cloud", "by provider", "per cloud", "per provider", "cloud-wise", "cloud wise",
+                    "breakdown by cloud", "each cloud", "cloud level", "cloud-level"
+                ]):
+                    if cloud_target == "azure":
+                        prov_where = "WHERE provider = 'Azure'"
+                        prov_title = "Azure"
+                    elif cloud_target == "gcp":
+                        prov_where = "WHERE provider IN ('GCP', 'Google Cloud')"
+                        prov_title = "Google Cloud (GCP)"
+                    elif cloud_target == "aws":
+                        prov_where = "WHERE provider = 'AWS'"
+                        prov_title = "AWS"
+                    else:
+                        prov_where = ""
+                        prov_title = "Multi-Cloud"
+
+                    svc_month_costs = defaultdict(lambda: defaultdict(float))
+                    svc_totals = defaultdict(float)
+                    svc_prov = {}
+                    all_months = []
+
+                    ts_sql = (
+                        f"SELECT Month AS month, provider AS provider, ServiceName AS service, SUM(EffectiveCost) AS cost "
+                        f"FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
+                        f"{prov_where} "
+                        f"GROUP BY Month, provider, ServiceName "
+                        f"ORDER BY month ASC, cost DESC"
+                    )
+                    try:
+                        res = mcp.call_tool("execute_datasource_query", {
+                            "queryInput": {
+                                "sqlStatement": ts_sql,
+                                "dataGranularity": svc_granularity,
+                                "limit": 500,
+                                "timeRange": svc_time_range
+                            },
+                            "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                        })
+                        raw_csv = json.loads(res.get("content", [{}])[0].get("text", "{}")).get("csv", "")
+                        for r in csv.DictReader(io.StringIO(raw_csv)):
+                            m = r.get("month") or ""
+                            s = _friendly_service_name(r.get("service") or "")
+                            p = r.get("provider") or prov_title
+                            c = float(r.get("cost") or 0.0)
+                            if s and c > 0:
+                                svc_month_costs[s][m] += c
+                                svc_totals[s] += c
+                                svc_prov[s] = p
+                        all_months = sorted(list(set(m for s in svc_month_costs for m in svc_month_costs[s] if m)))
+                    except Exception as e:
+                        logger.warning(f"[Multi-Month Service Query] {e}")
+
+                    if len(all_months) > 1 and svc_totals:
+                        month_labels = [_format_time_label(m, "month") for m in all_months]
+                        sorted_services = sorted(svc_totals.keys(), key=lambda s: svc_totals[s], reverse=True)
+                        top_services = sorted_services[:limit]
+                        total_spend = sum(svc_totals.values())
+                        month_totals = {m: sum(svc_month_costs[s].get(m, 0.0) for s in svc_totals) for m in all_months}
+
+                        tbl_headers = ["Cloud Provider", "Service Category"] + month_labels + ["Total Spend", f"% of {prov_title} Spend"]
+                        tbl_lines = []
+                        for s in top_services:
+                            p = svc_prov.get(s, prov_title)
+                            m_cells = [f"${svc_month_costs[s].get(m, 0.0):,.2f}" for m in all_months]
+                            tot_c = svc_totals[s]
+                            pct = (tot_c / total_spend * 100) if total_spend else 0.0
+                            tbl_lines.append(f"| {p} | {s} | " + " | ".join(m_cells) + f" | ${tot_c:,.2f} | {pct:.1f}% |")
+
+                        tot_month_cells = [f"**${month_totals.get(m, 0.0):,.2f}**" for m in all_months]
+                        table = (
+                            f"| " + " | ".join(tbl_headers) + " |\n"
+                            f"|" + "|".join([":---"] * len(tbl_headers)) + "|\n"
+                            f"{chr(10).join(tbl_lines)}\n\n"
+                            f"| **Total {prov_title} Spend** | | " + " | ".join(tot_month_cells) + f" | **${total_spend:,.2f}** | **100.0%** |"
+                        )
+                        svc_hdr = f"CloudHealth Spend Analysis: Top {prov_title} Services by Spend — {svc_scope_label}"
+
+                        insight_md = ""
+                        if self.engine != "direct":
+                            try:
+                                sys_msg = {
+                                    "role": "system",
+                                    "content": (
+                                        f"You are Cleo, an expert FinOps AI. Provide 2 concise bullet observations about the {prov_title} service spend trend over time.\n"
+                                        "STRICT RULES:\n"
+                                        "1. Bullet titles MUST accurately reflect all services mentioned in that bullet.\n"
+                                        "2. Do not use the word 'Utilization' when analyzing a spend table; use 'Spend Concentration' or 'Cost Driver'.\n"
+                                        "3. Keep each bullet concise, accurate, and actionable with specific dollar amounts or percentages from the table."
+                                    )
+                                }
+                                user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{table}"}
+                                llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
+                                if llm_ans:
+                                    insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
+                            except Exception as e:
+                                logger.debug(f"[LLM Commentary] {e}")
+
+                        if not insight_md:
+                            top_s1 = top_services[0] if top_services else "Primary Services"
+                            top_s2 = top_services[1] if len(top_services) > 1 else ""
+                            s_names = f"{top_s1} and {top_s2}" if top_s2 else top_s1
+                            insight_md = (
+                                "\n\n**💡 FinOps Insights:**\n"
+                                f"- **Core Infrastructure Trend ({s_names})**: {s_names} represent the predominant cost drivers across `{svc_scope_label}`. Tracking month-over-month variances ensures unexpected scaling spikes are remediated early.\n"
+                                f"- **Architecture & Commitment Modernization**: Leveraging multi-year commitments (Savings Plans, CUDs) alongside active waste cleanup yields significant run-rate reduction."
+                            )
+
+                        chart_types = intent_info.get("chart_types") or []
+                        det_type = _detect_chart_type(low)
+                        if det_type and det_type not in chart_types:
+                            chart_types.append(det_type)
+                        if not chart_types and not is_no_chart_requested(low):
+                            chart_types = ["area" if any(w in low for w in ["area", "trend", "over time", "month"]) else "bar"]
+
+                        chart_blocks = []
+                        if not is_no_chart_requested(low):
+                            for ct in chart_types:
+                                c_kind = ct if ct in ["pie", "doughnut", "line", "area", "bar", "horizontal-bar"] else "area"
+                                if c_kind in ("area", "line", "bar"):
+                                    chart_datasets = []
+                                    for s in top_services[:8]:
+                                        chart_datasets.append({
+                                            "label": s,
+                                            "data": [round(svc_month_costs[s].get(m, 0.0), 2) for m in all_months]
+                                        })
+                                    rem_svcs = sorted_services[8:]
+                                    if rem_svcs:
+                                        rem_data = [round(sum(svc_month_costs[s].get(m, 0.0) for s in rem_svcs), 2) for m in all_months]
+                                        if any(v > 0 for v in rem_data):
+                                            chart_datasets.append({"label": "Other Services", "data": rem_data})
+
+                                    chart_blocks.append(_chart_block(
+                                        c_kind,
+                                        f"Top {prov_title} Services Spend Trend ({svc_scope_label})",
+                                        month_labels,
+                                        datasets=chart_datasets,
+                                        value_label="Cost ($)",
+                                        stacked=True
+                                    ))
+                                else:
+                                    chart_blocks.append(_chart_block(
+                                        c_kind,
+                                        f"Top {prov_title} Services Spend Share ({svc_scope_label})",
+                                        [s for s in top_services[:10]],
+                                        values=[round(svc_totals[s], 2) for s in top_services[:10]],
+                                        horizontal=(c_kind == "horizontal-bar"),
+                                        stacked=False
+                                    ))
+
+                        chart_md = "\n\n".join(chart_blocks)
+                        wants_table = _detect_wants_table(low)
+                        tbl_md = f"{table}\n" if wants_table else ""
+                        return (
+                            f"### 📊 {svc_hdr}\n\n"
+                            f"{partial_notice}"
+                            f"{tbl_md}"
+                            f"{chart_md}"
+                            f"{insight_md}\n\n"
+                            f"💡 *Live FinOps data retrieved from CloudHealth FOCUS & Billing Datasets.*"
+                        )
+
                 # ── Azure Specific Breakdown ──
                 elif cloud_target == "azure":
                     azure_rows = []
@@ -7219,32 +7409,39 @@ class AIClient:
                         f"- **Data & Storage Modernization**: Storage volumes across AWS EBS, Azure Disks, and GCP BigQuery present immediate quick-win opportunities through storage tiering and gp3 upgrades."
                     )
 
-                chart_type = _detect_chart_type(low) or (intent_info.get("chart_types") or [None])[0]
-                if not chart_type and not is_no_chart_requested(low) and any(w in low for w in ["breakdown", "top", "distribution", "split", "product", "service"]):
-                    chart_type = "bar"
+                chart_types = intent_info.get("chart_types") or []
+                det_type = _detect_chart_type(low)
+                if det_type and det_type not in chart_types:
+                    chart_types.append(det_type)
+                if not chart_types and not is_no_chart_requested(low) and any(w in low for w in ["breakdown", "top", "distribution", "split", "product", "service"]):
+                    chart_types = ["bar"]
+
                 chart_md = ""
-                if chart_type and not is_no_chart_requested(low):
-                    c_kind = chart_type if chart_type in ["pie", "doughnut", "line", "bar"] else "bar"
-                    if cloud_target == "aws" and aws_rows:
-                        labels = [s for _, s, _ in aws_rows[:12]]
-                        values = [c for _, _, c in aws_rows[:12]]
-                        chart_md = _chart_block(c_kind, f"Top AWS Services by Spend ({svc_scope_label})", labels, values=values, horizontal=True if "horizontal" in low else False, stacked=False)
-                    elif cloud_target == "azure" and azure_rows:
-                        labels = [s for _, s, _ in azure_rows[:12]]
-                        values = [c for _, _, c in azure_rows[:12]]
-                        chart_md = _chart_block(c_kind, f"Top Azure Services by Spend ({svc_scope_label})", labels, values=values, horizontal=True if "horizontal" in low else False, stacked=False)
-                    elif cloud_target == "gcp" and gcp_rows:
-                        labels = [s for _, s, _ in gcp_rows[:12]]
-                        values = [c for _, _, c in gcp_rows[:12]]
-                        chart_md = _chart_block(c_kind, f"Top GCP Services by Spend ({svc_scope_label})", labels, values=values, horizontal=True if "horizontal" in low else False, stacked=False)
-                    elif False and cloud_target == "oci" and oci_rows:
-                        labels = [s for _, s, _ in oci_rows[:12]]
-                        values = [c for _, _, c in oci_rows[:12]]
-                        chart_md = _chart_block(c_kind, f"Top OCI Services by Spend ({svc_scope_label})", labels, values=values, horizontal=True if "horizontal" in low else False, stacked=False)
-                    elif cloud_target == "all" and multi_rows:
-                        labels = [f"{p} {s}" for p, s, _ in multi_rows[:12]]
-                        values = [c for _, _, c in multi_rows[:12]]
-                        chart_md = _chart_block(c_kind, f"Top Multi-Cloud Services by Spend ({svc_scope_label})", labels, values=values, horizontal=True if "horizontal" in low else False, stacked=False)
+                if chart_types and not is_no_chart_requested(low):
+                    chart_blocks = []
+                    for ct in chart_types:
+                        c_kind = ct if ct in ["pie", "doughnut", "line", "area", "bar", "horizontal-bar"] else "bar"
+                        if cloud_target == "aws" and aws_rows:
+                            labels = [s for _, s, _ in aws_rows[:12]]
+                            values = [c for _, _, c in aws_rows[:12]]
+                            chart_blocks.append(_chart_block(c_kind, f"Top AWS Services by Spend ({svc_scope_label})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False))
+                        elif cloud_target == "azure" and azure_rows:
+                            labels = [s for _, s, _ in azure_rows[:12]]
+                            values = [c for _, _, c in azure_rows[:12]]
+                            chart_blocks.append(_chart_block(c_kind, f"Top Azure Services by Spend ({svc_scope_label})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False))
+                        elif cloud_target == "gcp" and gcp_rows:
+                            labels = [s for _, s, _ in gcp_rows[:12]]
+                            values = [c for _, _, c in gcp_rows[:12]]
+                            chart_blocks.append(_chart_block(c_kind, f"Top GCP Services by Spend ({svc_scope_label})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False))
+                        elif False and cloud_target == "oci" and oci_rows:
+                            labels = [s for _, s, _ in oci_rows[:12]]
+                            values = [c for _, _, c in oci_rows[:12]]
+                            chart_blocks.append(_chart_block(c_kind, f"Top OCI Services by Spend ({svc_scope_label})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False))
+                        elif cloud_target == "all" and multi_rows:
+                            labels = [f"{p} {s}" for p, s, _ in multi_rows[:12]]
+                            values = [c for _, _, c in multi_rows[:12]]
+                            chart_blocks.append(_chart_block(c_kind, f"Top Multi-Cloud Services by Spend ({svc_scope_label})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False))
+                    chart_md = "\n\n".join(chart_blocks)
 
                 wants_table = _detect_wants_table(low)
                 tbl_md = f"{table}\n" if wants_table else ""
@@ -7364,9 +7561,9 @@ class AIClient:
                             chart_md = ""
                             if include_chart:
                                 trend_chart_type = _detect_chart_type(low) or (intent_info.get("chart_types") or [None])[0] or "line"
-                                if trend_chart_type not in ("bar", "line", "waterfall"):
+                                if trend_chart_type not in ("bar", "line", "waterfall", "area"):
                                     trend_chart_type = "line"
-                                chart_kind = "bar" if trend_chart_type == "bar" else "line"
+                                chart_kind = "bar" if trend_chart_type == "bar" else ("area" if trend_chart_type == "area" else "line")
 
                                 chart_md = _chart_block(
                                     chart_kind,
