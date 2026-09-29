@@ -8,7 +8,12 @@ and live diagnostic inspection.
 """
 from __future__ import annotations
 
-import sys, os, subprocess
+import sys, os, subprocess, site
+
+# Ensure user site-packages (e.g. ~/Library/Python/X.Y/lib/python/site-packages on macOS) is in sys.path
+_user_site = site.getusersitepackages() if hasattr(site, "getusersitepackages") else None
+if _user_site and os.path.isdir(_user_site) and _user_site not in sys.path:
+    sys.path.insert(0, _user_site)
 
 _base_dir = os.path.dirname(os.path.abspath(__file__))
 _venv_dir = os.path.join(_base_dir, ".venv")
@@ -18,7 +23,7 @@ def _is_python_ready(py_bin: str) -> bool:
     if not os.path.exists(py_bin):
         return False
     try:
-        subprocess.check_call([py_bin, "-c", "import fastapi; import uvicorn; import httpx"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.check_call([py_bin, "-c", "import sys, site; u = site.getusersitepackages() if hasattr(site, 'getusersitepackages') else None; (sys.path.insert(0, u) if u and u not in sys.path else None); import fastapi; import uvicorn; import httpx"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True
     except Exception:
         return False
@@ -168,6 +173,25 @@ def _setup_and_activate_venv():
             subprocess.check_call([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "-r", req_file, "--progress-bar", "on"])
         else:
             subprocess.check_call([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "fastapi", "uvicorn[standard]", "httpx", "--progress-bar", "on"])
+
+        # Refresh sys.path with user site-packages and invalidate caches
+        _us = site.getusersitepackages() if hasattr(site, "getusersitepackages") else None
+        if _us and os.path.isdir(_us) and _us not in sys.path:
+            sys.path.insert(0, _us)
+        import importlib
+        importlib.invalidate_caches()
+
+        try:
+            import fastapi
+            import uvicorn
+            import httpx
+        except ImportError:
+            print("🔄 Packages installed. Relaunching Cleo Server...")
+            if os.name == "nt":
+                subprocess.check_call([sys.executable] + sys.argv)
+                sys.exit(0)
+            else:
+                os.execv(sys.executable, [sys.executable] + sys.argv)
 
 _setup_and_activate_venv()
 
