@@ -253,6 +253,7 @@ from cleo_agent import (
     get_access_token, _load_config, _save_config, AI_ENGINES, auth_helper,
     STANDARD_CH_TOOLS, LOCAL_CLIENT_ID, LOCAL_REDIRECT_URI,
     LOCAL_MODELS, PUBLIC_ENGINES, get_installed_ollama_models, OLLAMA_BASE_URL,
+    normalize_ollama_url, get_ollama_opener,
     MLX_MODELS, get_installed_mlx_models, call_mlx_generate, unload_mlx_models, estimate_token_count,
     crawl_and_cache_all_datasource_metadata, split_thinking_and_response,
     detect_system_info
@@ -262,6 +263,7 @@ def unload_ollama_models(model_name: Optional[str] = None):
     """Tells local Ollama daemon to immediately evict loaded models from RAM/VRAM."""
     if not _check_ollama_alive():
         return
+    opener = get_ollama_opener()
     try:
         targets = []
         if model_name:
@@ -269,7 +271,7 @@ def unload_ollama_models(model_name: Optional[str] = None):
         else:
             try:
                 req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/ps")
-                with urllib.request.urlopen(req, timeout=2.0) as resp:
+                with opener.open(req, timeout=2.0) as resp:
                     data = json.loads(resp.read().decode("utf-8"))
                     for item in data.get("models", []):
                         name = item.get("name") or item.get("model")
@@ -292,7 +294,7 @@ def unload_ollama_models(model_name: Optional[str] = None):
                     data=payload,
                     headers={"Content-Type": "application/json"}
                 )
-                with urllib.request.urlopen(req, timeout=3.0) as resp:
+                with opener.open(req, timeout=3.0) as resp:
                     pass
                 logger.info(f"✅ [Ollama Unload] Model '{m}' evicted from memory.")
             except urllib.error.HTTPError as he:
@@ -667,12 +669,45 @@ def _bg_pull_mlx_model(repo_id: str):
         }
 
 def _check_ollama_alive() -> bool:
-    try:
-        req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/tags")
-        with urllib.request.urlopen(req, timeout=1.5):
-            return True
-    except Exception:
-        return False
+    global OLLAMA_BASE_URL
+    candidates = [
+        OLLAMA_BASE_URL,
+        "http://127.0.0.1:11434",
+        "http://localhost:11434"
+    ]
+    opener = get_ollama_opener()
+    seen = set()
+    for base in candidates:
+        if not base or base in seen:
+            continue
+        seen.add(base)
+        for ep in ["/api/tags", "/api/version", "/"]:
+            try:
+                req = urllib.request.Request(
+                    f"{base}{ep}",
+                    headers={"Accept": "application/json", "User-Agent": "Cleo-FinOps/1.0"}
+                )
+                with opener.open(req, timeout=1.5) as resp:
+                    if resp.status in (200, 204):
+                        if base != OLLAMA_BASE_URL:
+                            logger.info(f"ℹ️ Connected to Ollama daemon at {base}")
+                            OLLAMA_BASE_URL = base
+                        return True
+            except Exception:
+                continue
+
+    # Also probe TCP socket directly on loopback 11434
+    for host in ["127.0.0.1", "localhost"]:
+        try:
+            with socket.create_connection((host, 11434), timeout=0.5):
+                working_base = f"http://{host}:11434"
+                if working_base != OLLAMA_BASE_URL:
+                    OLLAMA_BASE_URL = working_base
+                return True
+        except Exception:
+            pass
+
+    return False
 
 def _find_ollama_bin() -> Optional[str]:
     """Locates the Ollama executable on the system, checking PATH and common installation locations."""
@@ -700,9 +735,11 @@ def _find_ollama_bin() -> Optional[str]:
         ]
     elif platform.system() == "Windows":
         local_app = os.environ.get("LOCALAPPDATA", os.path.join(home, "AppData", "Local"))
+        prog_files = os.environ.get("ProgramFiles", "C:\\Program Files")
         candidates = [
             os.path.join(local_app, "Programs", "Ollama", "ollama.exe"),
             os.path.join(home, "AppData", "Local", "Programs", "Ollama", "ollama.exe"),
+            os.path.join(prog_files, "Ollama", "ollama.exe"),
         ]
 
     for cand in candidates:
@@ -713,10 +750,29 @@ def _find_ollama_bin() -> Optional[str]:
 def _start_ollama_daemon(timeout: float = 25.0) -> bool:
     """Spawns Ollama daemon in the background if not already running."""
     if _check_ollama_alive():
+        logger.info(f"✅ Ollama daemon is already active ({OLLAMA_BASE_URL}).")
         return True
+
+    # Check if port 11434 is already bound by an existing process (e.g. Windows background service)
+    port_in_use = False
+    for host in ["127.0.0.1", "localhost"]:
+        try:
+            with socket.create_connection((host, 11434), timeout=0.5):
+                port_in_use = True
+                break
+        except Exception:
+            pass
+
+    if port_in_use:
+        logger.info("ℹ️ Port 11434 is already in use (Ollama daemon is running in background). Verifying...")
+        time.sleep(1.0)
+        if _check_ollama_alive():
+            logger.info("✅ Ollama daemon verified.")
+            return True
 
     bin_path = _find_ollama_bin()
     if not bin_path:
+        logger.warning("⚠️ Ollama executable not found on system PATH or default locations.")
         return False
 
     logger.info(f"🚀 Starting Ollama daemon ({bin_path} serve)...")
@@ -745,6 +801,15 @@ def _start_ollama_daemon(timeout: float = 25.0) -> bool:
             logger.info("✅ Ollama daemon started successfully.")
             return True
         time.sleep(0.5)
+
+    # Final check: is port in use and listening?
+    for host in ["127.0.0.1", "localhost"]:
+        try:
+            with socket.create_connection((host, 11434), timeout=0.5):
+                logger.info(f"✅ Ollama daemon reachable on {host}:11434.")
+                return True
+        except Exception:
+            pass
 
     logger.warning(f"⚠️ Timed out after {timeout}s waiting for Ollama daemon to respond.")
     return False
@@ -1010,9 +1075,9 @@ def _bg_pull_model(model_name: str):
     url = f"{OLLAMA_BASE_URL}/api/pull"
     payload = json.dumps({"name": model_name, "stream": True}).encode("utf-8")
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-    success_seen = False
+    opener = get_ollama_opener()
     try:
-        with urllib.request.urlopen(req, timeout=1800.0) as resp:
+        with opener.open(req, timeout=1800.0) as resp:
             for line in resp:
                 if not line:
                     continue
