@@ -1846,17 +1846,68 @@ def unload_mlx_models(model_id: Optional[str] = None):
     logger.info("✅ [MLX Unload] MLX unified memory and Metal cache freed.")
 
 # ── LLM Client Callers (Zero-Dependency via urllib) ──────────────────────────
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+def normalize_ollama_url(raw: str = None) -> str:
+    """
+    Normalizes OLLAMA_HOST / base URL for robust local communication across OSes (Windows, Mac, Linux).
+    - Ensures http:// or https:// scheme (defaulting to http://).
+    - If host is 0.0.0.0 or :: (server bind address), converts to 127.0.0.1 for client connectivity.
+    - If only port is given (e.g. '11434'), expands to http://127.0.0.1:11434.
+    - Replaces localhost with 127.0.0.1 on Windows to prevent IPv6 ::1 connection refused issues.
+    """
+    if not raw:
+        raw = os.environ.get("OLLAMA_HOST", "").strip()
+    if not raw:
+        return "http://127.0.0.1:11434"
+    raw = raw.strip().rstrip("/")
+    if re.match(r'^:?\d+$', raw):
+        port = raw.lstrip(":")
+        return f"http://127.0.0.1:{port}"
+    if not (raw.startswith("http://") or raw.startswith("https://")):
+        raw = f"http://{raw}"
+    try:
+        parsed = urllib.parse.urlparse(raw)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or 11434
+        scheme = parsed.scheme or "http"
+        if host in ("0.0.0.0", "::", "0"):
+            host = "127.0.0.1"
+        elif platform.system() == "Windows" and host == "localhost":
+            host = "127.0.0.1"
+        return f"{scheme}://{host}:{port}"
+    except Exception:
+        return raw
+
+def get_ollama_opener():
+    """
+    Returns a urllib opener that explicitly bypasses system and environment proxies
+    (HTTP_PROXY, HTTPS_PROXY) so local loopback requests to Ollama always reach
+    the local daemon directly instead of getting intercepted or blocked by corporate proxies.
+    """
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+OLLAMA_BASE_URL = normalize_ollama_url()
 
 def get_installed_ollama_models() -> list[dict]:
     """Returns list of installed models from local Ollama daemon."""
-    try:
-        req = urllib.request.Request(f"{OLLAMA_BASE_URL}/api/tags", headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=2.0) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data.get("models", [])
-    except Exception:
-        return []
+    candidates = [
+        OLLAMA_BASE_URL,
+        "http://127.0.0.1:11434",
+        "http://localhost:11434"
+    ]
+    opener = get_ollama_opener()
+    seen = set()
+    for base in candidates:
+        if not base or base in seen:
+            continue
+        seen.add(base)
+        try:
+            req = urllib.request.Request(f"{base}/api/tags", headers={"Accept": "application/json", "User-Agent": "Cleo-FinOps/1.0"})
+            with opener.open(req, timeout=2.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data.get("models", [])
+        except Exception:
+            continue
+    return []
 
 def call_ollama_chat(model: str, messages: list[dict], timeout: float = 60.0, stats_out: dict = None) -> str:
     """Invokes local Ollama chat API."""
@@ -1867,7 +1918,8 @@ def call_ollama_chat(model: str, messages: list[dict], timeout: float = 60.0, st
         headers={"Content-Type": "application/json"}
     )
     t0 = time.perf_counter()
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    opener = get_ollama_opener()
+    with opener.open(req, timeout=timeout) as resp:
         data = json.loads(resp.read().decode("utf-8"))
         dur = max(0.01, time.perf_counter() - t0)
         ans = data.get("message", {}).get("content", "")
