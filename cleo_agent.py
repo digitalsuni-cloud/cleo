@@ -3663,6 +3663,7 @@ class AIClient:
             # External LLM synthesis if active
             if self.engine != "direct":
                 cal = get_realtime_calendar_info()
+                adv_context = f"AUTHORITATIVE FINOPS GUIDANCE & CONTEXT:\n{finops_adv}\n" if finops_adv else ""
                 sys_msg = {
                     "role": "system",
                     "content": (
@@ -3675,7 +3676,7 @@ class AIClient:
                         "- Include concrete metrics, formulas, or architecture/CLI steps where applicable.\n"
                         "- DO NOT call CloudHealth tools or generate SQL statements, as this is a general FinOps domain question.\n"
                         "- NEVER output internal pseudocode or python scripts (e.g. list_standard_datasources).\n\n"
-                        f"{f'AUTHORITATIVE FINOPS GUIDANCE & CONTEXT:\n{finops_adv}\n' if finops_adv else ''}"
+                        f"{adv_context}"
                     )
                 }
                 user_msg = {"role": "user", "content": last_msg}
