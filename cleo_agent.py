@@ -11,6 +11,7 @@ import hashlib
 import webbrowser
 import re
 import subprocess
+import platform
 import csv
 import io
 import threading
@@ -1537,11 +1538,147 @@ def _parse_table_data_from_assistant_markdown(text: str) -> Optional[dict]:
         "total": computed_total
     }
 
+# ── Auto-Detect System Hardware & Model Recommendation ─────────────────────────
+def detect_system_info() -> dict:
+    """
+    Auto-detects the operating system, CPU architecture, and total physical memory (RAM).
+    Works reliably on macOS (Apple Silicon / Intel), Windows, and Linux via standard library.
+    Suggests the optimal local model tier based on detected RAM headroom and hardware acceleration.
+    """
+    sys_name = platform.system()
+    machine = platform.machine()
+    is_mac = (sys_name == "Darwin")
+    is_apple_silicon = is_mac and machine in ("arm64", "aarch64")
+    is_windows = (sys_name == "Windows")
+    is_linux = (sys_name == "Linux")
+
+    # Friendly OS display label
+    if is_apple_silicon:
+        os_display = "macOS (Apple Silicon)"
+        chip_label = "Apple Silicon Unified Memory"
+        icon = "🍎"
+    elif is_mac:
+        os_display = "macOS (Intel x86_64)"
+        chip_label = "Intel x86_64"
+        icon = "🍎"
+    elif is_windows:
+        bit_str = "64-bit" if machine in ("AMD64", "x86_64", "ARM64") else "32-bit"
+        os_display = f"Windows ({bit_str})"
+        chip_label = f"Windows {machine}"
+        icon = "🪟"
+    elif is_linux:
+        os_display = f"Linux ({machine})"
+        chip_label = f"Linux {machine}"
+        icon = "🐧"
+    else:
+        os_display = f"{sys_name} ({machine})"
+        chip_label = f"{sys_name} {machine}"
+        icon = "💻"
+
+    total_ram_bytes = 0
+    try:
+        if is_windows:
+            import ctypes
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+            stat = MEMORYSTATUSEX()
+            stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+            total_ram_bytes = stat.ullTotalPhys
+        else:
+            # POSIX (macOS & Linux)
+            total_ram_bytes = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except Exception:
+        pass
+
+    if total_ram_bytes <= 0:
+        if is_mac:
+            try:
+                out = subprocess.check_output(["sysctl", "-n", "hw.memsize"]).decode().strip()
+                total_ram_bytes = int(out)
+            except Exception:
+                pass
+        elif is_linux:
+            try:
+                with open("/proc/meminfo", "r") as f:
+                    for line in f:
+                        if line.startswith("MemTotal:"):
+                            kb = int(line.split()[1])
+                            total_ram_bytes = kb * 1024
+                            break
+            except Exception:
+                pass
+
+    total_ram_gb = round(total_ram_bytes / (1024 ** 3), 1) if total_ram_bytes > 0 else 0.0
+
+    # Determine recommended model based on OS & detected memory
+    if is_apple_silicon:
+        if total_ram_gb >= 24:
+            rec_id = "mlx:mlx-community/Qwen3.5-9B-MLX-4bit"
+            rec_name = "Qwen3.5-9B-4bit (MLX)"
+            rec_reason = f"Apple Silicon with {total_ram_gb} GB Unified Memory detected. Qwen3.5-9B fits natively in unified memory with high-speed Metal acceleration."
+        elif total_ram_gb >= 12:
+            rec_id = "mlx:mlx-community/Qwen3.5-9B-MLX-4bit"
+            rec_name = "Qwen3.5-9B-4bit (MLX)"
+            rec_reason = f"Apple Silicon with {total_ram_gb} GB Unified Memory detected. Qwen3.5-9B (~5.5 GB RAM) is the recommended sweet spot for local FinOps reasoning."
+        else:
+            rec_id = "mlx:mlx-community/Qwen3.5-4B-4bit"
+            rec_name = "Qwen3.5-4B-4bit (MLX)"
+            rec_reason = f"Apple Silicon with {total_ram_gb} GB Unified Memory detected. Qwen3.5-4B (~2.6 GB RAM) is lightweight and runs fast with zero memory pressure."
+    else:
+        # Windows / Linux / Intel Mac (Ollama Runtime)
+        os_label = "Windows" if is_windows else ("Linux" if is_linux else "Intel Mac")
+        if total_ram_gb >= 24:
+            rec_id = "ollama:qwen2.5:7b"
+            rec_name = "Qwen2.5-7B-Instruct-4bit (Ollama)"
+            rec_reason = f"{os_label} with {total_ram_gb} GB RAM detected. High memory headroom supports Qwen2.5-7B (~4.7 GB) or Qwen3.5-9B for complex multi-cloud query planning."
+        elif total_ram_gb >= 12:
+            rec_id = "ollama:qwen2.5:7b"
+            rec_name = "Qwen2.5-7B-Instruct-4bit (Ollama)"
+            rec_reason = f"{os_label} with {total_ram_gb} GB RAM detected. Qwen2.5-7B (~4.7 GB) is the recommended sweet spot for local inference with ample headroom for OS tasks."
+        elif total_ram_gb > 0:
+            rec_id = "ollama:qwen2.5:3b"
+            rec_name = "Qwen2.5-3B-Instruct-4bit (Ollama)"
+            rec_reason = f"{os_label} with {total_ram_gb} GB RAM detected. Qwen2.5-3B (~1.9 GB) is lightweight and ensures fast execution without memory paging."
+        else:
+            rec_id = "ollama:qwen2.5:7b"
+            rec_name = "Qwen2.5-7B-Instruct-4bit (Ollama)"
+            rec_reason = f"{os_label} detected. Qwen2.5-7B is the standard recommended local model."
+
+    return {
+        "os": sys_name,
+        "os_display": os_display,
+        "icon": icon,
+        "machine": machine,
+        "chip_label": chip_label,
+        "is_apple_silicon": is_apple_silicon,
+        "is_windows": is_windows,
+        "is_mac": is_mac,
+        "is_linux": is_linux,
+        "total_ram_bytes": total_ram_bytes,
+        "total_ram_gb": total_ram_gb,
+        "recommended_engine_id": rec_id,
+        "recommended_model_name": rec_name,
+        "recommendation_reason": rec_reason
+    }
+
 # ── Local Apple Silicon (MLX) Support ─────────────────────────────────────────
 _mlx_models_cache = {}
 
 def get_installed_mlx_models() -> list[dict]:
     """Scans local Hugging Face cache for downloaded MLX models (equivalent to mlx_lm.manage --scan)."""
+    if platform.system() != "Darwin" or platform.machine() not in ("arm64", "aarch64"):
+        return []
     installed = {}
     try:
         from huggingface_hub import scan_cache_dir
