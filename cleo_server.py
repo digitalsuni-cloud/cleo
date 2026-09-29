@@ -2581,5 +2581,16 @@ if __name__ == "__main__":
         _check_update_bg()
     threading.Thread(target=_delayed_update_check, daemon=True, name="update-check").start()
 
+    # Auto-open browser on startup unless disabled
+    if os.environ.get("CLEO_NO_BROWSER", "").lower() not in ("1", "true", "yes") and "--no-browser" not in sys.argv:
+        def _open_browser_bg():
+            time.sleep(1.2)
+            try:
+                import webbrowser
+                webbrowser.open(f"http://127.0.0.1:{_port}")
+            except Exception:
+                pass
+        threading.Thread(target=_open_browser_bg, daemon=True, name="browser-open").start()
+
     uvicorn.run("cleo_server:app", host="127.0.0.1", port=_port, reload=False, log_level=_uvicorn_log_level)
 
