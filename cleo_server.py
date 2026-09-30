@@ -372,9 +372,6 @@ if os.path.isdir(_venv_lib):
             sys.path.insert(0, _sp)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("=" * 60)
-    logger.info("  🤖  Cleo FinOps Agent Server Started (Verbose Logging Active)")
-    logger.info("=" * 60)
     if init_mcp_if_authenticated():
         logger.info(f"✅ CloudHealth Connection Ready ({len(_tools)} tools available)")
     else:
@@ -473,8 +470,19 @@ def _get_active_session_id() -> Optional[str]:
     )
     return sorted_sids[0] if sorted_sids else None
 
+def _is_valid_guid(val: any) -> bool:
+    if not val or not isinstance(val, str):
+        return False
+    try:
+        val_obj = uuid.UUID(str(val))
+        return str(val_obj) == str(val).lower()
+    except Exception:
+        return False
+
 def _normalize_session(sid: str, sdata: any) -> dict:
     now = datetime.now(timezone.utc).isoformat()
+    # Guarantee valid GUID for session id
+    target_sid = sid if _is_valid_guid(sid) else str(uuid.uuid4())
     if isinstance(sdata, list):
         title = "New Conversation"
         for m in sdata:
@@ -482,17 +490,18 @@ def _normalize_session(sid: str, sdata: any) -> dict:
                 title = _generate_chat_title(m["content"])
                 break
         return {
-            "id": sid,
+            "id": target_sid,
             "title": title,
             "created_at": now,
             "updated_at": now,
-            "messages": sdata
+            "messages": sdata,
+            "pinned": False
         }
     elif isinstance(sdata, dict):
         if "messages" not in sdata or not isinstance(sdata["messages"], list):
             sdata["messages"] = []
-        if "id" not in sdata:
-            sdata["id"] = sid
+        if not _is_valid_guid(sdata.get("id")):
+            sdata["id"] = target_sid
         if "created_at" not in sdata:
             sdata["created_at"] = now
         if "updated_at" not in sdata:
@@ -508,7 +517,7 @@ def _normalize_session(sid: str, sdata: any) -> dict:
             sdata["pinned"] = False
         return sdata
     return {
-        "id": sid,
+        "id": target_sid,
         "title": "New Conversation",
         "created_at": now,
         "updated_at": now,
@@ -523,15 +532,32 @@ def _load_sessions() -> dict:
                 raw = json.load(f)
                 if isinstance(raw, dict):
                     normalized = {}
+                    needs_save = False
                     for sid, sdata in raw.items():
-                        normalized[sid] = _normalize_session(sid, sdata)
+                        target_sid = sid
+                        if not _is_valid_guid(target_sid):
+                            target_sid = str(uuid.uuid4())
+                            needs_save = True
+                        norm = _normalize_session(target_sid, sdata)
+                        if norm.get("id") != target_sid:
+                            norm["id"] = target_sid
+                            needs_save = True
+                        normalized[target_sid] = norm
                     # Keep sorted by updated_at descending, up to MAX_SAVED_SESSIONS
                     sorted_items = sorted(
                         normalized.items(),
-                        key=lambda item: item[1].get("updated_at", ""),
+                        key=lambda item: item[1].get("updated_at", "") if isinstance(item[1], dict) else "",
                         reverse=True
                     )
-                    return dict(sorted_items[:MAX_SAVED_SESSIONS])
+                    res = dict(sorted_items[:MAX_SAVED_SESSIONS])
+                    if needs_save:
+                        try:
+                            os.makedirs(os.path.dirname(SESSIONS_CACHE_FILE), exist_ok=True)
+                            with open(SESSIONS_CACHE_FILE, "w") as f_out:
+                                json.dump(res, f_out, indent=2)
+                        except Exception as e:
+                            logger.debug(f"Could not auto-save updated GUID sessions: {e}")
+                    return res
         except Exception as e:
             logger.warning(f"Could not load sessions cache: {e}")
     return {}
@@ -1214,12 +1240,12 @@ async def log_requests(request: Request, call_next):
     full_path = f"{path}?{query}" if query else path
     is_poll = path in ("/health", "/api/logs", "/favicon.ico")
     if not is_poll:
-        logger.info(f"[HTTP IN]  {request.method} {full_path}")
+        logger.debug(f"[HTTP IN]  {request.method} {full_path}")
     try:
         response = await call_next(request)
         dur_ms = round((time.time() - start) * 1000, 1)
         if not is_poll:
-            logger.info(f"[HTTP OUT] {request.method} {full_path} -> {response.status_code} ({dur_ms}ms)")
+            logger.debug(f"[HTTP OUT] {request.method} {full_path} -> {response.status_code} ({dur_ms}ms)")
         return response
     except Exception as e:
         dur_ms = round((time.time() - start) * 1000, 1)
@@ -2064,7 +2090,7 @@ def chat(req: ChatRequest):
     session_id = req.session_id
     if session_id in (None, "", "active", "current"):
         session_id = _get_active_session_id()
-    if not session_id or session_id == "new":
+    if not session_id or session_id == "new" or not _is_valid_guid(session_id):
         session_id = str(uuid.uuid4())
 
     _cancelled_sessions.discard(session_id)
@@ -2206,6 +2232,8 @@ def list_sessions():
                 break
         summaries.append({
             "id": sid,
+            "guid": sid,
+            "url": f"/chat/{sid}",
             "title": s.get("title", "New Conversation"),
             "created_at": s.get("created_at", ""),
             "updated_at": s.get("updated_at", ""),
@@ -2246,6 +2274,8 @@ def get_session(session_id: str):
         client_messages.append(item)
     return {
         "id": session_id,
+        "guid": session_id,
+        "url": f"/chat/{session_id}",
         "title": s.get("title", "New Conversation"),
         "created_at": s.get("created_at", ""),
         "updated_at": s.get("updated_at", ""),
@@ -2431,7 +2461,7 @@ def _check_update_bg():
             "update_available": update_available,
             "message": "Update available — click 'Update' to pull the latest code." if update_available else "Cleo is up to date.",
         }
-        logger.info(f"[Update] current={current[:7] if current else 'unknown'} latest={latest[:7]} update_available={update_available}")
+        logger.debug(f"[Update] current={current[:7] if current else 'unknown'} latest={latest[:7]} update_available={update_available}")
     except Exception as e:
         _update_state = {"status": "error", "latest_sha": "", "current_sha": _git_sha()[:7], "update_available": False, "message": str(e)}
         logger.warning(f"[Update] Check failed: {e}")
@@ -2602,7 +2632,9 @@ def _auto_update_on_startup():
 # ── GUI Dashboard ─────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
-def serve_gui():
+@app.get("/chat", response_class=HTMLResponse)
+@app.get("/chat/{session_id}", response_class=HTMLResponse)
+def serve_gui(session_id: Optional[str] = None):
     ui_path = os.path.join(os.path.dirname(__file__), "cleo_ui.html")
     if os.path.exists(ui_path):
         with open(ui_path, "r", encoding="utf-8") as f:
