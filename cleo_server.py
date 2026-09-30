@@ -10,10 +10,16 @@ from __future__ import annotations
 
 import sys, os, subprocess, site
 
-# Ensure user site-packages (e.g. ~/Library/Python/X.Y/lib/python/site-packages on macOS) is in sys.path
-_user_site = site.getusersitepackages() if hasattr(site, "getusersitepackages") else None
-if _user_site and os.path.isdir(_user_site) and _user_site not in sys.path:
-    sys.path.insert(0, _user_site)
+# Ensure user and system site/dist-packages are in sys.path (supports macOS, Linux/Ubuntu dist-packages)
+for _p in [
+    site.getusersitepackages() if hasattr(site, "getusersitepackages") else None,
+    os.path.expanduser(f"~/.local/lib/python{sys.version_info[0]}.{sys.version_info[1]}/site-packages"),
+    os.path.expanduser(f"~/.local/lib/python{sys.version_info[0]}.{sys.version_info[1]}/dist-packages"),
+    f"/usr/local/lib/python{sys.version_info[0]}.{sys.version_info[1]}/dist-packages",
+    "/usr/lib/python3/dist-packages",
+]:
+    if _p and os.path.isdir(_p) and _p not in sys.path:
+        sys.path.append(_p)
 
 _base_dir = os.path.dirname(os.path.abspath(__file__))
 _venv_dir = os.path.join(_base_dir, ".venv")
@@ -25,179 +31,162 @@ def _same_path(p1: str, p2: str) -> bool:
     except Exception:
         return os.path.normcase(os.path.abspath(p1)) == os.path.normcase(os.path.abspath(p2))
 
+def _can_import_core() -> bool:
+    try:
+        import fastapi
+        import uvicorn
+        return True
+    except ImportError:
+        return False
+
 def _is_python_ready(py_bin: str) -> bool:
     if not os.path.exists(py_bin):
         return False
     try:
-        subprocess.check_call([py_bin, "-c", "import sys, site; u = site.getusersitepackages() if hasattr(site, 'getusersitepackages') else None; (sys.path.insert(0, u) if u and u not in sys.path else None); import fastapi; import uvicorn; import httpx"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.check_call(
+            [py_bin, "-c", "import fastapi; import uvicorn"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
         return True
     except Exception:
         return False
 
 def _setup_and_activate_venv():
-    # 0. Strict recursion guard: never relaunch if we've already done so in this process tree
-    if os.environ.get("_CLEO_VENV_LAUNCHED") == "1":
+    # 1. Fast path: if the active environment ALREADY has required packages, use it directly!
+    if _can_import_core():
         return
 
-    # 1. Fast path: if the user's active environment ALREADY has required packages, use it directly!
-    # (Skip any unnecessary venv creation, downloads, or process switches)
-    if _is_python_ready(sys.executable):
-        return
+    # 2. If running outside .venv, check if .venv is ready or try building/repairing it
+    if not _same_path(sys.executable, _venv_python) and os.environ.get("_CLEO_VENV_LAUNCHED") != "1":
+        # If .venv is already built and fully ready, switch into it once
+        if _is_python_ready(_venv_python):
+            if sys.argv and sys.argv[0] != "-c":
+                env = os.environ.copy()
+                env["_CLEO_VENV_LAUNCHED"] = "1"
+                if os.name == "nt":
+                    subprocess.check_call([_venv_python] + sys.argv, env=env)
+                    sys.exit(0)
+                else:
+                    os.execve(_venv_python, [_venv_python] + sys.argv, env)
+            return
 
-    # 2. If already running inside our .venv
-    if _same_path(sys.executable, _venv_python):
-        return
-
-    # 3. If .venv is already built and fully ready, switch into it once
-    if _is_python_ready(_venv_python):
-        if sys.argv and sys.argv[0] != "-c":
-            env = os.environ.copy()
-            env["_CLEO_VENV_LAUNCHED"] = "1"
-            if os.name == "nt":
-                subprocess.check_call([_venv_python] + sys.argv, env=env)
-                sys.exit(0)
-            else:
-                os.execve(_venv_python, [_venv_python] + sys.argv, env)
-        return
-
-    # 4. Otherwise, set up or repair .venv
-    # Check if existing .venv was created with the same Python version; if not, recreate it
-    if os.path.exists(_venv_python):
-        try:
-            v_ver = subprocess.check_output([_venv_python, "-c", "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"], text=True).strip()
-            s_ver = f"{sys.version_info[0]}.{sys.version_info[1]}"
-            if v_ver != s_ver:
+        # Check if existing .venv was created with the same Python version; if not, recreate it
+        if os.path.exists(_venv_python):
+            try:
+                v_ver = subprocess.check_output([_venv_python, "-c", "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"], text=True).strip()
+                s_ver = f"{sys.version_info[0]}.{sys.version_info[1]}"
+                if v_ver != s_ver:
+                    import shutil
+                    shutil.rmtree(_venv_dir, ignore_errors=True)
+            except Exception:
                 import shutil
                 shutil.rmtree(_venv_dir, ignore_errors=True)
-        except Exception:
-            import shutil
-            shutil.rmtree(_venv_dir, ignore_errors=True)
 
-    # Check if pip works inside the existing venv
-    has_pip = False
-    if os.path.exists(_venv_python):
-        try:
-            subprocess.check_call([_venv_python, "-m", "pip", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            has_pip = True
-        except Exception:
-            has_pip = False
-
-    if not has_pip:
-        # Existing venv is broken or missing pip (e.g. Debian/Ubuntu ensurepip missing).
-        # Rebuild cleanly with --without-pip + bootstrap get-pip.py (zero sudo needed!)
-        import shutil
-        if os.path.exists(_venv_dir):
-            shutil.rmtree(_venv_dir, ignore_errors=True)
-
-        print(f"⚙️  Setting up isolated virtual environment in .venv ...")
-        venv_ok = False
-        try:
-            subprocess.check_call([sys.executable, "-m", "venv", _venv_dir], stderr=subprocess.DEVNULL)
-            venv_ok = True
-        except Exception:
-            shutil.rmtree(_venv_dir, ignore_errors=True)
+        # Check if pip works inside the existing venv
+        has_pip = False
+        if os.path.exists(_venv_python):
             try:
-                print("ℹ️  Creating virtual environment with --without-pip (no sudo needed)...")
-                subprocess.check_call([sys.executable, "-m", "venv", "--without-pip", _venv_dir])
-                if os.path.exists(_venv_python):
-                    print("📥 Bootstrapping pip into .venv ...")
-                    import urllib.request
-                    get_pip_path = os.path.join(_venv_dir, "get-pip.py")
-                    def _dl_hook(blocks, block_size, total_size):
-                        if total_size > 0:
-                            pct = min(100, int(blocks * block_size * 100 / total_size))
-                            print(f"\r📥 Downloading get-pip.py: {pct}%", end="", flush=True)
-                    urllib.request.urlretrieve("https://bootstrap.pypa.io/get-pip.py", get_pip_path, reporthook=_dl_hook)
-                    print("\r📥 Downloading get-pip.py: 100% (done)")
-                    subprocess.check_call([_venv_python, get_pip_path, "--no-warn-script-location"])
-                    if os.path.exists(get_pip_path):
-                        os.remove(get_pip_path)
-                    venv_ok = True
-            except Exception as e:
-                print(f"⚠️  Could not auto-create isolated .venv: {e}")
+                subprocess.check_call([_venv_python, "-m", "pip", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                has_pip = True
+            except Exception:
+                has_pip = False
 
-    # Install requirements inside .venv
-    if os.path.exists(_venv_python):
-        req_file = os.path.join(_base_dir, "requirements.txt")
-        cmd = [_venv_python, "-m", "pip", "install", "--disable-pip-version-check"]
-        pip_args = ["-r", req_file, "--progress-bar", "on"] if os.path.exists(req_file) else ["fastapi", "uvicorn[standard]", "httpx", "--progress-bar", "on"]
-        
-        print(f"📦 Installing required packages from requirements.txt ...")
-        try:
-            subprocess.check_call(cmd + pip_args)
-        except subprocess.CalledProcessError:
-            if _is_python_ready(sys.executable):
-                print("ℹ️  Package installation into .venv was blocked by network/proxy, but active Python environment is ready. Continuing with active Python...")
+        if not has_pip:
+            # Existing venv is broken or missing pip (e.g. Debian/Ubuntu ensurepip missing).
+            # Rebuild cleanly with --without-pip + bootstrap get-pip.py (zero sudo needed!)
+            import shutil
+            if os.path.exists(_venv_dir):
+                shutil.rmtree(_venv_dir, ignore_errors=True)
+
+            print(f"⚙️  Setting up isolated virtual environment in .venv ...")
+            venv_ok = False
+            try:
+                subprocess.check_call([sys.executable, "-m", "venv", _venv_dir], stderr=subprocess.DEVNULL)
+                venv_ok = True
+            except Exception:
+                shutil.rmtree(_venv_dir, ignore_errors=True)
+                try:
+                    print("ℹ️  Creating virtual environment with --without-pip (no sudo needed)...")
+                    subprocess.check_call([sys.executable, "-m", "venv", "--without-pip", _venv_dir])
+                    if os.path.exists(_venv_python):
+                        print("📥 Bootstrapping pip into .venv ...")
+                        import urllib.request
+                        get_pip_path = os.path.join(_venv_dir, "get-pip.py")
+                        def _dl_hook(blocks, block_size, total_size):
+                            if total_size > 0:
+                                pct = min(100, int(blocks * block_size * 100 / total_size))
+                                print(f"\r📥 Downloading get-pip.py: {pct}%", end="", flush=True)
+                        urllib.request.urlretrieve("https://bootstrap.pypa.io/get-pip.py", get_pip_path, reporthook=_dl_hook)
+                        print("\r📥 Downloading get-pip.py: 100% (done)")
+                        subprocess.check_call([_venv_python, get_pip_path, "--no-warn-script-location"])
+                        if os.path.exists(get_pip_path):
+                            os.remove(get_pip_path)
+                        venv_ok = True
+                except Exception as e:
+                    print(f"⚠️  Could not auto-create isolated .venv: {e}")
+
+        # Install requirements inside .venv
+        if os.path.exists(_venv_python):
+            req_file = os.path.join(_base_dir, "requirements.txt")
+            cmd = [_venv_python, "-m", "pip", "install", "--disable-pip-version-check"]
+            pip_args = ["-r", req_file, "--progress-bar", "on"] if os.path.exists(req_file) else ["fastapi", "uvicorn[standard]", "--progress-bar", "on"]
+            
+            print(f"📦 Installing required packages from requirements.txt ...")
+            venv_install_ok = False
+            try:
+                subprocess.check_call(cmd + pip_args)
+                venv_install_ok = True
+            except subprocess.CalledProcessError:
+                # Retry with alternative mirror (bypasses corporate proxy/Blue Coat blocks on files.pythonhosted.org)
+                print("⚠️  Direct PyPI download failed (corporate proxy / Blue Coat block detected). Retrying via mirror index...")
+                for mirror_url, mirror_host in [
+                    ("https://mirrors.aliyun.com/pypi/simple/", "mirrors.aliyun.com"),
+                    ("https://pypi.tuna.tsinghua.edu.cn/simple", "pypi.tuna.tsinghua.edu.cn")
+                ]:
+                    try:
+                        print(f"🔄 Retrying installation via {mirror_host} ...")
+                        subprocess.check_call(cmd + ["--index-url", mirror_url, "--trusted-host", mirror_host] + pip_args)
+                        venv_install_ok = True
+                        break
+                    except subprocess.CalledProcessError:
+                        continue
+
+            if venv_install_ok:
+                import platform
+                try:
+                    if sys.platform == "darwin" and platform.machine() == "arm64":
+                        print("🍎 Apple Silicon detected. Auto-installing 'mlx-lm' for local Qwen support...")
+                        subprocess.check_call([_venv_python, "-m", "pip", "install", "--disable-pip-version-check", "mlx-lm", "huggingface_hub", "--progress-bar", "on"])
+                    elif sys.platform == "win32":
+                        print("🪟 Windows detected. Auto-installing 'llama-cpp-python' and 'transformers' for local Qwen support...")
+                        subprocess.check_call([_venv_python, "-m", "pip", "install", "--disable-pip-version-check", "huggingface_hub", "transformers", "llama-cpp-python", "--progress-bar", "on"])
+                    else:
+                        print("🐧 Linux detected. Auto-installing local LLM packages for Qwen support...")
+                        print("   ℹ️  Note: Compiling llama-cpp-python may take 1-2 minutes; this is optional for local LLM mode.")
+                        subprocess.check_call([_venv_python, "-m", "pip", "install", "--disable-pip-version-check", "huggingface_hub", "transformers", "llama-cpp-python", "--progress-bar", "on"])
+                except Exception as e:
+                    print(f"⚠️  Note: Could not auto-install optional local LLM packages ({e}). The core server will still start.")
+
+                print("✅ Setup complete! Starting Cleo Server...\n")
+
+            # Relaunch script using the venv python if ready
+            if _is_python_ready(_venv_python):
+                if sys.argv and sys.argv[0] != "-c":
+                    env = os.environ.copy()
+                    env["_CLEO_VENV_LAUNCHED"] = "1"
+                    if os.name == "nt":
+                        subprocess.check_call([_venv_python] + sys.argv, env=env)
+                        sys.exit(0)
+                    else:
+                        os.execve(_venv_python, [_venv_python] + sys.argv, env)
                 return
 
-            # Retry with alternative mirror (bypasses corporate proxy/Blue Coat blocks on files.pythonhosted.org)
-            print("⚠️  Direct PyPI download failed (corporate proxy / Blue Coat block detected). Retrying via mirror index...")
-            mirror_ok = False
-            for mirror_url, mirror_host in [
-                ("https://mirrors.aliyun.com/pypi/simple/", "mirrors.aliyun.com"),
-                ("https://pypi.tuna.tsinghua.edu.cn/simple", "pypi.tuna.tsinghua.edu.cn")
-            ]:
-                try:
-                    print(f"🔄 Retrying installation via {mirror_host} ...")
-                    subprocess.check_call(cmd + ["--index-url", mirror_url, "--trusted-host", mirror_host] + pip_args)
-                    mirror_ok = True
-                    break
-                except subprocess.CalledProcessError:
-                    continue
-
-            if not mirror_ok:
-                print("\n" + "=" * 70)
-                print("❌ [Cleo Dependency Installation Failed]")
-                print("Corporate proxy policy (Blue Coat / Symantec / Zscaler) blocked PyPI downloads.")
-                print("\nRecommended Solutions:")
-                print("1. If connected to a corporate VPN, temporarily disconnect, run once, and reconnect:")
-                print("   python3 cleo_server.py")
-                print("2. Or use your company internal Artifactory PyPI mirror:")
-                print("   export PIP_INDEX_URL=\"https://<your-company-artifactory>/api/pypi/pypi/simple\"")
-                print("   python3 cleo_server.py")
-                print("3. Or install dependencies using an alternative mirror manually:")
-                print("   ./.venv/bin/python3 -m pip install -i https://mirrors.aliyun.com/pypi/simple/ fastapi \"uvicorn[standard]\" httpx")
-                print("   python3 cleo_server.py")
-                print("=" * 70 + "\n")
-                sys.exit(1)
-
-        import platform
-        try:
-            if sys.platform == "darwin" and platform.machine() == "arm64":
-                print("🍎 Apple Silicon detected. Auto-installing 'mlx-lm' for local Qwen support...")
-                subprocess.check_call([_venv_python, "-m", "pip", "install", "--disable-pip-version-check", "mlx-lm", "huggingface_hub", "--progress-bar", "on"])
-            elif sys.platform == "win32":
-                print("🪟 Windows detected. Auto-installing 'llama-cpp-python' and 'transformers' for local Qwen support...")
-                subprocess.check_call([_venv_python, "-m", "pip", "install", "--disable-pip-version-check", "huggingface_hub", "transformers", "llama-cpp-python", "--progress-bar", "on"])
-            else:
-                print("🐧 Linux detected. Auto-installing local LLM packages for Qwen support...")
-                print("   ℹ️  Note: Compiling llama-cpp-python may take 1-2 minutes; this is optional for local LLM mode.")
-                subprocess.check_call([_venv_python, "-m", "pip", "install", "--disable-pip-version-check", "huggingface_hub", "transformers", "llama-cpp-python", "--progress-bar", "on"])
-        except Exception as e:
-            print(f"⚠️  Note: Could not auto-install optional local LLM packages ({e}). The core server will still start.")
-
-        print("✅ Setup complete! Starting Cleo Server...\n")
-
-    # Relaunch script using the venv python if available
-    if os.path.exists(_venv_python) and _is_python_ready(_venv_python) and not _same_path(sys.executable, _venv_python):
-        if sys.argv and sys.argv[0] != "-c":
-            env = os.environ.copy()
-            env["_CLEO_VENV_LAUNCHED"] = "1"
-            if os.name == "nt":
-                subprocess.check_call([_venv_python] + sys.argv, env=env)
-                sys.exit(0)
-            else:
-                os.execve(_venv_python, [_venv_python] + sys.argv, env)
-
-    # Fallback safety: if running inside an environment that still lacks core dependencies, install them directly
-    try:
-        import fastapi
-        import uvicorn
-        import httpx
-    except ImportError:
+    # 3. Fallback safety: if active environment still lacks core dependencies, install them directly
+    if not _can_import_core():
         print("📦 Installing required packages into active environment...")
         req_file = os.path.join(_base_dir, "requirements.txt")
-        pip_args = ["-r", req_file, "--progress-bar", "on"] if os.path.exists(req_file) else ["fastapi", "uvicorn[standard]", "httpx", "--progress-bar", "on"]
+        pip_args = ["-r", req_file, "--progress-bar", "on"] if os.path.exists(req_file) else ["fastapi", "uvicorn[standard]", "--progress-bar", "on"]
         cmd = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check"]
 
         installed_ok = False
@@ -224,26 +213,26 @@ def _setup_and_activate_venv():
             print("❌ [Cleo Dependency Installation Failed]")
             print("Could not install required packages into active Python environment.")
             print("Try running manually:")
-            print("   python3 -m pip install --break-system-packages fastapi \"uvicorn[standard]\" httpx")
+            print("   python3 -m pip install --break-system-packages fastapi \"uvicorn[standard]\"")
             print("=" * 70 + "\n")
             sys.exit(1)
 
         # Refresh sys.path with user site-packages and invalidate caches
-        _us = site.getusersitepackages() if hasattr(site, "getusersitepackages") else None
-        if _us and os.path.isdir(_us) and _us not in sys.path:
-            sys.path.insert(0, _us)
+        for _p in [
+            site.getusersitepackages() if hasattr(site, "getusersitepackages") else None,
+            os.path.expanduser(f"~/.local/lib/python{sys.version_info[0]}.{sys.version_info[1]}/site-packages"),
+            os.path.expanduser(f"~/.local/lib/python{sys.version_info[0]}.{sys.version_info[1]}/dist-packages"),
+        ]:
+            if _p and os.path.isdir(_p) and _p not in sys.path:
+                sys.path.insert(0, _p)
         import importlib
         importlib.invalidate_caches()
 
-        try:
-            import fastapi
-            import uvicorn
-            import httpx
-        except ImportError as err:
+        if not _can_import_core():
             if os.environ.get("_CLEO_FALLBACK_RELAUNCHED") == "1":
-                print(f"\n❌ [Cleo Dependency Error] Required packages could not be imported after install: {err}")
+                print(f"\n❌ [Cleo Dependency Error] Required packages could not be imported after install.")
                 print("Try installing dependencies manually in your Python environment:")
-                print("   pip install fastapi \"uvicorn[standard]\" httpx\n")
+                print("   pip install fastapi \"uvicorn[standard]\"\n")
                 sys.exit(1)
             print("🔄 Packages installed. Relaunching Cleo Server...")
             env = os.environ.copy()
