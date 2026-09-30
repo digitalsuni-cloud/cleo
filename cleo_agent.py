@@ -1756,10 +1756,43 @@ def call_mlx_generate(model_id: str, messages: list[dict], max_tokens: int = 614
     clean_id = model_id.removeprefix("mlx:").strip()
     if clean_id not in _mlx_models_cache:
         logger.info(f"⚡ [MLX Load] Loading {clean_id} into unified memory...")
-        model, tokenizer = mlx_lm.load(clean_id)
+        # Suppress HuggingFace/tqdm progress bars so Cleo's own log lines are visible.
+        # HF_HUB_DISABLE_PROGRESS_BARS=1 is the official mechanism; we also patch tqdm.auto
+        # as a belt-and-suspenders fallback since some mlx_lm versions ignore the env var.
+        import os as _os
+        _prev_hf_bar = _os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS")
+        _os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+        _tqdm_orig = None
+        try:
+            import tqdm.auto as _tqdm_auto
+            _tqdm_orig = _tqdm_auto.tqdm
+
+            class _SilentTqdm(_tqdm_orig):
+                def __init__(self, *a, **kw):
+                    kw["disable"] = True
+                    super().__init__(*a, **kw)
+
+            _tqdm_auto.tqdm = _SilentTqdm
+        except Exception:
+            pass
+        try:
+            model, tokenizer = mlx_lm.load(clean_id)
+        finally:
+            # Restore tqdm and env var
+            if _tqdm_orig is not None:
+                try:
+                    import tqdm.auto as _tqdm_auto
+                    _tqdm_auto.tqdm = _tqdm_orig
+                except Exception:
+                    pass
+            if _prev_hf_bar is None:
+                _os.environ.pop("HF_HUB_DISABLE_PROGRESS_BARS", None)
+            else:
+                _os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = _prev_hf_bar
         _mlx_models_cache[clean_id] = (model, tokenizer)
-        logger.info(f"✅ [MLX Ready] {clean_id} loaded successfully!")
+        logger.info(f"✅ [MLX Ready] {clean_id} loaded and ready.")
     else:
+        logger.info(f"⚡ [MLX Cache Hit] {clean_id} already in memory — skipping reload.")
         model, tokenizer = _mlx_models_cache[clean_id]
 
     # When enable_thinking=True, the prompt already ends with <think>\n, so the model
