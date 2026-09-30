@@ -1006,7 +1006,11 @@ def _install_ollama(status_cb=None) -> tuple[bool, str]:
                     with open(tar_zst_path, "rb") as ifh:
                         with dctx.stream_reader(ifh) as reader:
                             with tarfile.open(fileobj=reader, mode="r|") as tar:
-                                tar.extractall(path=local_dir)
+                                # Security: filter="data" rejects path traversal (Python 3.12+)
+                                try:
+                                    tar.extractall(path=local_dir, filter="data")
+                                except TypeError:
+                                    tar.extractall(path=local_dir)
                     extracted = True
                 except Exception as ze:
                     logger.warning(f"Python zstandard extraction failed: {ze}")
@@ -1858,7 +1862,8 @@ def list_engines():
             "env_var": pe["env_var"],
             "desc": pe["desc"],
             "configured": has_token,
-            "token_preview": (token[:4] + "..." + token[-4:]) if len(token) > 8 else ("Configured" if has_token else "")
+            # Security (L4): no fragment preview — boolean only to avoid partial key exposure
+            "configured_hint": "Configured" if has_token else ""
         })
 
     return {
@@ -1993,7 +1998,7 @@ def save_token(req: TokenUpdateRequest):
     return {"status": "ok", "engine": req.engine}
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(..., max_length=131072)  # 128 KB ceiling (security: L3)
     session_id: Optional[str] = None
     history: Optional[list[dict]] = None
 
@@ -2377,8 +2382,16 @@ def _apply_curl_update() -> tuple[bool, str]:
             for member in tar.getmembers():
                 parts = member.name.split("/", 1)
                 if len(parts) > 1 and parts[1]:
-                    member.name = parts[1]
-                    tar.extract(member, path=_CLEO_ROOT)
+                    safe_name = os.path.normpath(parts[1])
+                    # Security: reject path traversal attempts (M1 fix)
+                    if safe_name.startswith("..") or os.path.isabs(safe_name):
+                        logger.warning(f"[Update] Skipping unsafe tar member: {member.name!r}")
+                        continue
+                    member.name = safe_name
+                    try:
+                        tar.extract(member, path=_CLEO_ROOT, filter="data")  # Python 3.12+
+                    except TypeError:
+                        tar.extract(member, path=_CLEO_ROOT)
         return True, "Successfully updated via Python tarfile extraction."
     except Exception as pe:
         return False, f"Curl failed ({curl_err}) and python extraction failed ({pe})"
