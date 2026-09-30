@@ -8,7 +8,7 @@ and live diagnostic inspection.
 """
 from __future__ import annotations
 
-import sys, os, subprocess, site
+import sys, os, subprocess, site, shutil
 
 # Ensure user and system site/dist-packages are in sys.path (supports macOS, Linux/Ubuntu dist-packages)
 for _p in [
@@ -31,6 +31,12 @@ def _same_path(p1: str, p2: str) -> bool:
     except Exception:
         return os.path.normcase(os.path.abspath(p1)) == os.path.normcase(os.path.abspath(p2))
 
+def _is_active_venv() -> bool:
+    try:
+        return os.path.normcase(os.path.abspath(sys.prefix)) == os.path.normcase(os.path.abspath(_venv_dir))
+    except Exception:
+        return False
+
 def _can_import_core() -> bool:
     try:
         import fastapi
@@ -38,6 +44,63 @@ def _can_import_core() -> bool:
         return True
     except ImportError:
         return False
+
+def _has_pip(py_bin: str = sys.executable) -> bool:
+    try:
+        subprocess.check_call([py_bin, "-m", "pip", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception:
+        return False
+
+def _bootstrap_pip() -> bool:
+    print("📥 Bootstrapping pip into user environment (no sudo needed)...")
+    import urllib.request, tempfile
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        get_pip_file = os.path.join(tmp_dir, "get-pip.py")
+        download_ok = False
+        for url in [
+            "https://bootstrap.pypa.io/get-pip.py",
+            "https://mirrors.aliyun.com/pypi/get-pip.py",
+        ]:
+            try:
+                def _dl_hook(blocks, block_size, total_size):
+                    if total_size > 0:
+                        pct = min(100, int(blocks * block_size * 100 / total_size))
+                        print(f"\r📥 Downloading get-pip.py: {pct}%", end="", flush=True)
+                urllib.request.urlretrieve(url, get_pip_file, reporthook=_dl_hook)
+                print("\r📥 Downloading get-pip.py: 100% (done)")
+                download_ok = True
+                break
+            except Exception:
+                continue
+        if not download_ok:
+            return False
+
+        for flags in [
+            ["--user", "--break-system-packages"],
+            ["--user"],
+            ["--break-system-packages"],
+            [],
+        ]:
+            try:
+                subprocess.check_call([sys.executable, get_pip_file] + flags, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                _u = site.getusersitepackages() if hasattr(site, "getusersitepackages") else None
+                if _u and os.path.isdir(_u) and _u not in sys.path:
+                    sys.path.insert(0, _u)
+                for _p in [
+                    os.path.expanduser(f"~/.local/lib/python{sys.version_info[0]}.{sys.version_info[1]}/site-packages"),
+                    os.path.expanduser(f"~/.local/lib/python{sys.version_info[0]}.{sys.version_info[1]}/dist-packages"),
+                ]:
+                    if _p and os.path.isdir(_p) and _p not in sys.path:
+                        sys.path.insert(0, _p)
+                import importlib
+                importlib.invalidate_caches()
+                if _has_pip(sys.executable):
+                    print("✅ pip bootstrapped successfully!")
+                    return True
+            except Exception:
+                continue
+    return False
 
 def _is_python_ready(py_bin: str) -> bool:
     if not os.path.exists(py_bin):
@@ -58,7 +121,7 @@ def _setup_and_activate_venv():
         return
 
     # 2. If running outside .venv, check if .venv is ready or try building/repairing it
-    if not _same_path(sys.executable, _venv_python) and os.environ.get("_CLEO_VENV_LAUNCHED") != "1":
+    if not _is_active_venv() and os.environ.get("_CLEO_VENV_LAUNCHED") != "1":
         # If .venv is already built and fully ready, switch into it once
         if _is_python_ready(_venv_python):
             if sys.argv and sys.argv[0] != "-c":
@@ -185,9 +248,35 @@ def _setup_and_activate_venv():
     # 3. Fallback safety: if active environment still lacks core dependencies, install them directly
     if not _can_import_core():
         print("📦 Installing required packages into active environment...")
+
+        # Locate or bootstrap pip
+        pip_cmd = None
+        if _has_pip(sys.executable):
+            pip_cmd = [sys.executable, "-m", "pip"]
+        else:
+            for candidate in ["pip3", "pip", os.path.expanduser("~/.local/bin/pip3"), os.path.expanduser("~/.local/bin/pip")]:
+                which_path = shutil.which(candidate) if not os.path.isabs(candidate) else (candidate if os.path.isfile(candidate) and os.access(candidate, os.X_OK) else None)
+                if which_path:
+                    try:
+                        subprocess.check_call([which_path, "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        pip_cmd = [which_path]
+                        break
+                    except Exception:
+                        continue
+            if not pip_cmd:
+                if _bootstrap_pip():
+                    pip_cmd = [sys.executable, "-m", "pip"]
+                else:
+                    print("\n" + "=" * 70)
+                    print("❌ [Cleo Dependency Error] Python pip and venv packages are missing.")
+                    print("On Debian/Ubuntu systems, install them using:")
+                    print("   sudo apt update && sudo apt install -y python3-pip python3-venv")
+                    print("=" * 70 + "\n")
+                    sys.exit(1)
+
         req_file = os.path.join(_base_dir, "requirements.txt")
         pip_args = ["-r", req_file, "--progress-bar", "on"] if os.path.exists(req_file) else ["fastapi", "uvicorn[standard]", "--progress-bar", "on"]
-        cmd = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check"]
+        base_cmd = pip_cmd + ["install", "--disable-pip-version-check"]
 
         installed_ok = False
         # Try flags: with --break-system-packages for PEP 668 / Homebrew 3.12+, --user for permissions, and fallback mirror if direct PyPI is blocked by corporate proxy
@@ -202,7 +291,7 @@ def _setup_and_activate_venv():
             ["--user", "--index-url", "https://mirrors.aliyun.com/pypi/simple/", "--trusted-host", "mirrors.aliyun.com"],
         ]:
             try:
-                subprocess.check_call(cmd + extra_flags + pip_args)
+                subprocess.check_call(base_cmd + extra_flags + pip_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 installed_ok = True
                 break
             except subprocess.CalledProcessError:
