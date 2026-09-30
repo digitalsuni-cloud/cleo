@@ -652,11 +652,16 @@ class MCPClient:
                 if "orgId" not in call_args and crn_val:
                     call_args["orgId"] = crn_val
 
-        logger.info(f"[MCP Call] Executing tool '{name}' with args: {json.dumps(call_args)}")
+        # Map tool name aliases for compatibility between remote MCP and DirectEngine
+        remote_name = name
+        if name == "list_managed_orgs":
+            remote_name = "list_orgs"
+
+        logger.info(f"[MCP Call] Executing tool '{name}' (remote '{remote_name}') with args: {json.dumps(call_args)}")
         res = None
         if not self._use_fallback:
             try:
-                res = self._http_request("tools/call", {"name": name, "arguments": call_args})
+                res = self._http_request("tools/call", {"name": remote_name, "arguments": call_args})
             except Exception as e:
                 err_str = str(e)
                 if "-32001" in err_str or "not authorized" in err_str.lower():
@@ -668,9 +673,16 @@ class MCPClient:
                     logger.warning(f"⚠️  MCP call failed for customer-scoped query, skipping: {e}")
                 logger.warning(f"⚠️  Remote tools/call failed ({e}), attempting direct fallback for this call")
 
-        if res is None:
+        # Check if remote server returned "Tool '...' not found"
+        is_tool_not_found = False
+        if res and isinstance(res, dict):
+            c_text = (res.get("content") or [{}])[0].get("text", "")
+            if f"Tool '{remote_name}' not found" in c_text or f"Tool '{name}' not found" in c_text:
+                is_tool_not_found = True
+
+        if res is None or is_tool_not_found:
             # Route to Direct Engine (fallback, no channelCustomerId support)
-            if name == "list_managed_orgs":
+            if name in ("list_managed_orgs", "list_orgs"):
                 orgs = self._direct_engine.list_managed_orgs(**args)
                 res = {"content": [{"type": "text", "text": json.dumps(orgs, indent=2)}]}
             elif name == "list_channel_customers":
@@ -1797,8 +1809,7 @@ def call_mlx_generate(model_id: str, messages: list[dict], max_tokens: int = 614
         logger.info(f"✅ [MLX Ready] {clean_id} loaded into memory and ready.")
         sys.stdout.flush()
     else:
-        logger.info(f"⚡ [MLX Ready] {clean_id} already resident in memory.")
-        sys.stdout.flush()
+        logger.debug(f"[MLX Ready] {clean_id} already resident in memory.")
         model, tokenizer = _mlx_models_cache[clean_id]
 
     # When enable_thinking=True, the prompt already ends with <think>\n, so the model
@@ -1953,6 +1964,7 @@ def get_installed_ollama_models() -> list[dict]:
 
 def call_ollama_chat(model: str, messages: list[dict], timeout: float = 60.0, stats_out: dict = None) -> str:
     """Invokes local Ollama chat API."""
+    logger.debug(f"[Ollama Chat] Invoking model '{model}'...")
     payload = json.dumps({"model": model, "messages": messages, "stream": False}).encode("utf-8")
     req = urllib.request.Request(
         f"{OLLAMA_BASE_URL}/api/chat",
@@ -3159,6 +3171,27 @@ class AIClient:
     def get_last_stats(self) -> dict:
         return dict(getattr(self, "last_stats", {}))
 
+    def _get_cust_map(self, mcp: MCPClient = None) -> dict:
+        if not hasattr(self, "_cust_map_cache"):
+            self._cust_map_cache = {}
+        if not self._cust_map_cache and mcp:
+            for tool_name in ["list_orgs", "list_channel_customers"]:
+                try:
+                    r = mcp.call_tool(tool_name, {})
+                    raw_txt = r.get("content", [{}])[0].get("text", "")
+                    if raw_txt and "not found" not in raw_txt.lower():
+                        custs = json.loads(raw_txt)
+                        if isinstance(custs, list):
+                            self._cust_map_cache = {
+                                c["name"]: (c.get("id") or c.get("customerId"))
+                                for c in custs if c.get("name") and (c.get("id") or c.get("customerId"))
+                            }
+                            if self._cust_map_cache:
+                                break
+                except Exception:
+                    pass
+        return getattr(self, "_cust_map_cache", {})
+
     def _call_active_llm(self, messages: list[dict], stats_out: dict = None) -> tuple[str, str]:
         """
         Attempts to call the configured LLM engine.
@@ -3246,7 +3279,7 @@ class AIClient:
         """
         last_msg = messages[-1]["content"] if messages else ""
         low = last_msg.lower()
-        cust_map = getattr(self, "_cust_map_cache", {})
+        cust_map = self._get_cust_map(mcp=mcp)
 
         cont_ctx = _detect_contextual_continuation(messages, cust_map=cust_map)
         det_info = _deterministic_understand_query(messages, cust_map=cust_map)
@@ -3295,7 +3328,8 @@ class AIClient:
             "}\n\n"
             "CRITICAL RULES:\n"
             "1. GENERAL FINOPS ADVISORY (NO DATA FETCH): Set intent to 'general_finops_advisory' and is_new_data_fetch to false if the user asks a conceptual FinOps, architectural, best practice, or educational question (e.g. 'What is the difference between EffectiveCost and BilledCost?', 'How to optimize NAT gateways?', 'Explain FinOps framework phases', 'Savings Plans vs RIs', 'What is FOCUS?', 'OptimNow doctrine on egress'). These questions DO NOT require pulling data from CloudHealth.\n"
-            "2. DATA FETCH: Set intent to 'fetch_data' and is_new_data_fetch to true if the user asks to see, show, fetch, get, analyze, or chart their costs, usage, spend, or data from cloud providers (AWS, Azure, GCP), even if their prompt has typos (e.g. 'shw me jne 2026 cst for awz').\n"
+            "2. DATA FETCH & COMPARISON: Set intent to 'fetch_data' and is_new_data_fetch to true if the user asks to see, show, fetch, get, compare, analyze, or chart their costs, usage, spend, run-rate, or data from cloud providers (AWS, Azure, GCP), even if their prompt has typos (e.g. 'shw me jne 2026 cst for awz').\n"
+            "   - CRITICAL: Any request asking to compare costs, calculate projected costs, compare previous month with current month, or asking about a specific customer / organization / tenant (e.g. 'ABC Coffee Mugs', 'Lundbeck') MUST ALWAYS be classified as 'fetch_data' with is_new_data_fetch=true! NEVER classify customer spend queries or cost comparisons as general advisory.\n"
             "3. TYPO CORRECTION & NORMALIZATION: In corrected_query, fix all spelling mistakes, typos in services (e.g. 'awz' -> 'AWS', 'rds' -> 'RDS', 'jne' -> 'June'), and clarify the sentence. In 'cloud', normalize to 'aws', 'azure', 'gcp', or 'all'. In 'service', normalize to canonical names like 'AmazonEC2', 'AmazonRDS', 'AmazonS3'. In 'target_ym', extract normalized 'YYYY-MM' (e.g. '2026-06').\n"
             "4. METRIC TYPE (QUANTITY VS COST): Set metric_type='quantity' if user asks for volume, count, operational capacity, or physical usage (e.g. 'number of ec2 instances', 'how many vms', 'instance hours', 'storage used in GB', 'how many invocations', 'count of databases'). Set metric_type='cost' (default) if user asks for financial spend, dollars, cost, or bill.\n"
             "5. MULTI-CLOUD BEST DEFAULT DIMENSIONS: When grouping dimension is not specified by the user:\n"
@@ -3350,6 +3384,18 @@ class AIClient:
 
                     inc_chart = bool(parsed.get("include_chart", det_info["include_chart"])) and not is_no_chart_requested(low)
                     inc_mom = bool(parsed.get("include_mom", det_info["include_mom"])) and not is_no_mom_requested(low)
+
+                    # Intent Guard: Queries asking for costs, spend, service comparison, run-rate,
+                    # or naming a known customer must NEVER be misrouted to general advisory.
+                    has_customer_signal = bool(parsed.get("customer") or det_info.get("customer"))
+                    has_cost_or_comparison_signal = any(w in low for w in [
+                        "cost", "spend", "billed", "usage", "service level", "services cost",
+                        "compare", "comparison", "projected cost", "run-rate", "run rate",
+                        "previous month", "last month", "current month"
+                    ])
+                    if (has_customer_signal or has_cost_or_comparison_signal) and parsed.get("intent") in ("general_finops_advisory", "general_chat"):
+                        parsed["intent"] = "fetch_data"
+                        parsed["is_new_data_fetch"] = True
 
                     if cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "forecast":
                         if not parsed.get("cloud") and cont_ctx.get("new_cloud"):
@@ -4107,17 +4153,21 @@ class AIClient:
         ])
 
         is_general_finops_query = (
-            intent_info.get("intent") == "general_finops_advisory" or
+            not named_customer and
+            not any(w in low for w in ["compare", "comparison", "service level", "services cost", "projected cost", "run-rate", "run rate"]) and
             (
-                is_advisory_phrase
-                and is_finops_topic
-                and not is_live_data_followup
-                and not named_customer
-                and not is_explicit_telemetry_table
-                and not any(w in low for w in [
-                    "get me", "fetch", "query", "show me our", "show me my", "our spend", "my spend",
-                    "our cost", "my cost", "break it down", "breakdown by"
-                ])
+                (intent_info.get("intent") == "general_finops_advisory" and not any(w in low for w in ["cost", "spend", "usage", "billed", "service", "services"]))
+                or
+                (
+                    is_advisory_phrase
+                    and is_finops_topic
+                    and not is_live_data_followup
+                    and not is_explicit_telemetry_table
+                    and not any(w in low for w in [
+                        "get me", "fetch", "query", "show me our", "show me my", "our spend", "my spend",
+                        "our cost", "my cost", "break it down", "breakdown by"
+                    ])
+                )
             )
         )
         if (is_general_finops_query or (finops_adv and not named_customer and not is_explicit_telemetry_table)):
@@ -6975,106 +7025,175 @@ class AIClient:
                         time_range = {"last": min(months_needed, 12), "qualifier": "MONTH"}
                     return "\n\n---\n\n".join(_monthly_trend_markdown(c) for c in _mentioned_clouds)
 
-            # 3a. Named Customer Breakdown (e.g. "breakdown for Lundbeck" or "AWS RDS cost for Lundbeck")
-            if named_customer and named_customer_crn:
-                # Check for Service-Level MoM comparison / projection query
-                is_svc_comparison = (
-                    any(w in low for w in ["service level", "by service", "service cost", "services cost", "each service"]) or
-                    ("service" in low and any(w in low for w in ["compare", "comparison", "project", "projected", "forecast", "previous month", "last month"]))
-                ) and not requested_service
+            # 3a. Service-Level MoM Comparison / Projection Query (Customer-scoped or All Accounts)
+            is_svc_comparison = (
+                any(w in low for w in ["service level", "by service", "service cost", "services cost", "each service"]) or
+                ("service" in low and any(w in low for w in ["compare", "comparison", "project", "projected", "forecast", "previous month", "last month"]))
+            ) and not requested_service
 
-                if is_svc_comparison:
-                    res_multi_svc = mcp.call_tool("execute_datasource_query", {
-                        "channelCustomerId": named_customer_crn,
-                        "queryInput": {
-                            "sqlStatement": (
-                                "SELECT timeInterval_Month AS month, lineItem_ProductCode AS service, "
-                                "SUM(lineItem_UnblendedCost) AS cost "
-                                "FROM AWS_CUR "
-                                "GROUP BY timeInterval_Month, lineItem_ProductCode "
-                                "ORDER BY month DESC, cost DESC"
-                            ),
-                            "dataGranularity": "MONTHLY",
-                            "limit": 200,
-                            "timeRange": {"last": 2, "qualifier": "MONTH"}
-                        },
-                        "requestInfo": {"sourceType": "API", "caller": "mcp"}
-                    })
-                    multi_csv = json.loads(res_multi_svc["content"][0]["text"]).get("csv", "")
-                    services_by_month = {last_ym: {}, current_ym: {}}
-                    all_services = set()
+            if is_svc_comparison:
+                is_all_clouds = any(w in low for w in ["all clouds", "all cloud", "across all", "across clouds", "multi-cloud", "multicloud"]) or (cloud == "all")
+
+                if is_all_clouds:
+                    target_ds = "MULTICLOUD_FOCUS_COST_AND_USAGE"
+                    sql_stmt = (
+                        "SELECT Month AS month, ServiceName AS service, "
+                        "SUM(BilledCost) AS cost "
+                        "FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
+                        "GROUP BY Month, ServiceName "
+                        "ORDER BY month DESC, cost DESC"
+                    )
+                    cloud_scope_str = "Across All Clouds"
+                    col_name = "Cloud Service"
+                else:
+                    target_ds = "AWS_CUR"
+                    sql_stmt = (
+                        "SELECT timeInterval_Month AS month, lineItem_ProductCode AS service, "
+                        "SUM(lineItem_UnblendedCost) AS cost "
+                        "FROM AWS_CUR "
+                        "GROUP BY timeInterval_Month, lineItem_ProductCode "
+                        "ORDER BY month DESC, cost DESC"
+                    )
+                    cloud_scope_str = "AWS"
+                    col_name = "AWS Service"
+
+                q_params = {
+                    "queryInput": {
+                        "sqlStatement": sql_stmt,
+                        "dataGranularity": "MONTHLY",
+                        "limit": 200,
+                        "timeRange": {"last": 2, "qualifier": "MONTH"}
+                    },
+                    "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                }
+                if named_customer and named_customer_crn:
+                    q_params["channelCustomerId"] = named_customer_crn
+
+                res_multi_svc = mcp.call_tool("execute_datasource_query", q_params)
+                res_txt = res_multi_svc.get("content", [{}])[0].get("text", "")
+                try:
+                    multi_csv = json.loads(res_txt).get("csv", "")
+                except Exception:
+                    multi_csv = ""
+
+                services_by_month = {last_ym: {}, current_ym: {}}
+                all_services = set()
+                if multi_csv:
                     for row in csv.DictReader(io.StringIO(multi_csv)):
-                        m = row.get("month", "")
-                        s = row.get("service", "")
+                        m = (row.get("month") or "").strip()
+                        m_prefix = m[:7]
+                        s = (row.get("service") or "").strip()
                         try:
                             c = float(row.get("cost") or 0)
                         except (ValueError, TypeError):
                             c = 0.0
-                        if m in services_by_month and s:
-                            services_by_month[m][s] = c
+                        if m_prefix in services_by_month and s:
+                            services_by_month[m_prefix][s] = services_by_month[m_prefix].get(s, 0.0) + c
                             all_services.add(s)
 
-                    now_dt = datetime.date.today()
-                    days_in_month = calendar.monthrange(now_dt.year, now_dt.month)[1]
-                    days_elapsed = max(now_dt.day, 1)
-                    effective_days = max(days_elapsed - 1.5, 1.0)  # adj. for CloudHealth 24-48hr lag
-                    runrate_factor = days_in_month / effective_days
+                now_dt = datetime.date.today()
+                days_in_month = calendar.monthrange(now_dt.year, now_dt.month)[1]
+                days_elapsed = max(now_dt.day, 1)
+                effective_days = max(days_elapsed - 1.5, 1.0)  # adj. for CloudHealth 24-48hr lag
+                runrate_factor = (days_in_month / effective_days) if effective_days < days_in_month else 1.0
 
-                    svc_comparison_list = []
-                    for s in all_services:
-                        lm_val = services_by_month.get(last_ym, {}).get(s, 0.0)
-                        mtd_val = services_by_month.get(current_ym, {}).get(s, 0.0)
-                        proj_val = mtd_val * runrate_factor
-                        diff = proj_val - lm_val
-                        pct = (diff / lm_val * 100) if lm_val > 0 else (100.0 if proj_val > 0 else 0.0)
-                        sign = "+" if diff > 0 else ("-" if diff < 0 else "")
-                        icon = "🔺" if diff > 0 else "🔻"
-                        svc_comparison_list.append({
-                            "service": s,
-                            "last_month": lm_val,
-                            "mtd": mtd_val,
-                            "projected": proj_val,
-                            "diff": diff,
-                            "pct": pct,
-                            "sign": sign,
-                            "icon": icon
-                        })
+                svc_comparison_list = []
+                for s in all_services:
+                    lm_val = services_by_month.get(last_ym, {}).get(s, 0.0)
+                    mtd_val = services_by_month.get(current_ym, {}).get(s, 0.0)
+                    proj_val = mtd_val * runrate_factor
+                    diff = proj_val - lm_val
+                    pct = (diff / lm_val * 100) if lm_val > 0 else (100.0 if proj_val > 0 else 0.0)
+                    sign = "+" if diff > 0 else ("-" if diff < 0 else "")
+                    icon = "🔺" if diff > 0 else "🔻"
+                    svc_comparison_list.append({
+                        "service": s,
+                        "last_month": lm_val,
+                        "mtd": mtd_val,
+                        "projected": proj_val,
+                        "diff": diff,
+                        "pct": pct,
+                        "sign": sign,
+                        "icon": icon
+                    })
 
-                    svc_comparison_list.sort(key=lambda x: max(x["projected"], x["last_month"]), reverse=True)
+                svc_comparison_list.sort(key=lambda x: max(x["projected"], x["last_month"]), reverse=True)
 
-                    tot_lm = sum(x["last_month"] for x in svc_comparison_list)
-                    tot_mtd = sum(x["mtd"] for x in svc_comparison_list)
-                    tot_proj = sum(x["projected"] for x in svc_comparison_list)
-                    tot_diff = tot_proj - tot_lm
-                    tot_pct = (tot_diff / tot_lm * 100) if tot_lm > 0 else 0.0
-                    tot_sign = "+" if tot_diff > 0 else ("-" if tot_diff < 0 else "")
-                    tot_icon = "🔺" if tot_diff > 0 else "🔻"
+                tot_lm = sum(x["last_month"] for x in svc_comparison_list)
+                tot_mtd = sum(x["mtd"] for x in svc_comparison_list)
+                tot_proj = sum(x["projected"] for x in svc_comparison_list)
+                tot_diff = tot_proj - tot_lm
+                tot_pct = (tot_diff / tot_lm * 100) if tot_lm > 0 else 0.0
+                tot_sign = "+" if tot_diff > 0 else ("-" if tot_diff < 0 else "")
+                tot_icon = "🔺" if tot_diff > 0 else "🔻"
 
-                    table_rows = "\n".join([
-                        f"| {x['service']} | ${x['last_month']:,.2f} | ${x['mtd']:,.2f} | **${x['projected']:,.2f}** | {x['sign']}${abs(x['diff']):,.2f} | {x['pct']:+.1f}% {x['icon']} |"
-                        for x in svc_comparison_list[:15]
-                    ])
+                table_rows = "\n".join([
+                    f"| {x['service']} | ${x['last_month']:,.2f} | ${x['mtd']:,.2f} | **${x['projected']:,.2f}** | {x['sign']}${abs(x['diff']):,.2f} | {x['pct']:+.1f}% {x['icon']} |"
+                    for x in svc_comparison_list[:15]
+                ])
 
-                    top1 = svc_comparison_list[0] if svc_comparison_list else None
-                    top2 = svc_comparison_list[1] if len(svc_comparison_list) > 1 else None
-                    top_driver_bullets = ""
-                    if top1:
-                        top_driver_bullets += f"- **{top1['service']}**: Last Month: ${top1['last_month']:,.2f} | MTD: ${top1['mtd']:,.2f} | Projected: **${top1['projected']:,.2f}** ({top1['pct']:+.1f}% vs {last_ym} {top1['icon']}).\n"
-                    if top2:
-                        top_driver_bullets += f"- **{top2['service']}**: Last Month: ${top2['last_month']:,.2f} | MTD: ${top2['mtd']:,.2f} | Projected: **${top2['projected']:,.2f}** ({top2['pct']:+.1f}% vs {last_ym} {top2['icon']}).\n"
+                top1 = svc_comparison_list[0] if svc_comparison_list else None
+                top2 = svc_comparison_list[1] if len(svc_comparison_list) > 1 else None
+                top_driver_bullets = ""
+                if top1:
+                    top_driver_bullets += f"- **{top1['service']}**: Last Month: ${top1['last_month']:,.2f} | MTD: ${top1['mtd']:,.2f} | Projected: **${top1['projected']:,.2f}** ({top1['pct']:+.1f}% vs {last_ym} {top1['icon']}).\n"
+                if top2:
+                    top_driver_bullets += f"- **{top2['service']}**: Last Month: ${top2['last_month']:,.2f} | MTD: ${top2['mtd']:,.2f} | Projected: **${top2['projected']:,.2f}** ({top2['pct']:+.1f}% vs {last_ym} {top2['icon']}).\n"
 
-                    return (
-                        f"### 📊 Service-Level Cost Comparison & Run-Rate Forecast: {named_customer}\n\n"
-                        f"*Comparing Last Month ({last_ym}) actuals with Current Month ({current_ym}) projected run-rate (Day {days_elapsed} of {days_in_month}, multiplier: {runrate_factor:.2f}x):*\n\n"
-                        f"| AWS Service | Last Month ({last_ym}) | Current MTD ({current_ym}) | Projected Month-End ({current_ym}) | MoM Variance ($) | MoM Variance (%) |\n"
-                        f"|:---|:---|:---|:---|:---|:---|\n"
-                        f"{table_rows}\n"
-                        f"| **Total Customer Spend** | **${tot_lm:,.2f}** | **${tot_mtd:,.2f}** | **${tot_proj:,.2f}** | **{tot_sign}${abs(tot_diff):,.2f}** | **{tot_pct:+.1f}% {tot_icon}** |\n\n"
-                        f"**💡 Key FinOps Spend Drivers:**\n"
-                        f"{top_driver_bullets}"
-                        f"- **Customer Trajectory**: {named_customer} is tracking towards a month-end total of **${tot_proj:,.2f}**, representing an overall {tot_pct:+.1f}% ({tot_sign}${abs(tot_diff):,.2f}) variance against {last_ym}.\n\n"
-                        f"*Source: AWS CUR via CloudHealth (channel-scoped: {named_customer}). Run-rate projection formula: MTD * ({days_in_month}/{days_elapsed}).*"
+                scope_title = named_customer if named_customer else "All Accounts Partner-Wide"
+                source_scope = f"organization-scoped: {named_customer}" if named_customer else "partner-wide"
+
+                # Comparison Bar Chart: Last Month vs Projected Month-End
+                chart_part = ""
+                if intent_info.get("include_chart", True) and not is_no_chart_requested(low) and svc_comparison_list:
+                    top_chart_svcs = svc_comparison_list[:8]
+                    chart_md = _chart_block(
+                        chart_type="bar",
+                        title=f"Service Spend Comparison: Last Month vs Projected ({scope_title})",
+                        labels=[x["service"] for x in top_chart_svcs],
+                        datasets=[
+                            {
+                                "label": f"Last Month ({last_ym})",
+                                "data": [round(x["last_month"], 2) for x in top_chart_svcs]
+                            },
+                            {
+                                "label": f"Projected Month-End ({current_ym})",
+                                "data": [round(x["projected"], 2) for x in top_chart_svcs]
+                            }
+                        ],
+                        stacked=False
                     )
+                    if chart_md:
+                        chart_part = f"{chart_md}\n\n"
+
+                insight_md = ""
+                if self.engine != "direct" and svc_comparison_list:
+                    try:
+                        sys_msg = {"role": "system", "content": "You are Cleo, an expert FinOps AI. Provide 2 concise bullet observations about this service-level spend comparison, highlighting top drivers and significant MoM variance."}
+                        user_msg = {"role": "user", "content": f"Scope: {scope_title}\nData summary:\n{table_rows}"}
+                        llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
+                        if llm_ans:
+                            insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
+                    except Exception as e:
+                        logger.debug(f"[LLM Commentary] {e}")
+
+                return (
+                    f"### 📊 Service-Level Cost Comparison & Run-Rate Forecast: {scope_title} ({cloud_scope_str})\n\n"
+                    f"{chart_part}"
+                    f"*Comparing Last Month ({last_ym}) actuals with Current Month ({current_ym}) projected run-rate (Day {days_elapsed} of {days_in_month}, multiplier: {runrate_factor:.2f}x):*\n\n"
+                    f"| {col_name} | Last Month ({last_ym}) | Current MTD ({current_ym}) | Projected Month-End ({current_ym}) | MoM Variance ($) | MoM Variance (%) |\n"
+                    f"|:---|:---|:---|:---|:---|:---|\n"
+                    f"{table_rows}\n"
+                    f"| **Total Customer Spend** | **${tot_lm:,.2f}** | **${tot_mtd:,.2f}** | **${tot_proj:,.2f}** | **{tot_sign}${abs(tot_diff):,.2f}** | **{tot_pct:+.1f}% {tot_icon}** |\n\n"
+                    f"**💡 Key FinOps Spend Drivers:**\n"
+                    f"{top_driver_bullets}"
+                    f"- **Customer Trajectory**: {scope_title} is tracking towards a month-end total of **${tot_proj:,.2f}**, representing an overall {tot_pct:+.1f}% ({tot_sign}${abs(tot_diff):,.2f}) variance against {last_ym}.\n\n"
+                    f"{insight_md}\n\n"
+                    f"*Source: {target_ds} via CloudHealth ({source_scope}). Run-rate projection formula: MTD * ({days_in_month}/{days_elapsed}).*"
+                )
+
+            # 3b. Named Customer Single Service / Monthly History Breakdown
+            if named_customer and named_customer_crn:
 
                 svc_time_range = {"from": target_ym, "to": target_ym} if (is_specific and target_ym != last_ym) else {"last": 1, "qualifier": "MONTH", "excludeCurrent": True}
                 svc_label = target_label if (is_specific and target_ym != last_ym) else last_ym

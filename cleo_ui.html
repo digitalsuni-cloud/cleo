@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/">
   <title>Cleo (Beta) — CloudHealth FinOps AI Command Center</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpolygon points='24,4 42,14 24,24 6,14' fill='%2338bdf8'/%3E%3Cpolygon points='6,14 24,24 24,44 6,34' fill='%23818cf8'/%3E%3Cpolygon points='42,14 42,34 24,44 24,24' fill='%2334d399'/%3E%3Ccircle cx='24' cy='24' r='5' fill='%23ffffff'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -676,6 +677,44 @@
     .export-btn:hover {
       color: #38bdf8;
       background: rgba(56, 189, 248, 0.15);
+    }
+    .copy-link-btn {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 4px;
+      opacity: 0;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .history-item:hover .copy-link-btn {
+      opacity: 0.75;
+    }
+    .copy-link-btn:hover {
+      opacity: 1 !important;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.15);
+    }
+    .history-item-guid {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65rem;
+      color: #64748b;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 1px 5px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .history-item-guid:hover {
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.15);
+      border-color: rgba(56, 189, 248, 0.3);
     }
     .history-item-meta {
       display: flex;
@@ -2998,7 +3037,112 @@
   </div>
 
   <script>
-    let currentSessionId = localStorage.getItem('cleo_session_id') || null;
+    function generateGUID() {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
+    function getRequestedSessionIdFromURL() {
+      const path = window.location.pathname || '';
+      const match = path.match(/^\/chat\/([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) return match[1];
+
+      const params = new URLSearchParams(window.location.search);
+      const querySid = params.get('chat') || params.get('session') || params.get('sid');
+      if (querySid) return querySid;
+
+      const hash = window.location.hash || '';
+      const hashMatch = hash.match(/^#\/?(?:chat\/)?([a-zA-Z0-9_-]+)/);
+      if (hashMatch && hashMatch[1]) return hashMatch[1];
+
+      return null;
+    }
+
+    function updateURLForSession(sid) {
+      try {
+        if (sid && sid !== 'new') {
+          const targetPath = `/chat/${sid}`;
+          if (window.location.pathname !== targetPath) {
+            window.history.pushState({ sessionId: sid }, '', targetPath);
+          }
+        } else {
+          if (window.location.pathname !== '/') {
+            window.history.pushState({ sessionId: 'new' }, '', '/');
+          }
+        }
+      } catch (e) {
+        // history navigation fallback
+      }
+    }
+
+    function _fallbackCopy(text, successMsg) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        ta.style.top = "-9999px";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (typeof showToast === 'function') showToast(successMsg, "success");
+      } catch (err) {
+        if (typeof showToast === 'function') showToast("Failed to copy: " + err, "error");
+      }
+    }
+
+    function copySessionLink(e, sid) {
+      if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+      if (!sid || sid === 'new') return;
+      const url = `${window.location.origin}/chat/${sid}`;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => {
+          showToast("Direct chat link copied to clipboard!", "success");
+        }).catch(() => {
+          _fallbackCopy(url, "Direct chat link copied to clipboard!");
+        });
+      } else {
+        _fallbackCopy(url, "Direct chat link copied to clipboard!");
+      }
+    }
+
+    function copySessionGuid(e, sid) {
+      if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+      if (!sid || sid === 'new') return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(sid).then(() => {
+          showToast(`Chat GUID copied: ${sid.slice(0, 8)}...`, "success");
+        }).catch(() => {
+          _fallbackCopy(sid, `Chat GUID copied: ${sid.slice(0, 8)}...`);
+        });
+      } else {
+        _fallbackCopy(sid, `Chat GUID copied: ${sid.slice(0, 8)}...`);
+      }
+    }
+
+    function copyCurrentChatLink() {
+      if (!currentSessionId || currentSessionId === 'new') {
+        showToast("Start a conversation first to copy chat link", "info");
+        return;
+      }
+      copySessionLink(null, currentSessionId);
+    }
+
+    let currentSessionId = getRequestedSessionIdFromURL() || localStorage.getItem('cleo_session_id') || null;
     let logPollTimer = null;
     let downloadPollTimer = null;
     let currentConfigEngine = null;
@@ -3189,18 +3333,25 @@
         const renderItem = (s) => {
           const isActive = s.id === currentSessionId;
           const timeStr = formatTimeAgo(s.updated_at);
-          const searchData = escapeAttr((s.title || '') + ' ' + (s.preview || ''));
+          const searchData = escapeAttr((s.title || '') + ' ' + (s.preview || '') + ' ' + (s.id || ''));
           const isPinned = Boolean(s.pinned);
+          const shortGuid = s.id ? s.id.substring(0, 8) : '';
           return `
             <div class="history-item ${isActive ? 'active' : ''} ${isPinned ? 'is-pinned' : ''}" 
                  data-id="${s.id}" 
                  data-search="${searchData}"
                  onclick="switchSession('${s.id}')">
               <div class="history-item-top">
-                <span class="history-item-title" title="${escapeAttr(s.title)}">
+                <span class="history-item-title" title="${escapeAttr(s.title)} (GUID: ${s.id})">
                   ${isPinned ? '<span class="pin-badge" title="Pinned chat">📌</span> ' : ''}${escapeHtml(s.title)}
                 </span>
                 <div class="history-item-actions">
+                  <button class="copy-link-btn" onclick="copySessionLink(event, '${s.id}')" title="Copy direct chat link (${s.id})">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                    </svg>
+                  </button>
                   <button class="pin-btn ${isPinned ? 'active' : ''}" onclick="togglePinSession(event, '${s.id}')" title="${isPinned ? 'Unpin conversation' : 'Pin conversation'}">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="${isPinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <line x1="12" y1="17" x2="12" y2="22"></line>
@@ -3224,6 +3375,7 @@
               </div>
               <div class="history-item-meta">
                 <span>${s.message_count} msgs</span>
+                <span class="history-item-guid" title="Chat GUID: ${s.id} (Click to copy)" onclick="copySessionGuid(event, '${s.id}')">#${shortGuid}</span>
                 <span>${timeStr}</span>
               </div>
               ${s.preview ? `<div class="history-item-preview">${escapeHtml(s.preview)}</div>` : ''}
@@ -3245,17 +3397,21 @@
         listEl.innerHTML = html;
         updatePinButtonState();
 
-        // If no active session set or session not found in list (and user has not explicitly clicked 'new')
+        // Check if direct session was requested via URL (/chat/<guid> or ?chat=<guid>)
+        const urlSid = getRequestedSessionIdFromURL();
         const savedId = localStorage.getItem('cleo_session_id');
-        if (savedId === 'new') {
+
+        if (urlSid) {
+          switchSession(urlSid, false);
+        } else if (savedId === 'new') {
           // User intentionally started a new chat, stay on welcome hero
         } else if (savedId && data.sessions.some(s => s.id === savedId)) {
           if (!currentSessionId || currentSessionId !== savedId) {
-            switchSession(savedId);
+            switchSession(savedId, false);
           }
         } else if (data.sessions.length > 0 && (!currentSessionId || currentSessionId === 'new')) {
           if (savedId !== 'new') {
-            switchSession(data.sessions[0].id);
+            switchSession(data.sessions[0].id, false);
           }
         }
       } catch (err) {
@@ -3311,6 +3467,10 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
             </button>
             <div class="assistant-more-menu" style="display: none;">
+              <button type="button" class="assistant-menu-item" onclick="copyCurrentChatLink(); closeAssistantMoreMenus();">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                <span>Copy Direct Chat Link</span>
+              </button>
               <button type="button" class="assistant-menu-item" onclick="togglePinCurrentSession(); closeAssistantMoreMenus();">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"></path></svg>
                 <span class="pin-menu-label">Pin this chat</span>
@@ -3345,11 +3505,15 @@
       return exportBtn;
     }
 
-    async function switchSession(sid) {
+    async function switchSession(sid, updateHistory = true) {
       if (isGenerating) stopQuery();
       if (!sid || sid === 'new') return;
       currentSessionId = sid;
       localStorage.setItem('cleo_session_id', sid);
+
+      if (updateHistory) {
+        updateURLForSession(sid);
+      }
 
       // Highlight active in list
       document.querySelectorAll('.history-item').forEach(el => {
@@ -3362,7 +3526,7 @@
       try {
         const res = await fetch(`/api/session/${sid}`);
         if (!res.ok) {
-          newSession();
+          newSession(updateHistory);
           return;
         }
         const data = await res.json();
@@ -3406,18 +3570,21 @@
         stream.scrollTop = stream.scrollHeight;
         updatePinButtonState();
       } catch (e) {
-        newSession();
+        newSession(updateHistory);
       }
     }
 
     function goToLandingPage() {
-      newSession();
+      newSession(true);
     }
 
-    function newSession() {
+    function newSession(updateHistory = true) {
       if (isGenerating) stopQuery();
       currentSessionId = 'new';
       localStorage.setItem('cleo_session_id', 'new');
+      if (updateHistory) {
+        updateURLForSession('new');
+      }
 
       switchSidebarTab('chats');
       document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
@@ -6067,7 +6234,7 @@
 
       try {
         if (!currentSessionId || currentSessionId === 'new') {
-          currentSessionId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('sess-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9));
+          currentSessionId = generateGUID();
           localStorage.setItem('cleo_session_id', currentSessionId);
         }
         const payloadSessionId = currentSessionId;
@@ -6105,6 +6272,7 @@
         const tokensPerSec = data.tokens_per_sec != null ? data.tokens_per_sec : (tokens && durationSecs > 0 ? Math.round(tokens / durationSecs) : null);
         currentSessionId = data.session_id;
         localStorage.setItem('cleo_session_id', currentSessionId);
+        updateURLForSession(currentSessionId);
 
         // Track which turn this is so feedback can reference it
         const msgIndex = document.querySelectorAll('#chat-stream .message.cleo').length;
@@ -6281,6 +6449,22 @@
     loadEngines();
     loadHistoryList();
     fetchChannelCustomers();
+
+    // Direct URL navigation: load requested chat immediately
+    const initialUrlSid = getRequestedSessionIdFromURL();
+    if (initialUrlSid) {
+      switchSession(initialUrlSid, false);
+    }
+
+    // Support browser Back/Forward navigation between chats
+    window.addEventListener('popstate', (e) => {
+      const targetSid = getRequestedSessionIdFromURL() || (e.state && e.state.sessionId) || 'new';
+      if (targetSid && targetSid !== 'new') {
+        switchSession(targetSid, false);
+      } else {
+        newSession(false);
+      }
+    });
 
     setInterval(checkHealth, 5000);
 
