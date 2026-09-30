@@ -2948,6 +2948,10 @@
             </svg>
             <span>Show All</span>
           </button>
+          <button class="cleo-chart-action-btn" id="chart-modal-curve-btn" onclick="toggleModalChartCurve()" title="Toggle curve style (Smooth / Sharp)" style="display: none; padding: 5px 10px; font-size: 0.74rem;">
+            <span id="chart-modal-curve-icon" style="display: inline-flex; align-items: center;"></span>
+            <span id="chart-modal-curve-text">Smooth</span>
+          </button>
           <button class="cleo-chart-action-btn" onclick="downloadExpandedChart()" title="Download PNG" style="padding: 5px 10px; font-size: 0.74rem;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -5124,6 +5128,41 @@
       '#10b981', '#f43f5e', '#a855f7', '#38bdf8', '#fb7185', '#d946ef',
       '#3b82f6', '#b45309', '#991b1b', '#0f766e', '#6b21a8', '#1e40af'
     ];
+    // GCP-style distinct geometric point & legend shapes for each category
+    const _POINT_STYLES = [
+      'circle',        // ● Circle
+      'rect',          // ■ Square
+      'triangle',      // ▲ Triangle
+      'rectRot',       // ◆ Diamond
+      'star',          // ★ Star
+      'cross',         // ✚ Plus
+      'crossRot',      // ✕ Rotated Cross
+      'rectRounded',   // ▢ Rounded Square
+      'dash'           // — Dash
+    ];
+    const _SVG_CURVE_SMOOTH = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16c3.5 0 4.5-9 9-9s5.5 9 9 9"></path></svg>';
+    const _SVG_CURVE_SHARP = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 16 9 8 15 16 21 8"></polyline></svg>';
+
+    function _buildLegendLabelsGenerator() {
+      return (chart) => {
+        const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+        return original.map(item => {
+          if (item.datasetIndex !== undefined) {
+            const ds = chart.data.datasets[item.datasetIndex];
+            if (ds) {
+              item.fillStyle = ds.pointBackgroundColor || ds.borderColor || item.fillStyle;
+              item.strokeStyle = ds.borderColor || item.strokeStyle;
+              if (ds.pointStyle) item.pointStyle = ds.pointStyle;
+              if (['cross', 'crossRot', 'line', 'dash'].includes(ds.pointStyle)) {
+                item.lineWidth = 2.4;
+              }
+            }
+          }
+          return item;
+        });
+      };
+    }
+
     const _CHART_DEFAULTS = {
       responsive: true,
       maintainAspectRatio: true,
@@ -5134,9 +5173,19 @@
           onClick: handleChartLegendClick,
           onHover: (e) => { if (e?.native?.target) e.native.target.style.cursor = 'pointer'; },
           onLeave: (e) => { if (e?.native?.target) e.native.target.style.cursor = 'default'; },
-          labels: { color: '#94a3b8', font: { family: 'Inter', size: 11 }, boxWidth: 10, padding: 8 }
+          labels: {
+            color: '#94a3b8',
+            font: { family: 'Inter', size: 11 },
+            usePointStyle: true,
+            boxWidth: 9,
+            boxHeight: 9,
+            padding: 10,
+            generateLabels: _buildLegendLabelsGenerator()
+          }
         },
         tooltip: {
+          usePointStyle: true,
+          boxPadding: 4,
           backgroundColor: '#1e293b',
           borderColor: 'rgba(255,255,255,0.14)',
           borderWidth: 1,
@@ -5240,8 +5289,11 @@
             labels: {
               ...(baseOpts.plugins?.legend?.labels || {}),
               font: { family: 'Inter', size: 12 },
-              boxWidth: 14,
-              padding: 12
+              usePointStyle: true,
+              boxWidth: 10,
+              boxHeight: 10,
+              padding: 12,
+              generateLabels: _buildLegendLabelsGenerator()
             }
           },
           tooltip: {
@@ -5253,6 +5305,16 @@
           }
         }
       };
+
+      const isLineChart = ['line', 'area'].includes(config.type) || 
+                          (config.data?.datasets && config.data.datasets.some(ds => ds.tension !== undefined));
+      const curveBtn = document.getElementById('chart-modal-curve-btn');
+      if (curveBtn) {
+        curveBtn.style.display = isLineChart ? 'inline-flex' : 'none';
+        const currentTension = config.data?.datasets?.[0]?.tension ?? 0.35;
+        const currentMode = currentTension > 0.1 ? 'smooth' : 'sharp';
+        updateModalCurveButton(currentMode);
+      }
 
       if (baseOpts.scales) {
         modalOpts.scales = {
@@ -5288,11 +5350,45 @@
       }, 40);
     }
 
+    function toggleModalChartCurve() {
+      if (!_expandedChartInstance) return;
+      const datasets = _expandedChartInstance.data.datasets || [];
+      if (!datasets.length) return;
+
+      const currentTension = datasets[0].tension ?? 0.35;
+      const nextMode = (currentTension > 0.1) ? 'sharp' : 'smooth';
+      const nextTension = (nextMode === 'sharp') ? 0 : 0.35;
+
+      datasets.forEach(ds => {
+        ds.tension = nextTension;
+      });
+      _expandedChartInstance.update();
+
+      localStorage.setItem('cleo_chart_curve', nextMode);
+      updateModalCurveButton(nextMode);
+    }
+
+    function updateModalCurveButton(mode) {
+      const btn = document.getElementById('chart-modal-curve-btn');
+      const icon = document.getElementById('chart-modal-curve-icon');
+      const label = document.getElementById('chart-modal-curve-text');
+      if (!btn || !label) return;
+
+      const isSmooth = (mode === 'smooth');
+      label.textContent = isSmooth ? 'Smooth' : 'Sharp';
+      btn.title = isSmooth ? 'Current: Smooth curves (Click for Sharp lines)' : 'Current: Sharp lines (Click for Smooth curves)';
+      if (icon) {
+        icon.innerHTML = isSmooth ? _SVG_CURVE_SMOOTH : _SVG_CURVE_SHARP;
+      }
+    }
+
     function closeChartModal() {
       const modal = document.getElementById('chart-modal');
       const resetBtn = document.getElementById('chart-modal-reset-btn');
+      const curveBtn = document.getElementById('chart-modal-curve-btn');
       if (modal) modal.style.display = 'none';
       if (resetBtn) resetBtn.style.display = 'none';
+      if (curveBtn) curveBtn.style.display = 'none';
       if (_expandedChartInstance) {
         _expandedChartInstance.destroy();
         _expandedChartInstance = null;
@@ -5334,7 +5430,7 @@
       return s.replace(/^[\s—:]+|[\s—:]+$/g, '');
     }
 
-    function createChartHeader(titleText, onExpand) {
+    function createChartHeader(titleText, onExpand, onToggleCurve, getIsSmooth) {
       const header = document.createElement('div');
       header.className = 'cleo-chart-header';
       const h = document.createElement('div');
@@ -5344,6 +5440,24 @@
 
       const actions = document.createElement('div');
       actions.className = 'cleo-chart-actions';
+
+      if (onToggleCurve && getIsSmooth) {
+        const curveBtn = document.createElement('button');
+        curveBtn.type = 'button';
+        curveBtn.className = 'cleo-chart-action-btn';
+        const refreshBtn = () => {
+          const isSmooth = getIsSmooth();
+          curveBtn.title = isSmooth ? 'Curve: Smooth (Click for Sharp lines)' : 'Curve: Sharp (Click for Smooth curve)';
+          curveBtn.innerHTML = isSmooth ? _SVG_CURVE_SMOOTH : _SVG_CURVE_SHARP;
+        };
+        refreshBtn();
+        curveBtn.onclick = () => {
+          onToggleCurve();
+          refreshBtn();
+        };
+        actions.appendChild(curveBtn);
+      }
+
       const expandBtn = document.createElement('button');
       expandBtn.type = 'button';
       expandBtn.className = 'cleo-chart-action-btn';
@@ -5571,20 +5685,30 @@
           data: spec.values || spec.data || []
         }];
 
+        const savedCurve = localStorage.getItem('cleo_chart_curve') || 'smooth';
+        const initialTension = isLine ? (savedCurve === 'sharp' ? 0 : 0.35) : 0;
+
         const datasets = rawDatasets.map((ds, i) => {
           const color = ds.borderColor || (isPie
             ? labels.map((_, j) => _CHART_PALETTE[j % _CHART_PALETTE.length])
             : _CHART_PALETTE[i % _CHART_PALETTE.length]);
+          const rawColor = Array.isArray(color) ? color[0] : color;
+          const pStyle = _POINT_STYLES[i % _POINT_STYLES.length];
+          const isStrokedPoint = ['cross', 'crossRot', 'line', 'dash'].includes(pStyle);
+
           return {
             ...ds,
-            backgroundColor: isPie ? color : (isArea ? (ds.backgroundColor || _toAlpha(Array.isArray(color) ? color[0] : color, 0.28)) : (ds.backgroundColor || color)),
-            borderColor: isPie ? '#0b0f17' : (ds.borderColor || (isLine ? (Array.isArray(color) ? color[0] : color) : 'rgba(11, 15, 23, 0.4)')),
+            backgroundColor: isPie ? color : (isArea ? (ds.backgroundColor || _toAlpha(rawColor, 0.28)) : (ds.backgroundColor || color)),
+            borderColor: isPie ? '#0b0f17' : (ds.borderColor || (isLine ? rawColor : 'rgba(11, 15, 23, 0.4)')),
             borderWidth: isPie ? 2 : (isLine ? 2.5 : (isStacked ? 0.75 : 1.5)),
             borderRadius: (isBar && !isStacked) ? 4 : 0,
-            pointBackgroundColor: ds.borderColor || (Array.isArray(color) ? color[0] : color),
-            pointRadius: isLine ? 3.5 : 0,
-            pointHoverRadius: isLine ? 6 : 0,
-            tension: 0.35,
+            pointStyle: pStyle,
+            pointBackgroundColor: ds.borderColor || rawColor,
+            pointBorderColor: isStrokedPoint ? (ds.borderColor || rawColor) : '#0c111d',
+            pointBorderWidth: isStrokedPoint ? 2.4 : 1.5,
+            pointRadius: isLine ? 4.5 : 0,
+            pointHoverRadius: isLine ? 7.5 : 0,
+            tension: initialTension,
             fill: isArea ? (isStacked ? true : 'origin') : (type === 'line' ? false : undefined)
           };
         });
@@ -5604,7 +5728,26 @@
           options: opts,
           title: chartTitle
         };
-        wrap.appendChild(createChartHeader(chartTitle, () => openChartModal(chartConfig)));
+
+        let chartInstance = null;
+        const toggleCurveHandler = isLine ? () => {
+          if (!chartInstance) return;
+          const currentTension = chartInstance.data.datasets[0]?.tension ?? 0.35;
+          const nextMode = (currentTension > 0.1) ? 'sharp' : 'smooth';
+          const nextTension = (nextMode === 'sharp') ? 0 : 0.35;
+          chartInstance.data.datasets.forEach(ds => { ds.tension = nextTension; });
+          chartInstance.update();
+          localStorage.setItem('cleo_chart_curve', nextMode);
+        } : null;
+
+        const getIsSmoothHandler = isLine ? () => {
+          if (!chartInstance) {
+            return (localStorage.getItem('cleo_chart_curve') || 'smooth') === 'smooth';
+          }
+          return (chartInstance.data.datasets[0]?.tension ?? 0.35) > 0.1;
+        } : null;
+
+        wrap.appendChild(createChartHeader(chartTitle, () => openChartModal(chartConfig), toggleCurveHandler, getIsSmoothHandler));
 
         const canvasWrap = document.createElement('div');
         canvasWrap.className = 'cleo-chart-canvas-wrap';
@@ -5613,7 +5756,7 @@
         wrap.appendChild(canvasWrap);
         pre.replaceWith(wrap);
 
-        new Chart(canvas, {
+        chartInstance = new Chart(canvas, {
           type: chartType,
           data: { labels, datasets },
           options: opts
