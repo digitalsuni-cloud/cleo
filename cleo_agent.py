@@ -1756,12 +1756,16 @@ def call_mlx_generate(model_id: str, messages: list[dict], max_tokens: int = 614
     clean_id = model_id.removeprefix("mlx:").strip()
     if clean_id not in _mlx_models_cache:
         logger.info(f"⚡ [MLX Load] Loading {clean_id} into unified memory...")
+        sys.stdout.flush()
         # Suppress HuggingFace/tqdm progress bars so Cleo's own log lines are visible.
-        # HF_HUB_DISABLE_PROGRESS_BARS=1 is the official mechanism; we also patch tqdm.auto
-        # as a belt-and-suspenders fallback since some mlx_lm versions ignore the env var.
         import os as _os
         _prev_hf_bar = _os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS")
         _os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+        try:
+            import huggingface_hub.utils as _hfu
+            _hfu.disable_progress_bars()
+        except Exception:
+            pass
         _tqdm_orig = None
         try:
             import tqdm.auto as _tqdm_auto
@@ -1790,9 +1794,11 @@ def call_mlx_generate(model_id: str, messages: list[dict], max_tokens: int = 614
             else:
                 _os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = _prev_hf_bar
         _mlx_models_cache[clean_id] = (model, tokenizer)
-        logger.info(f"✅ [MLX Ready] {clean_id} loaded and ready.")
+        logger.info(f"✅ [MLX Ready] {clean_id} loaded into memory and ready.")
+        sys.stdout.flush()
     else:
-        logger.info(f"⚡ [MLX Cache Hit] {clean_id} already in memory — skipping reload.")
+        logger.info(f"⚡ [MLX Ready] {clean_id} already resident in memory.")
+        sys.stdout.flush()
         model, tokenizer = _mlx_models_cache[clean_id]
 
     # When enable_thinking=True, the prompt already ends with <think>\n, so the model
@@ -1861,9 +1867,11 @@ def unload_mlx_models(model_id: Optional[str] = None):
         clean_id = model_id.removeprefix("mlx:").strip()
         if clean_id in _mlx_models_cache:
             logger.info(f"🧹 [MLX Unload] Evicting model '{clean_id}' from unified memory...")
+            sys.stdout.flush()
             _mlx_models_cache.pop(clean_id, None)
     else:
         logger.info(f"🧹 [MLX Unload] Evicting {len(_mlx_models_cache)} MLX model(s) from unified memory...")
+        sys.stdout.flush()
         _mlx_models_cache.clear()
 
     import gc
@@ -1877,6 +1885,7 @@ def unload_mlx_models(model_id: Optional[str] = None):
     except Exception:
         pass
     logger.info("✅ [MLX Unload] MLX unified memory and Metal cache freed.")
+    sys.stdout.flush()
 
 # ── LLM Client Callers (Zero-Dependency via urllib) ──────────────────────────
 def normalize_ollama_url(raw: str = None) -> str:

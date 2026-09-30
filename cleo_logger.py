@@ -52,8 +52,8 @@ class RingBufferHandler(logging.Handler):
         except Exception:
             self.handleError(record)
 
-# Root Cleo logger level: default to WARNING, enable DEBUG only if CLEO_VERBOSE is set
-LOG_LEVEL_NAME = os.environ.get("CLEO_LOG_LEVEL", "WARNING").upper()
+# Root Cleo logger level: default to INFO so lifecycle events (loading/unloading models, server status) are visible in console
+LOG_LEVEL_NAME = os.environ.get("CLEO_LOG_LEVEL", "INFO").upper()
 if os.environ.get("CLEO_VERBOSE", "").lower() in ("1", "true", "yes"):
     LOG_LEVEL_NAME = "DEBUG"
 

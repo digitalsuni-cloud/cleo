@@ -320,6 +320,7 @@ def unload_ollama_models(model_name: Optional[str] = None):
                 with opener.open(req, timeout=3.0) as resp:
                     pass
                 logger.info(f"✅ [Ollama Unload] Model '{m}' evicted from memory.")
+                sys.stdout.flush()
             except urllib.error.HTTPError as he:
                 if he.code == 404:
                     logger.debug(f"[Ollama Unload] Model '{m}' is not currently loaded in Ollama (404 Not Found).")
@@ -353,6 +354,7 @@ def _idle_watchdog():
                 from cleo_agent import _mlx_models_cache
                 if _mlx_models_cache:
                     logger.info("💤 [Idle Watchdog] No activity for 75s — unloading local LLM from memory.")
+                    sys.stdout.flush()
                     unload_mlx_models()
                     unload_ollama_models()
             except Exception as e:
@@ -2610,8 +2612,8 @@ def serve_gui():
 if __name__ == "__main__":
     _auto_update_on_startup()
 
-    _default_level = os.environ.get("CLEO_LOG_LEVEL", "warning").lower()
-    _uvicorn_log_level = "debug" if os.environ.get("CLEO_VERBOSE", "").lower() in ("1", "true", "yes") else _default_level
+    _default_uvicorn = os.environ.get("UVICORN_LOG_LEVEL", "warning").lower()
+    _uvicorn_log_level = "debug" if os.environ.get("CLEO_VERBOSE", "").lower() in ("1", "true", "yes") else _default_uvicorn
 
     # Port resolution
     _preferred_port = int(os.environ.get("PORT", 8080))
