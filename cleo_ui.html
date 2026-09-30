@@ -2267,6 +2267,30 @@
       border-radius: 50%;
       background: #34d399;
       box-shadow: 0 0 6px rgba(52, 211, 153, 0.6);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; box-shadow: 0 0 6px rgba(52, 211, 153, 0.6); }
+      50% { opacity: 0.7; box-shadow: 0 0 10px rgba(52, 211, 153, 0.3); }
+    }
+    .btn-status-selected {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 500;
+      background: rgba(251, 191, 36, 0.08);
+      color: #fbbf24;
+      border: 1px solid rgba(251, 191, 36, 0.2);
+    }
+    .btn-status-selected .selected-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #fbbf24;
+      opacity: 0.8;
     }
     .btn-model-action {
       background: rgba(255, 255, 255, 0.04);
@@ -4011,8 +4035,12 @@
           if (recAction) {
             const recEngId = s.recommended_engine_id || data.recommended_engine;
             const isRecActive = (data.active_engine === recEngId);
-            if (isRecActive) {
+            const loadedIds = data.mlx_loaded_models || [];
+            const isRecInMemory = loadedIds.includes(recEngId);
+            if (isRecActive && isRecInMemory) {
               recAction.innerHTML = `<span class="btn-status-active"><span class="active-dot"></span>Active</span>`;
+            } else if (isRecActive) {
+              recAction.innerHTML = `<span class="btn-status-selected"><span class="selected-dot"></span>Selected</span>`;
             } else {
               const allModels = [...(data.mlx_models || []), ...(data.local_models || []), ...(data.system_models || [])];
               const recModelObj = allModels.find(m => m.id === recEngId);
@@ -4064,6 +4092,8 @@
 
         const renderModelCard = (m, isOllama = false) => {
           const isActive = data.active_engine === m.id;
+          const loadedIds = data.mlx_loaded_models || [];
+          const isInMemory = loadedIds.includes(m.id) || (isOllama && data.active_engine === m.id && data.ollama_running);
           const isDownloading = m.download_status === 'downloading';
           const isFailed = m.download_status === 'failed';
           const progress = m.download_progress || 0;
@@ -4071,8 +4101,10 @@
           let actionBtn = '';
           if (isDownloading) {
             actionBtn = `<span style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:#38bdf8; font-weight:600;"><span class="spinning-loader" style="width:10px;height:10px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:4px;"></span>${progress > 0 ? progress + '%' : 'Downloading'}</span>`;
-          } else if (isActive && m.downloaded) {
+          } else if (isActive && isInMemory) {
             actionBtn = `<span class="btn-status-active"><span class="active-dot"></span>Active</span>`;
+          } else if (isActive && m.downloaded) {
+            actionBtn = `<span class="btn-status-selected"><span class="selected-dot"></span>Selected</span>`;
           } else if (m.downloaded) {
             actionBtn = `<button class="btn-model-action" onclick="switchEngine('${m.id}')">Select</button>`;
           } else {

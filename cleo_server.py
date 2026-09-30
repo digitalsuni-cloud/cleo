@@ -1712,6 +1712,14 @@ def get_channel_customers():
         logger.warning(f"[API Customers] {e}")
         return {"customers": _customers_cache["data"]}  # return stale on error
 
+def _get_mlx_loaded_ids() -> list[str]:
+    """Returns list of 'mlx:<repo_id>' keys currently loaded in unified memory."""
+    try:
+        from cleo_agent import _mlx_models_cache
+        return [f"mlx:{k}" for k in _mlx_models_cache.keys()]
+    except Exception:
+        return []
+
 @app.get("/api/engines")
 def list_engines():
     cfg = _load_config()
@@ -1874,6 +1882,7 @@ def list_engines():
         "recommendation_reason": sys_info["recommendation_reason"],
         "mlx_available": is_apple_silicon,
         "mlx_models": mlx_list,
+        "mlx_loaded_models": _get_mlx_loaded_ids(),  # models actually in memory right now
         "ollama_running": ollama_running,
         "ollama_installed": bool(_find_ollama_bin()),
         "local_models": local_list,
