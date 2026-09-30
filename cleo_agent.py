@@ -1939,7 +1939,8 @@ def call_ollama_chat(model: str, messages: list[dict], timeout: float = 60.0, st
 
 def call_gemini_api(api_key: str, messages: list[dict], model: str = "gemini-2.0-flash", stats_out: dict = None) -> str:
     """Invokes Google Gemini REST API."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    # Security (M2): key in header, not URL, to prevent exposure in proxy/access logs
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     contents = []
     system_instruction = None
     for m in messages:
@@ -1952,7 +1953,10 @@ def call_gemini_api(api_key: str, messages: list[dict], model: str = "gemini-2.0
     if system_instruction:
         body["systemInstruction"] = system_instruction
     payload = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(url, data=payload, headers={
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key,
+    })
     t0 = time.perf_counter()
     with urllib.request.urlopen(req, timeout=30.0) as resp:
         data = json.loads(resp.read().decode("utf-8"))
