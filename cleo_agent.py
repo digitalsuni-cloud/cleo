@@ -3028,8 +3028,14 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     t_ctx = parse_query_time_context(last_msg)
     target_ym = t_ctx.get("target_ym") if t_ctx.get("is_specific") else None
 
+    # Math calculation or general non-finops question
+    is_math = bool(re.search(r'\d+\s*[\+\-\*\/x×÷\^%]\s*\d+', low)) or bool(re.search(r'\b(?:calculate|calc|math)\b', low))
+
     if is_user_query:
         intent = "unsupported_capability"
+        is_new_data_fetch = False
+    elif is_math:
+        intent = "general_chat"
         is_new_data_fetch = False
     elif is_general_finops:
         intent = "general_finops_advisory"
@@ -4053,7 +4059,32 @@ class AIClient:
             "spend by", "cost by", "usage by", "spend breakdown", "usage breakdown", "cost breakdown"
         ]) or bool(is_followup and is_prior_cust_query)
 
-        # ── 2c. FinOps Advisory, Architecture & Conceptual Queries ───────────
+        # ── 2c. Math & Quick Calculations ────────────────────────────────────
+        is_math = bool(re.search(r'\d+\s*[\+\-\*\/x×÷\^%]\s*\d+', low)) or bool(re.search(r'\b(?:calculate|calc|math)\b', low))
+        if is_math:
+            clean_math = last_msg.strip().rstrip("?").strip()
+            m_match = re.search(r'(\d+(?:\.\d+)?\s*(?:[\+\-\*\/×÷]|x|\^|%)\s*\d+(?:\.\d+)?(?:\s*(?:[\+\-\*\/×÷]|x|\^|%)\s*\d+(?:\.\d+)?)*)', clean_math, re.IGNORECASE)
+            if m_match and self.engine == "direct":
+                expr_str = m_match.group(1).replace('x', '*').replace('X', '*').replace('×', '*').replace('÷', '/').replace('^', '**')
+                try:
+                    if re.fullmatch(r'[\d\s\+\-\*\/\.\(\)]+', expr_str):
+                        res = eval(expr_str, {"__builtins__": {}}, {})
+                        formatted = f"{res:,}" if isinstance(res, int) else f"{res:,.4f}".rstrip('0').rstrip('.')
+                        orig_expr = m_match.group(1).strip()
+                        return f"**{orig_expr}** = **{formatted}**"
+                except Exception:
+                    pass
+            if self.engine != "direct":
+                user_msg = {"role": "user", "content": last_msg}
+                sys_msg = {
+                    "role": "system",
+                    "content": "You are Cleo, an intelligent AI assistant. Provide a direct, concise, and accurate answer to the user's mathematical or general calculation question."
+                }
+                llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
+                if llm_ans:
+                    return llm_ans
+
+        # ── 2d. FinOps Advisory, Architecture & Conceptual Queries ───────────
         # Handle conceptual, strategic, and advisory questions directly using LLM + OptimNow FinOps knowledge
         # without querying CloudHealth telemetry or returning empty/unrelated data tables.
         is_advisory_phrase = any(phrase in low for phrase in [
@@ -4066,10 +4097,20 @@ class AIClient:
         ])
         is_live_data_followup = is_followup and is_prior_cost_query and not is_advisory_phrase
 
+        finops_adv = get_finops_advisory(last_msg) if not is_live_data_followup else None
+        is_finops_topic = bool(finops_adv) or any(t in low for t in [
+            "finops", "cloud", "focus", "cost", "spend", "billed", "effective", "pricing", "rate",
+            "ri", "reserved", "savings plan", "commitment", "ebs", "ec2", "rds", "s3", "azure", "gcp",
+            "aws", "amortiz", "unblended", "blended", "tag", "allocation", "unit economic", "waste",
+            "anomaly", "rightsizing", "idle", "egress", "nat gateway", "marketplace", "license",
+            "graviton", "kubernetes", "k8s", "opencost", "kubecost", "storage tier", "snapshot"
+        ])
+
         is_general_finops_query = (
             intent_info.get("intent") == "general_finops_advisory" or
             (
                 is_advisory_phrase
+                and is_finops_topic
                 and not is_live_data_followup
                 and not named_customer
                 and not is_explicit_telemetry_table
@@ -4079,8 +4120,6 @@ class AIClient:
                 ])
             )
         )
-
-        finops_adv = get_finops_advisory(last_msg) if not is_live_data_followup else None
         if (is_general_finops_query or (finops_adv and not named_customer and not is_explicit_telemetry_table)):
             # External LLM synthesis if active
             if self.engine != "direct":
