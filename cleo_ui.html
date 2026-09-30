@@ -5983,10 +5983,25 @@
     }
 
     function getThinkingMessage(text) {
-      const low = (text || '').toLowerCase();
+      const low = (text || '').toLowerCase().trim();
+
+      // 1. Math / Calculations: e.g. "what is 234x45?", "234 * 45", "calculate 1500 / 3"
+      if (/\b(?:calculate|calc|math)\b/i.test(low) || /\d+\s*[\+\-\*\/x×÷\^%]\s*\d+/.test(low) || /what\s+is\s+\d+/i.test(low)) {
+        return 'Calculating...';
+      }
+
+      // 2. Greetings / Chit-chat / Identity
+      if (/^(hi|hello|hey|greetings|good morning|good afternoon|good evening|yo)\b/i.test(low) ||
+          /\b(who are you|what can you do|what is cleo|help|introduce yourself)\b/i.test(low)) {
+        return 'Thinking...';
+      }
+
+      // 3. Customer / Channel / Tenant / Multi-Tenant
       if (low.includes('customer') || low.includes('channel') || low.includes('tenant') || low.includes('org') || low.includes('client')) {
         return 'Analyzing Partner & Channel Customer Consumption...';
       }
+
+      // 4. Multi-cloud & Cloud Providers
       if (low.includes('multi-cloud') || low.includes('multicloud') || low.includes('cross-cloud') || (low.includes('azure') && low.includes('gcp')) || low.includes('top cloud') || low.includes('all cloud') || low.includes('all clouds')) {
         return 'Querying Multi-Cloud FOCUS Datasets (AWS, Azure, GCP)...';
       }
@@ -5997,10 +6012,11 @@
         return 'Querying GCP Cost & Usage Datasets...';
       }
 
+      // 5. Cloud Services & Specific Telemetry
       if (low.includes('rds') || low.includes('database') || low.includes('aurora')) {
         return 'Analyzing CloudHealth RDS & Database Telemetry...';
       }
-      if (low.includes('ec2') || low.includes('instance')) {
+      if (low.includes('ec2') || low.includes('instance') || low.includes('compute') || low.includes('vm')) {
         return 'Analyzing CloudHealth EC2 Compute Telemetry...';
       }
       if (low.includes('anomal') || low.includes('spike')) {
@@ -6009,10 +6025,17 @@
       if (low.includes('recommend') || low.includes('saving') || low.includes('optimi')) {
         return 'Evaluating FinOps Optimization Levers & Playbooks...';
       }
-      if (low.includes('cur')) {
+      if (low.includes('cur') || low.includes('focus') || low.includes('billing')) {
         return 'Analyzing AWS CUR & Billing Telemetry...';
       }
-      return 'Analyzing CloudHealth FinOps Telemetry...';
+
+      // 6. Generic Spend / Cost queries
+      if (low.includes('cost') || low.includes('spend') || low.includes('invoice') || low.includes('charge') || low.includes('usage') || low.includes('forecast')) {
+        return 'Analyzing CloudHealth FinOps Telemetry...';
+      }
+
+      // 7. General non-FinOps queries (default to clean "Thinking...")
+      return 'Thinking...';
     }
 
     async function handleSend(e) {
