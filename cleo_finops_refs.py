@@ -73,8 +73,14 @@ ROUTING: list[tuple[str, list[str]]] = [
     ("finops-genai-capacity",       ["genai capacity", "provisioned vs shared", "throughput units", "traffic shape", "spillover", "capacity planning"]),
     ("finops-ai-self-hosted-vs-managed", ["self-hosted", "vllm", "sglang", "llama.cpp", "gpu rental", "runpod", "coreweave", "lambda labs", "build vs buy llm", "hybrid routing", "litellm", "portkey", "self-hosted vs serverless"]),
     ("finops-open-weight-vendors",  ["deepseek", "qwen", "qwen api", "kimi", "moonshot", "glm", "z.ai", "open-weight", "chinese model", "peak and off-peak"]),
-    ("finops-ai-dev-tools",         ["ai coding tool", "dev tool finops", "byok coding", "github copilot", "cursor"]),
-    ("finops-ai-value-management",  ["ai investment", "ai business case", "ai value", "stage gate", "incremental funding", "realisation rate", "total cost of ai", "tca", "labour claim"]),
+    ("finops-roi-simulation",       [
+        "roi simulation", "simulate roi", "roi of", "roi calculation", "payback period",
+        "time to breakeven", "breakeven", "break-even", "breakeven period", "payback",
+        "efficiency calculation", "efficiency calculations", "finops efficiency", "financial simulation",
+        "roi model", "cost benefit", "cost-benefit", "simulation", "breakeven analysis",
+        "time to break-even", "break even period", "break even"
+    ]),
+    ("finops-ai-value-management",  ["ai investment", "ai business case", "ai value", "stage gate", "incremental funding", "realisation rate", "total cost of ai", "tca", "labour claim", "cost displacement"]),
 
     # ── AWS Core References ───────────────────────────────────────────────────
     ("finops-aws-commitments",      [
@@ -135,7 +141,8 @@ ROUTING: list[tuple[str, list[str]]] = [
         "cost per order", "cost per 1k", "cost per api call", "forecast variance",
         "benchmarking", "executive reporting", "cfo narrative", "maturity scorecard",
         "realised savings", "potential savings", "realised vs potential savings",
-        "cogs", "cloud cogs", "gross margin impact"
+        "cogs", "cloud cogs", "gross margin impact", "effective savings rate", "esr",
+        "efficiency calculations", "efficiency metrics", "savings scorecard"
     ]),
     ("finops-anomaly-management",   ["anomaly detection", "cost anomaly", "cost spike", "masked anomaly", "threshold tuning", "alert fatigue", "budget anomaly", "unusual spend", "spend surge"]),
     ("finops-tagging",              ["tagging strategy", "mandatory tagging", "naming convention", "tag enforcement", "iac tag", "mcp governance", "tag compliance", "intake migration", "mandatory tags"]),
@@ -145,7 +152,8 @@ ROUTING: list[tuple[str, list[str]]] = [
     ("finops-waste-detection-playbooks", [
         "waste detection", "waste playbook", "two-signal classification", "classification confidence",
         "waste classification", "where am i wasting", "how to find waste", "cloud waste",
-        "quick wins vs strategic", "quick win savings", "waste elimination", "waste backlog"
+        "quick wins vs strategic", "quick win savings", "waste elimination", "waste backlog",
+        "quick win breakeven", "waste elimination roi", "reclamation roi", "quick win payback"
     ]),
     ("greenops-cloud-carbon",       ["greenops", "cloud carbon", "scope 2", "scope 3", "carbon-aware", "sustainability", "csrd"]),
     ("optimnow-methodology",        ["diagnose before prescribing", "four pillars", "finops strategy design", "engagement design", "practice positioning"]),

@@ -808,7 +808,12 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "who was #1", "what was #1", "who spent the most", "total spend", "what was the total"
     ]) and not has_explicit_data_subject
 
-    is_rec = any(w in low for w in ["recommendation", "optimize", "saving", "reduce cost", "rightsizing", "waste", "underutilized"])
+    is_rec = any(w in low for w in [
+        "recommendation", "recommendations", "optimize", "optimization", "saving", "savings",
+        "reduce cost", "cost reduction", "rightsizing", "waste", "underutilized",
+        "roi", "simulation", "simulate", "breakeven", "break-even", "payback",
+        "efficiency calculation", "efficiency calculations", "payback period"
+    ])
     is_anomaly = any(w in low for w in ["anomal", "spike", "unusual spend", "unexpected cost"])
 
     is_user_query = bool(re.search(
@@ -822,8 +827,10 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "what is focus", "what is finops", "explain finops", "finops framework", "finops phases",
         "inform optimize operate", "savings plan vs", "savings plans vs", "ri vs", "reserved instance vs",
         "how to optimize", "how do i optimize", "best practice", "playbook", "doctrine", "strategy",
-        "unit economics", "tag governance", "waste pattern", "gp2 to gp3", "zombie nat", "egress cost"
-    ]) and not (customer or has_fetch_verb or any(w in low for w in ["our spend", "my spend", "our cost", "my cost", "show me our", "show me my"]))
+        "unit economics", "tag governance", "waste pattern", "gp2 to gp3", "zombie nat", "egress cost",
+        "break-even on", "breakeven on", "break-even utilization", "breakeven utilization",
+        "how does azure reservation break-even", "what is the break-even between"
+    ]) and not (customer or has_fetch_verb or any(w in low for w in ["our spend", "my spend", "our cost", "my cost", "show me our", "show me my", "simulate roi for our", "simulate roi for my"]))
 
     # Date parsing
     t_ctx = parse_query_time_context(last_msg)
