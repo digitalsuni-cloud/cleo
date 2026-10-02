@@ -2616,21 +2616,55 @@ def submit_feedback(req: FeedbackRequest):
         raise HTTPException(status_code=404, detail="Session not found")
 
     msgs = session.get("messages", [])
-    # Find the user msg and assistant msg around the given index
     user_msgs  = [m for m in msgs if m.get("role") == "user"]
     asst_msgs  = [m for m in msgs if m.get("role") == "assistant"]
+    
     idx = req.message_index
-    user_query = user_msgs[idx]["content"] if idx < len(user_msgs) else ""
-    asst_reply = asst_msgs[idx]["content"] if idx < len(asst_msgs) else ""
+    # Resolve user message index with fallback for 1-based or out-of-bounds indices
+    if 0 <= idx < len(user_msgs):
+        user_query = user_msgs[idx].get("content", "")
+    elif idx - 1 >= 0 and idx - 1 < len(user_msgs):
+        user_query = user_msgs[idx - 1].get("content", "")
+    elif user_msgs:
+        user_query = user_msgs[-1].get("content", "")
+    else:
+        user_query = ""
+
+    # Resolve assistant reply index similarly
+    if 0 <= idx < len(asst_msgs):
+        target_asst = asst_msgs[idx]
+        asst_reply = target_asst.get("content", "")
+    elif idx - 1 >= 0 and idx - 1 < len(asst_msgs):
+        target_asst = asst_msgs[idx - 1]
+        asst_reply = target_asst.get("content", "")
+    elif asst_msgs:
+        target_asst = asst_msgs[-1]
+        asst_reply = target_asst.get("content", "")
+    else:
+        target_asst = None
+        asst_reply = ""
+
+    # Annotate message in active session state
+    if target_asst is not None:
+        target_asst["voted"] = req.rating
+        if req.correction:
+            target_asst["correction"] = req.correction
 
     if req.rating == "good":
-        # Summarise the reply to ~200 chars for the memory store
         summary = asst_reply[:200].replace("\n", " ").strip()
-        mem.record_good_pattern(user_query, summary)
+        if user_query:
+            mem.record_good_pattern(user_query, summary)
         return {"status": "recorded", "type": "good_pattern"}
-    elif req.rating == "bad" and req.correction:
-        mem.record_correction(user_query, req.correction)
-        return {"status": "recorded", "type": "correction"}
+    elif req.rating == "bad":
+        if req.correction:
+            mem.record_correction(user_query, req.correction)
+            return {"status": "recorded", "type": "correction"}
+        else:
+            # Standalone thumbs-down: log negative feedback so the model/agent avoids repeating this response
+            summary = asst_reply[:200].replace("\n", " ").strip()
+            mem.record_negative_feedback(user_query, summary)
+            return {"status": "recorded", "type": "negative_feedback"}
+
     return {"status": "ignored"}
 
 @app.get("/api/memory")

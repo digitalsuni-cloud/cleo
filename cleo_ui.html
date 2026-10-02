@@ -3994,15 +3994,28 @@
         return;
       }
 
-      // Bad: show inline correction input
-      if (bubble.querySelector('.feedback-correction')) return; // already open
+      // Bad response: mark voted-bad, dim the good button
       btn.classList.add('voted-bad');
+      const goodBtn = actions?.querySelector('.feedback-btn:not(.feedback-bad)');
+      if (goodBtn) goodBtn.style.opacity = '0.3';
+
+      // Record negative feedback to server immediately!
+      try {
+        await fetch('/api/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: currentSessionId, message_index: midx, rating: 'bad' })
+        });
+      } catch (_) {}
+
+      // Show inline correction input if not already open
+      if (bubble.querySelector('.feedback-correction')) return;
 
       const row = document.createElement('div');
       row.className = 'feedback-correction';
       row.innerHTML = `
-        <input type="text" placeholder="What should Cleo have done instead?" autofocus />
-        <button onclick="sendCorrection(this, ${midx})">Teach Cleo</button>
+        <input type="text" placeholder="What should Cleo have done instead? (Press Enter to submit)" autofocus />
+        <button class="teach-save-btn" onclick="sendCorrection(this, ${midx})">Teach & Regenerate</button>
       `;
       if (actions && actions.classList.contains('assistant-msg-actions')) {
         actions.insertAdjacentElement('beforebegin', row);
@@ -4011,7 +4024,15 @@
       } else {
         bubble.appendChild(row);
       }
-      row.querySelector('input').focus();
+      const inputEl = row.querySelector('input');
+      inputEl.focus();
+      inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          row.querySelector('button').click();
+        }
+      });
+      showToast('👎 Feedback noted. Teach Cleo what you wanted to see.');
     }
 
     async function sendCorrection(btn, midx) {
@@ -4019,17 +4040,26 @@
       const correction = input.value.trim();
       if (!correction) return;
       btn.disabled = true;
-      btn.textContent = 'Saving…';
+      btn.textContent = 'Learning…';
       try {
         await fetch('/api/feedback', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ session_id: currentSessionId, message_index: midx, rating: 'bad', correction })
         });
-        btn.closest('.feedback-correction').remove();
-        showToast('✓ Cleo will remember this correction');
+        const bubble = btn.closest('.bubble');
+        const corrRow = btn.closest('.feedback-correction');
+        if (corrRow) corrRow.remove();
+        showToast('✓ Cleo learned this correction! Regenerating response...');
+        const msgEl = bubble?.closest('.message.cleo');
+        if (msgEl) {
+          const retryBtn = msgEl.querySelector('.retry-btn');
+          if (retryBtn) {
+            regenerateTurn(retryBtn);
+          }
+        }
       } catch (_) {
-        btn.textContent = 'Teach Cleo';
+        btn.textContent = 'Teach & Regenerate';
         btn.disabled = false;
       }
     }
@@ -4045,6 +4075,11 @@
       const textEl = prev.querySelector('.user-msg-text');
       const text = textEl ? textEl.textContent.trim() : '';
       if (!text) return;
+
+      // Cleanly remove the rejected turn so the regenerated turn replaces it
+      msgEl.remove();
+      prev.remove();
+
       const input = document.getElementById('prompt-input');
       if (input) {
         input.value = text;
@@ -6442,8 +6477,8 @@
         localStorage.setItem('cleo_session_id', currentSessionId);
         updateURLForSession(currentSessionId);
 
-        // Track which turn this is so feedback can reference it
-        const msgIndex = document.querySelectorAll('#chat-stream .message.cleo').length;
+        // Track which turn this is so feedback can reference it (0-based)
+        const msgIndex = Math.max(0, document.querySelectorAll('#chat-stream .message.cleo').length - 1);
 
         const now = new Date();
         const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

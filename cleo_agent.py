@@ -687,9 +687,12 @@ class AIClient:
         context_str = "\n".join(context_lines) if context_lines else "None (New Conversation)"
 
         cal = get_realtime_calendar_info()
+        mem_ctx = get_memory().build_context_block(last_msg)
+        mem_instruction = f"\nLEARNED USER CORRECTIONS & DOCTRINE (CRITICAL: Prioritize these user rules over defaults!):\n{mem_ctx}\n" if mem_ctx else ""
         system_instruction = (
             "You are Cleo's FinOps Request Analyzer. Analyze the user query in the context of recent chat history.\n"
             "Your mission is to understand the user's intent with extreme accuracy, correct any typos in services, dates, or cloud providers, normalize entities, and extract query parameters.\n\n"
+            f"{mem_instruction}"
             f"REAL-TIME TEMPORAL DETAILS (Ground all dates against this calendar):\n"
             f"- Today's Date: {cal['today_str']} ({cal['today_verbose']}) — ALWAYS IGNORE TODAY in closed daily billing trends as in-flight.\n"
             f"- Yesterday: {cal['yesterday_str']} — ALWAYS REMEMBER that yesterday's data is PARTIAL due to cloud billing settlement latency.\n"
@@ -1742,6 +1745,8 @@ class AIClient:
             if self.engine != "direct":
                 cal = get_realtime_calendar_info()
                 adv_context = f"AUTHORITATIVE FINOPS GUIDANCE & CONTEXT:\n{finops_adv}\n" if finops_adv else ""
+                if mem_ctx:
+                    adv_context = f"{mem_ctx}\n\n{adv_context}"
                 sys_msg = {
                     "role": "system",
                     "content": (
@@ -1750,6 +1755,7 @@ class AIClient:
                         f"Real-Time Calendar Context: Current date is {cal['today_str']}, current billing period is {cal['current_ym']}.\n"
                         "Answer the user's question with deep FinOps precision and clarity:\n"
                         "- Provide clear definitions, financial mechanics, and trade-offs.\n"
+                        "- When asked 'how to progress with' or 'how to implement' an optimization lever, provide a concrete, phased roadmap (Phase 1 Audit/Discovery, Phase 2 Staging/Canary, Phase 3 IaC/Execution with CLI/Terraform, Phase 4 Guardrails). NEVER output raw detection SQL or generic compute right-sizing text.\n"
                         "- Distinguish Quick Wins (non-disruptive, immediate) from Strategic Modernization (architectural).\n"
                         "- Include concrete metrics, formulas, or architecture/CLI steps where applicable.\n"
                         "- STRICT MANDATE ON ROI & BREAK-EVEN SIMULATIONS: NEVER assume a flat, uniform timeline (such as 'average 22 days for everything'). Break-even horizons depend strictly on the lever:\n"
@@ -5641,12 +5647,8 @@ class AIClient:
                     req_months = time_ctx.get("months_needed")
 
                 partial_notice = ""
-                if is_specific:
-                    svc_time_range = {"from": target_ym, "to": target_ym}
-                    svc_scope_label = target_label
-                    svc_granularity = "MONTHLY"
-                elif time_ctx.get("timeframe_days"):
-                    t_days = time_ctx["timeframe_days"]
+                if time_ctx.get("timeframe_days") or time_ctx.get("daily_range"):
+                    t_days = time_ctx.get("timeframe_days") or 1
                     svc_scope_label = time_ctx.get("target_label", f"Last {t_days} Days Trend")
                     if time_ctx.get("daily_range"):
                         svc_time_range = time_ctx["daily_range"]
@@ -5657,6 +5659,10 @@ class AIClient:
                         f"> ⚠️ **FinOps Ingestion Notice**: Current date (`{today_str}`) is excluded from closed analysis as in-flight; "
                         f"yesterday's data (`{yesterday_str}`) is preliminary/partial across all cloud providers due to standard 24–48h billing ingestion latency.\n\n"
                     )
+                elif is_specific:
+                    svc_time_range = {"from": target_ym, "to": target_ym}
+                    svc_scope_label = target_label
+                    svc_granularity = "MONTHLY"
                 elif req_months and req_months > 1:
                     svc_time_range = {"last": min(req_months, 12), "qualifier": "MONTH"}
                     svc_scope_label = f"Last {min(req_months, 12)} Months"
