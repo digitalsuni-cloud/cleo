@@ -475,4 +475,4 @@ By default, all Log Analytics tables are created under the Analytics plan, which
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

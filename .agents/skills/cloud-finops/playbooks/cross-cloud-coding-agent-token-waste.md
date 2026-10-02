@@ -13,7 +13,7 @@ confidence: likely
 Agentic coding tools (Claude Code, Cursor, GitHub Copilot, Codex, and the
 open-source CLIs) bill by the token, and the whole conversation history is
 re-sent as input on every turn, so spend compounds with conversation length
-rather than with the number of tasks completed. In the sessions OptimNow has
+rather than with the number of tasks completed. In the sessions Cloud FinOps has
 metered, input dominates - on the order of 85% of session cost - but the exact
 split varies with cache configuration and task shape, so measure your own
 before building a business case on it. The result is a cost line that grows faster than headcount or output,
@@ -149,4 +149,4 @@ your own workload before a fleet rollout.
 
 ---
 
-> *Cloud FinOps Playbook by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Playbook - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

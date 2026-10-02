@@ -298,7 +298,7 @@ hundreds of dollars a month, a `ml.g4dn.xlarge` GPU endpoint a few times that,
 and a `p4d.24xlarge` endpoint is in the tens of thousands - roughly two orders
 of magnitude between the cheapest and the most expensive thing you can forget
 to switch off (indicative, August 2026; pull current rates from the AWS
-pricing API or <https://optimtoken.optimnow.io> before quoting a number).
+pricing API or <https://cloud.google.com/pricing> before quoting a number).
 Forgotten POC endpoints, never-decommissioned A/B
 variants, and notebook instances left `InService` over a weekend are the
 two highest-density waste patterns in any account running SageMaker.
@@ -1258,4 +1258,4 @@ Billing transfer is a delegation mechanism that allows one payer account (the "b
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

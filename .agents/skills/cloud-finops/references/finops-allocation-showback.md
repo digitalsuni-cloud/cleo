@@ -395,11 +395,11 @@ A working data-quality dispute process:
   for hard chargeback.
 - `finops-anomaly-management.md` - daily anomaly review feeds the same
   allocation pipeline; shares the FOCUS dataset.
-- `optimnow-methodology.md` - "Showback before chargeback" principle, and
+- `finops-methodology.md` - "Showback before chargeback" principle, and
   the broader maturity-aware framing.
 - `finops-framework.md` - Allocation capability in the FinOps Framework, plus
   the Inform-phase context.
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

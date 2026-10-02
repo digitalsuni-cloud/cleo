@@ -503,8 +503,8 @@ own. It belongs to the Platform team's budget, not the application teams'.
   pipeline
 - `finops-chargeback.md` - K8s allocation is a precondition for K8s-
   aware chargeback
-- `optimnow-methodology.md` - the maturity-aware framing this file builds on
+- `finops-methodology.md` - the maturity-aware framing this file builds on
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

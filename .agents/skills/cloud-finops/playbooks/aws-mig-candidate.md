@@ -100,4 +100,4 @@ Prerequisite: the instance must be A100 or H100. G5 / G6 / G4dn / P3 do
 
 ---
 
-> *Cloud FinOps Playbook by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Playbook - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

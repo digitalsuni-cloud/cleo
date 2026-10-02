@@ -113,4 +113,4 @@ The right shape depends on whether the models share a container.
 
 ---
 
-> *Cloud FinOps Playbook by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Playbook - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

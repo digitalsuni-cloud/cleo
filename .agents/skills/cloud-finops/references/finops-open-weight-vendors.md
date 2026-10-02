@@ -22,7 +22,7 @@ fcp_maturity_entry: "Walk"
 > versus buying a Western managed API. This file covers the third channel neither of
 > those two describes: buying the model from the lab that trained it.
 >
-> Built by OptimNow. Grounded in hands-on enterprise delivery, not abstract frameworks.
+> Built for Multi-Cloud FinOps Practitioners. Grounded in hands-on enterprise delivery, not abstract frameworks.
 >
 > **Source caveat:** vendor rate cards in this space change on a scale of weeks, and
 > several claims below (licence terms, prior flat rates, subscription tier prices above
@@ -92,7 +92,7 @@ Allocate by model *and* channel from the start.
 > *All figures below are illustrative, list price, read from the vendor pricing pages on
 > 23 August 2026 unless dated otherwise. Prices in this segment move on a scale of weeks
 > and this file does not move with them. For a current figure, call a live pricing tool
-> if one is available, otherwise check <https://optimtoken.optimnow.io>. What is durable
+> if one is available, otherwise check <https://cloud.google.com/pricing>. What is durable
 > here is the shape of each vendor's discount mechanics, not the absolute numbers.*
 
 ### DeepSeek: time-of-day pricing
@@ -374,6 +374,6 @@ unallocated estate is guesswork with extra steps.
 > Sources: DeepSeek API pricing documentation, Alibaba Cloud Model Studio pricing
 > documentation, Moonshot Kimi platform pricing, Z.ai pricing and DevPack documentation,
 > all read 23 August 2026. Licence terms and non-current rates corroborated by secondary
-> reporting as flagged inline. OptimNow methodology.
+> reporting as flagged inline. FinOps methodology.
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

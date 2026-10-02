@@ -564,7 +564,7 @@ boundary can yield a disproportionate jump in discount rate.
 - [ ] Factor Enterprise Support cost into the total cost of ownership before
       signing
 
-**EDP preparation roadmap (source: OptimNow):**
+**EDP preparation roadmap (source: Cloud FinOps):**
 
 | Stage | Timeline | Key activities |
 |---|---|---|
@@ -611,4 +611,4 @@ works best when stacked with other instruments:
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

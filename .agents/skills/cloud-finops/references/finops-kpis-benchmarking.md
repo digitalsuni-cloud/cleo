@@ -152,7 +152,7 @@ is the organisation's own baseline.
 
 The FinOps Framework 2026 names Executive Strategy Alignment as its own
 capability. The practitioner-grade version is less a separate artefact than a
-discipline about how the *same* KPIs are carried upward - the OptimNow lens:
+discipline about how the *same* KPIs are carried upward - the Cloud FinOps lens:
 connect cost to value, and pass the CFO test (every number on the slide must
 survive the question "so what?").
 
@@ -206,8 +206,8 @@ scorecard is that rubric applied to your estate with evidence attached.
 - `finops-ai-value-management.md` - stage gates and the AI Investment
   Council, the value-side twin of this file
 - `finops-chargeback.md` - what changes when the numbers start moving money
-- `optimnow-methodology.md` - the connect-cost-to-value lens and the CFO test
+- `finops-methodology.md` - the connect-cost-to-value lens and the CFO test
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

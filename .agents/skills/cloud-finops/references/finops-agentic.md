@@ -132,7 +132,7 @@ cite the classification, not the ecosystem.
 **1. Data connectivity with cost awareness**
 Agents require access to real-time cost data alongside operational data. An agent that
 can identify a spending anomaly but cannot correlate it to a specific resource, workflow,
-or decision point is only half useful. MCP-based connectivity (e.g., OptimNow's finops-tagging
+or decision point is only half useful. MCP-based connectivity (e.g., Cloud FinOps's finops-tagging
 MCP server) provides standardized interfaces for cost data, tagging, and governance without
 custom integration code per data source.
 
@@ -234,6 +234,6 @@ making progress treat agent development as iterative learning, not project deliv
 
 ---
 
-> Sources: OptimNow methodology; Big-T Notation by Dan Neff, Tokenomics Foundation (CC BY 4.0, linked inline); x402 / MPP provider documentation (linked inline).
+> Sources: FinOps methodology; Big-T Notation by Dan Neff, Tokenomics Foundation (CC BY 4.0, linked inline); x402 / MPP provider documentation (linked inline).
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

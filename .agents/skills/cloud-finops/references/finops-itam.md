@@ -336,4 +336,4 @@ not with an automated governance platform.
 > Management Tools (July 2024), vendor entitlement management documentation (Microsoft,
 > Oracle, SAP), Flexera 2025 State of Cloud Report.
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
