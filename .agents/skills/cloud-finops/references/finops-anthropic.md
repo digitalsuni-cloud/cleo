@@ -54,7 +54,7 @@ Total cost is now shaped by a combination of variables that FinOps must track ex
 
 > *Illustrative rates, list price, as of September 2026 (Anthropic model documentation).
 > Prices move and this file does not. For a current figure, call a live pricing tool or
-> check <https://optimtoken.optimnow.io>. What is durable below is the tier structure and
+> check <https://cloud.google.com/pricing>. What is durable below is the tier structure and
 > the multipliers, not the absolute numbers.*
 
 ### Base token pricing
@@ -486,4 +486,4 @@ for premium modes and managed services - is reusable across the GenAI vendor lan
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

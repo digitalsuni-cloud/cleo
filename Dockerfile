@@ -13,9 +13,8 @@ WORKDIR /app
 
 # Install Python deps first (layer-cached unless requirements change)
 COPY requirements.txt .
-RUN pip install --no-cache-dir \
-      httpx openai anthropic google-generativeai \
-      fastapi "uvicorn[standard]"
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir openai anthropic google-generativeai
 
 # Copy application code
 COPY cleo_agent.py cleo_server.py cleo_logger.py cleo_memory.py cleo_finops_refs.py cleo_ui.html ./

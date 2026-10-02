@@ -475,9 +475,9 @@ re-check it against <https://www.tokeneconomics.com> once the paper ships.
 ### Where the arithmetic lives
 
 The formulas, worked examples, and the assumptions-and-limitations section behind all of
-the above are maintained in the OptimNow
-[AI ROI Calculator](https://airoicalculator.optimnow.io) and specified in full in its
-[METHODOLOGY.md](https://github.com/OptimNow/ai-roi-calculator/blob/main/METHODOLOGY.md).
+the above are maintained in the Cloud FinOps
+[AI ROI Calculator](https://airoicalculator.finops.org) and specified in full in its
+[METHODOLOGY.md](https://github.com/Cloud FinOps/ai-roi-calculator/blob/main/METHODOLOGY.md).
 They are deliberately not restated here: they are generated into the calculator's MCP
 server by a synchronised build with drift detection, and a copy in this file would sit
 outside that machinery and diverge.
@@ -505,4 +505,4 @@ routes to, so the cost side carries its own as-of date.
 > definition v0.5.2 and the Tokenomics Brief episode "Why Tokens Aren't the AI Bill"
 > (September 2026) for the TCA framing, labour split and ledger destinations.
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

@@ -22,7 +22,7 @@ fcp_maturity_entry: "Walk"
 > Commitments (Reservations, Savings Plans, AHB, Spot, MACC) and the enumerated
 > per-service pattern catalogue live in their own files - see the routing table below.
 >
-> Distilled from OptimNow Azure FinOps engagement experience and primary Microsoft
+> Distilled from Cloud FinOps Azure FinOps engagement experience and primary Microsoft
 > sources (Azure Pricing pages, Cost Management documentation, FinOps Toolkit).
 
 ---
@@ -973,7 +973,7 @@ tagging schemes that exist on paper but not in production.
 
 ### Tagging policy design
 
-Mandatory tag set - the OptimNow default for FinOps allocation:
+Mandatory tag set - the Cloud FinOps default for FinOps allocation:
 
 | Tag | Purpose | Allowed values |
 |---|---|---|
@@ -1058,12 +1058,12 @@ allocation-rule debugging is otherwise an audit nightmare.
 Recommend showback first. Chargeback adds organisational complexity and only pays
 off when the showback signal stops driving behaviour change on its own.
 
-### OptimNow tooling for tag governance
+### Cloud FinOps tooling for tag governance
 
-Two OptimNow assets directly relevant to engagement delivery:
+Two Cloud FinOps assets directly relevant to engagement delivery:
 
 - **Tag compliance MCP (open source)** -
-  https://github.com/OptimNow/finops-tag-compliance-mcp - agent-accessible tag
+  https://github.com/Cloud FinOps/finops-tag-compliance-mcp - agent-accessible tag
   compliance auditing across Azure (and AWS). Recommended pattern when an
   engagement needs ongoing tag compliance reporting integrated with an AI agent.
 - **Tagging policy generator** -
@@ -1814,4 +1814,4 @@ for Azure cost reporting.
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

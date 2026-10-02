@@ -148,10 +148,10 @@ that cannot run is worse than no query at all - it returns empty and reads as
 
 ---
 
-> *Cloud FinOps Playbook by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Playbook - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
 ```
 
-The trailing `---` + OptimNow / CC BY-SA footer is required on every
+The trailing `---` + Cloud FinOps / CC BY-SA footer is required on every
 playbook. Playbooks redistribute through the PyPI bundle (`cloud-finops-mcp`)
 and the `install.sh --grouped` build, so per-file attribution is the right
 license-hygiene default rather than relying on reference to the repo
@@ -205,4 +205,4 @@ extracting more of them into playbooks is tracked in `docs/ROADMAP.md`.
 
 ---
 
-> *Cloud FinOps Playbook by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Playbook - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

@@ -340,6 +340,7 @@ from typing import Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 import uvicorn
@@ -470,6 +471,14 @@ app = FastAPI(
     description="Intelligent FinOps Assistant powered by CloudHealth MCP",
     version="2.1.0",
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Check for local MLX models on Apple Silicon
@@ -2116,6 +2125,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., max_length=131072)  # 128 KB ceiling (security: L3)
     session_id: Optional[str] = None
     history: Optional[list[dict]] = None
+    stream: Optional[bool] = False
 
 class ToolCallLog(BaseModel):
     tool: str
@@ -2144,8 +2154,55 @@ def stop_chat(req: StopChatRequest):
         logger.info(f"[Chat] Stop signal received for session: {req.session_id}")
     return {"status": "ok", "stopped": True}
 
-@app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
+from collections import defaultdict
+
+# Simple in-memory rate limiter (stdlib, zero external deps)
+_rate_limit_lock = threading.Lock()
+_request_history = defaultdict(list)
+RATE_LIMIT_MAX_REQUESTS = 60  # 60 requests per minute per IP
+RATE_LIMIT_WINDOW_SECS = 60
+
+def _check_rate_limit(client_ip: str) -> bool:
+    now = time.time()
+    with _rate_limit_lock:
+        timestamps = _request_history[client_ip]
+        while timestamps and timestamps[0] < now - RATE_LIMIT_WINDOW_SECS:
+            timestamps.pop(0)
+        if len(timestamps) >= RATE_LIMIT_MAX_REQUESTS:
+            return False
+        timestamps.append(now)
+        return True
+
+
+def prune_messages_to_context_budget(messages: list[dict], max_tokens: int = 12000) -> list[dict]:
+    """Ensures conversation history fits safely within LLM context window while preserving system prompt and latest turns."""
+    if not messages:
+        return messages
+    sys_msg = [messages[0]] if messages[0].get("role") == "system" else []
+    chat_msgs = messages[1:] if sys_msg else messages[:]
+
+    total = sum(estimate_token_count(m.get("content", "")) for m in sys_msg + chat_msgs)
+    if total <= max_tokens or len(chat_msgs) <= 2:
+        return messages
+
+    kept = []
+    current_tokens = sum(estimate_token_count(m.get("content", "")) for m in sys_msg)
+    for m in reversed(chat_msgs):
+        m_tokens = estimate_token_count(m.get("content", ""))
+        if kept and (current_tokens + m_tokens > max_tokens):
+            break
+        kept.append(m)
+        current_tokens += m_tokens
+    kept.reverse()
+    return sys_msg + kept
+
+
+@app.post("/chat", response_model=None)
+def chat(req: ChatRequest, request: Request):
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    if not _check_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail="Too many chat requests. Please slow down.")
+
     global _mcp, _ai, _tools, _last_activity
     _last_activity = time.time()  # reset idle watchdog countdown
     if not _mcp or not _tools:
@@ -2174,6 +2231,7 @@ def chat(req: ChatRequest):
     _cancelled_sessions.discard(session_id)
     now_iso = datetime.now(timezone.utc).isoformat()
 
+    _engine_label = _ai.get_engine_display_name() if _ai and hasattr(_ai, "get_engine_display_name") else None
     if session_id not in _sessions:
         title = _generate_chat_title(req.message)
         _sessions[session_id] = {
@@ -2182,7 +2240,7 @@ def chat(req: ChatRequest):
             "created_at": now_iso,
             "updated_at": now_iso,
             "messages": [
-                {"role": "system", "content": build_system_prompt(_tools)}
+                {"role": "system", "content": build_system_prompt(_tools, engine_label=_engine_label)}
             ]
         }
         if req.history:
@@ -2197,9 +2255,9 @@ def chat(req: ChatRequest):
 
     messages = session_entry["messages"]
 
-    # Refresh system prompt with live real-time calendar and prompt rules
+    # Refresh system prompt with live real-time calendar, prompt rules, and active engine
     if messages and messages[0].get("role") == "system":
-        messages[0]["content"] = build_system_prompt(_tools)
+        messages[0]["content"] = build_system_prompt(_tools, engine_label=_engine_label)
 
     # Auto-title session if it was previously untitled
     if session_entry.get("title") in ("New Conversation", "New Chat", "Untitled Chat", ""):
@@ -2210,6 +2268,121 @@ def chat(req: ChatRequest):
 
     tool_log: list[ToolCallLog] = []
     original_call_tool = _mcp.call_tool
+
+    if req.stream:
+        import queue
+        q = queue.Queue()
+        done_marker = object()
+
+        def tracked_call_tool(name: str, arguments: dict) -> dict:
+            if session_id in _cancelled_sessions:
+                raise RuntimeError("Query cancelled by user.")
+            q.put({"type": "status", "message": f"Querying {name}..."})
+            result = original_call_tool(name, arguments)
+            tool_log.append(ToolCallLog(
+                tool=name,
+                arguments=arguments,
+                result_snippet=str(result)[:400]
+            ))
+            return result
+
+        _mcp.call_tool = tracked_call_tool
+
+        def worker():
+            t0 = time.perf_counter()
+            try:
+                def on_token(token: str):
+                    q.put({"type": "delta", "content": token})
+
+                def on_status(status: str):
+                    q.put({"type": "status", "message": status})
+
+                active_messages = prune_messages_to_context_budget(messages)
+                response = run_agent_turn(_mcp, _ai, active_messages, on_token=on_token, on_status=on_status)
+                duration_secs = max(0.01, round(time.perf_counter() - t0, 2))
+                stats = getattr(_ai, "last_stats", {}) or {}
+                total_tokens = stats.get("tokens") or (stats.get("prompt_tokens", 0) + stats.get("completion_tokens", 0))
+                if not total_tokens:
+                    p_tok = estimate_token_count(" ".join([m.get("content", "") for m in messages if isinstance(m, dict)]))
+                    c_tok = estimate_token_count(response)
+                    total_tokens = p_tok + c_tok
+                    tokens_per_sec = round(c_tok / max(duration_secs, 0.05), 1)
+                else:
+                    tokens_per_sec = stats.get("tokens_per_sec") or round(stats.get("completion_tokens", total_tokens) / max(duration_secs, 0.05), 1)
+
+                now_ts = int(datetime.now(timezone.utc).timestamp())
+                thinking = getattr(_ai, "last_thinking", "") or ""
+                clean_resp, extra_thinking = split_thinking_and_response(response)
+                if extra_thinking:
+                    thinking = (thinking + "\n\n" + extra_thinking).strip() if thinking else extra_thinking
+                    response = clean_resp
+
+                messages.append({
+                    "role": "assistant",
+                    "content": response,
+                    "thinking": thinking,
+                    "timestamp": now_ts,
+                    "duration_secs": duration_secs,
+                    "tokens": total_tokens,
+                    "tokens_per_sec": tokens_per_sec,
+                    "tool_calls": [t.dict() for t in tool_log]
+                })
+
+                if len(messages) > 40:
+                    messages[:] = [messages[0]] + messages[-30:]
+
+                session_entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+                _save_sessions()
+
+                q.put({
+                    "type": "done",
+                    "response": response,
+                    "thinking": thinking,
+                    "session_id": session_id,
+                    "tool_calls": [t.dict() for t in tool_log],
+                    "title": session_entry.get("title"),
+                    "duration_secs": duration_secs,
+                    "tokens": total_tokens,
+                    "tokens_per_sec": tokens_per_sec,
+                })
+            except Exception as e:
+                if session_id in _cancelled_sessions or "cancelled by user" in str(e).lower():
+                    logger.info(f"[Chat] Query cancelled by user for session {session_id}")
+                    if messages and messages[-1].get("role") == "user" and messages[-1].get("content") == req.message:
+                        messages.pop()
+                    q.put({"type": "cancelled", "message": "Query cancelled by user."})
+                else:
+                    logger.error(f"[Chat] Streaming generation error: {e}", exc_info=True)
+                    q.put({"type": "error", "error": str(e)})
+            finally:
+                _mcp.call_tool = original_call_tool
+                _cancelled_sessions.discard(session_id)
+                q.put(done_marker)
+
+        worker_thread = threading.Thread(target=worker, daemon=True)
+        worker_thread.start()
+
+        def event_generator():
+            while True:
+                try:
+                    item = q.get(timeout=0.05)
+                except queue.Empty:
+                    if not worker_thread.is_alive():
+                        break
+                    continue
+                if item is done_marker:
+                    break
+                yield f"data: {json.dumps(item)}\n\n"
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            }
+        )
 
     def tracked_call_tool(name: str, arguments: dict) -> dict:
         if session_id in _cancelled_sessions:
@@ -2225,7 +2398,8 @@ def chat(req: ChatRequest):
     _mcp.call_tool = tracked_call_tool
     t0 = time.perf_counter()
     try:
-        response = run_agent_turn(_mcp, _ai, messages)
+        active_messages = prune_messages_to_context_budget(messages)
+        response = run_agent_turn(_mcp, _ai, active_messages)
     except Exception as e:
         if session_id in _cancelled_sessions or "cancelled by user" in str(e).lower():
             logger.info(f"[Chat] Query cancelled by user for session {session_id}")
@@ -2285,6 +2459,43 @@ def chat(req: ChatRequest):
         tokens=total_tokens,
         tokens_per_sec=tokens_per_sec
     )
+
+
+@app.get("/api/sessions/search")
+def search_sessions(q: str = ""):
+    query = q.strip().lower()
+    if not query:
+        return {"results": []}
+    results = []
+    for sid, s in _sessions.items():
+        if isinstance(s, list):
+            s = _normalize_session(sid, s)
+            _sessions[sid] = s
+        title = s.get("title", "")
+        matched_messages = []
+        for m in s.get("messages", []):
+            content = m.get("content", "")
+            if query in content.lower():
+                idx = content.lower().find(query)
+                start = max(0, idx - 40)
+                end = min(len(content), idx + len(query) + 60)
+                snippet = ("..." if start > 0 else "") + content[start:end].strip() + ("..." if end < len(content) else "")
+                matched_messages.append({
+                    "role": m.get("role"),
+                    "snippet": snippet,
+                    "timestamp": m.get("timestamp")
+                })
+        if query in title.lower() or matched_messages:
+            results.append({
+                "id": sid,
+                "guid": sid,
+                "url": f"/chat/{sid}",
+                "title": title,
+                "updated_at": s.get("updated_at", ""),
+                "matches": matched_messages[:5]
+            })
+    return {"results": results, "query": q}
+
 
 @app.get("/api/sessions")
 def list_sessions():
@@ -2713,7 +2924,8 @@ def _auto_update_on_startup():
 @app.get("/chat", response_class=HTMLResponse)
 @app.get("/chat/{session_id}", response_class=HTMLResponse)
 def serve_gui(session_id: Optional[str] = None):
-    ui_path = os.path.join(os.path.dirname(__file__), "cleo_ui.html")
+    base_dir = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
+    ui_path = os.path.join(base_dir, "cleo_ui.html")
     if os.path.exists(ui_path):
         with open(ui_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())

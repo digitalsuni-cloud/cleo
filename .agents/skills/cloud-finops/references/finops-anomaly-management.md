@@ -356,7 +356,7 @@ severity and audience need.
 
 ## Cross-references
 
-- `optimnow-methodology.md` - the maturity-aware framing this file builds on
+- `finops-methodology.md` - the maturity-aware framing this file builds on
 - `finops-aws.md` - AWS Cost Anomaly Detection in the broader AWS context; also the
   cost-preventive SCP subsection (detection is reactive - denying expensive IAM
   actions at the organisation level is the preventive complement)
@@ -370,4 +370,4 @@ severity and audience need.
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

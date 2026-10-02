@@ -425,7 +425,7 @@ that the team is being unreasonable.
   Chargeback maturity cannot exceed allocation and showback maturity.
 - `finops-tagging.md` - the prerequisite for allocation, hence the
   prerequisite for chargeback as well.
-- `optimnow-methodology.md` - "Showback before chargeback" principle and
+- `finops-methodology.md` - "Showback before chargeback" principle and
   the broader maturity-aware framing.
 - `finops-itam.md` - vendor co-management for chargeback decisions that
   span cloud-marketplace purchases.
@@ -438,4 +438,4 @@ that the team is being unreasonable.
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

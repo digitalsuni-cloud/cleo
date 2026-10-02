@@ -17,7 +17,7 @@ fcp_maturity_entry: "Walk"
 > patterns, and a maturity-driven decision rubric. Use this reference whenever a client raises
 > "should we self-host our LLM?" or "build vs buy" for inference workloads.
 >
-> Built by OptimNow. Grounded in hands-on enterprise delivery, not abstract frameworks.
+> Built for Multi-Cloud FinOps Practitioners. Grounded in hands-on enterprise delivery, not abstract frameworks.
 
 ---
 
@@ -42,7 +42,7 @@ Three drivers make this conversation more common in 2026:
    several model generations on both the Claude and GPT sides, so a rate assumed today is
    unlikely to be invalidated mid-project. Clients with predictable workloads can now build
    credible TCO models comparing managed APIs to renting their own GPUs. Pull the current
-   rates from a live source (<https://optimtoken.optimnow.io>) when you build the model -
+   rates from a live source (<https://cloud.google.com/pricing>) when you build the model -
    stability is not the same as permanence.
 2. **Open-weight models have closed the quality gap** for many use cases. Qwen3.6, Llama 4,
    GLM-5.1, Gemma 4 deliver production-grade quality across reasoning, coding, multimodal.
@@ -189,7 +189,7 @@ should be priced into the decision.
 
 ## The maturity-driven decision rubric
 
-This is the OptimNow point of view. Cost mechanics matter. Compliance matters. But the
+This is the Cloud FinOps point of view. Cost mechanics matter. Compliance matters. But the
 single best predictor of self-hosted success is the client's in-house ML-Ops maturity.
 
 ### Recommend self-hosted only when **all** of the following are true:
@@ -278,11 +278,11 @@ These are the failure modes seen repeatedly in 2024-2026:
 | Optimize | Apply commitment, caching, batch, model selection on managed APIs. Most savings come from these levers, not from self-hosting. |
 | Operate | Now, and only now, evaluate self-hosted for specific workloads meeting the criteria above. Build routing/fallback layers. Treat self-hosted inference as a capability the FinOps practice manages alongside cloud commitments. |
 
-## Connecting back to OptimNow methodology
+## Connecting back to FinOps methodology
 
 This sits squarely in the **diagnose before prescribing** principle. The self-hosted vs
 managed question is one of the most common AI FinOps questions, and one of the most common
-sources of bad recommendations from generic consultants. The OptimNow approach is to:
+sources of bad recommendations from generic consultants. The Cloud FinOps approach is to:
 
 1. Refuse to answer the question without 90 days of usage data and a clear view of the
    client's ML-Ops maturity.
@@ -307,4 +307,4 @@ sources of bad recommendations from generic consultants. The OptimNow approach i
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

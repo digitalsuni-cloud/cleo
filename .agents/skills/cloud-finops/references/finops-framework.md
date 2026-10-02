@@ -395,4 +395,4 @@ and accountability mechanisms.
 > Sources: FinOps Foundation (finops.org/framework, 2024 version; State of FinOps 2026);
 > FinOps Weekly podcast on common implementation mistakes; FinOps Weekly blog on shift-left practices.
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

@@ -38,7 +38,7 @@ operational discipline that requires design, enforcement, and continuous monitor
 - Anomaly detection produces false positives - spikes in untagged spend are uninvestigable
 - Commitment discounts applied to untagged resources create stranded capacity
 
-**OptimNow principle:** Physical tagging must precede virtual tagging. Virtual tagging
+**Cloud FinOps principle:** Physical tagging must precede virtual tagging. Virtual tagging
 (applying metadata in the billing layer without changing actual resource tags) is a
 powerful complement but a fragile substitute. Fix the source before adding abstraction.
 
@@ -119,7 +119,7 @@ Tools:
 - AWS Config rules (`required-tags` managed rule)
 - AWS Resource Explorer for cross-account tag inventory
 - Azure Policy compliance dashboard
-- OptimNow's MCP for Tagging (cross-account, agent-accessible)
+- Cloud FinOps's MCP for Tagging (cross-account, agent-accessible)
 - Cloud Custodian policies for custom compliance rules
 
 **Layer 3: Remediation (automated or human-driven)**
@@ -164,7 +164,7 @@ account, service, region, resource ID, or existing tag values.
 
 ## MCP-based tagging automation
 
-OptimNow's `finops-tagging` MCP server enables AI agents to interact with AWS tagging
+Cloud FinOps's `finops-tagging` MCP server enables AI agents to interact with AWS tagging
 infrastructure through natural language. This changes the operational model from
 periodic audits to continuous, conversational governance.
 
@@ -280,4 +280,4 @@ in a post-deployment process.
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

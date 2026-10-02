@@ -1,17 +1,18 @@
 """
 cleo_finops_refs.py — Dynamic FinOps knowledge injection and advisory engine for Cleo.
 
-Reads from the OptimNow cloud-finops skill references and playbooks:
+Reads from the cloud-finops skill references and playbooks:
   - Injects relevant context for LLM generation (keeping prompts lean).
   - Provides direct, structured advisory responses for the Direct FinOps Router.
 """
 import os
+import sys
 import re
 from pathlib import Path
 from functools import lru_cache
 from typing import Optional
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
 REFS_DIR = BASE_DIR / ".agents/skills/cloud-finops/references"
 PLAYBOOKS_DIR = BASE_DIR / ".agents/skills/cloud-finops/playbooks"
 
@@ -147,11 +148,21 @@ ROUTING: list[tuple[str, list[str]]] = [
         "quick wins vs strategic", "quick win savings", "waste elimination", "waste backlog"
     ]),
     ("greenops-cloud-carbon",       ["greenops", "cloud carbon", "scope 2", "scope 3", "carbon-aware", "sustainability", "csrd"]),
-    ("optimnow-methodology",        ["optimnow", "diagnose before prescribing", "four pillars", "finops strategy design", "engagement design", "practice positioning"]),
+    ("optimnow-methodology",        ["diagnose before prescribing", "four pillars", "finops strategy design", "engagement design", "practice positioning"]),
 ]
 
 _MAX_CHARS = int(os.environ.get("CLEO_REF_MAX_CHARS", "12000"))
 _MAX_REFS = int(os.environ.get("CLEO_REF_MAX_REFS", "2"))
+
+
+def _sanitize_finops_text(text: str) -> str:
+    """Sanitizes FinOps text to generalize methodology and remove proprietary vendor branding."""
+    if not text:
+        return ""
+    text = re.sub(r'(?i)>\s*\*Cloud FinOps (?:Playbook|Skill) by.*?licensed under.*?\*', '', text)
+    text = re.sub(r'(?i)\[OptimNow\]\(https?://[^\)]+\)', 'Cloud FinOps Best Practices', text)
+    text = re.sub(r'(?i)\boptimnow\b', 'Cloud FinOps', text)
+    return text.strip()
 
 
 @lru_cache(maxsize=128)
@@ -173,7 +184,7 @@ def _read_target(key: str) -> str:
         if len(parts) >= 3:
             text = parts[2].strip()
 
-    return text
+    return _sanitize_finops_text(text)
 
 
 def _find_matches(query: str, max_matches: int = _MAX_REFS) -> list[str]:
@@ -218,7 +229,7 @@ def get_finops_context(query: str) -> str:
                 slug = key.split(":", 1)[1]
                 label = f"Playbook: {slug.replace('-', ' ').title()}"
             else:
-                label = key.replace("finops-", "").replace("greenops-", "GreenOps: ").replace("-", " ").title()
+                label = key.replace("optimnow-", "Practitioner ").replace("finops-", "").replace("greenops-", "GreenOps: ").replace("-", " ").title()
 
             if len(content) > _MAX_CHARS:
                 cut = content.rfind("\n\n", 0, _MAX_CHARS)
@@ -231,7 +242,7 @@ def get_finops_context(query: str) -> str:
 
     return (
         "\n\n---\n"
-        "## OPTIMNOW FINOPS EXPERT KNOWLEDGE\n"
+        "## CLOUD FINOPS BEST PRACTICES & KNOWLEDGE\n"
         "The following authoritative reference(s) were loaded for this query. "
         "Apply their guidance precisely. Diagnose before prescribing. Connect cost to value. "
         "Recommend progressively (quick wins first, structural changes second).\n\n"
@@ -363,7 +374,7 @@ def get_finops_advisory(query: str) -> Optional[str]:
     """
     Direct advisory engine for Cleo.
     Synthesizes and returns an authoritative, structured response from the
-    matched OptimNow playbook or reference when no external LLM is configured.
+    matched FinOps playbook or reference when no external LLM is configured.
     """
     matched = _find_matches(query, max_matches=1)
     if not matched:
@@ -379,19 +390,19 @@ def get_finops_advisory(query: str) -> Optional[str]:
         slug = target_key.split(":", 1)[1]
         title = slug.replace("-", " ").title()
         return (
-            f"### 📋 OptimNow FinOps Playbook: {title}\n\n"
+            f"### 📋 Cloud FinOps Playbook: {title}\n\n"
             f"{content}\n\n"
             f"---\n"
-            f"*Source: Authoritative OptimNow Multi-Cloud FinOps Playbooks & Waste Detection Catalogue.*"
+            f"*Source: Multi-Cloud FinOps Playbooks & Waste Detection Catalog.*"
         )
 
     # Reference file: extract best matching sections
-    label = target_key.replace("finops-", "").replace("greenops-", "GreenOps: ").replace("-", " ").title()
+    label = target_key.replace("optimnow-", "Practitioner ").replace("finops-", "").replace("greenops-", "GreenOps: ").replace("-", " ").title()
     body = _extract_best_sections(content, query)
 
     return (
-        f"### 💡 OptimNow FinOps Expert Guidance: {label}\n\n"
+        f"### 💡 Cloud FinOps Expert Guidance: {label}\n\n"
         f"{body}\n\n"
         f"---\n"
-        f"*Source: Authoritative OptimNow Multi-Cloud FinOps Framework & Engineering Doctrine.*"
+        f"*Source: FinOps Foundation Framework & Multi-Cloud Engineering Best Practices.*"
     )

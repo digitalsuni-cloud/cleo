@@ -682,7 +682,7 @@ an outsized line item.
 - Non-production environments (dev, test, QA) inherit production-grade configurations
   (Multi-AZ, oversized instances) without justification
 
-**RDS optimisation framework (source: OptimNow):**
+**RDS optimisation framework (source: Cloud FinOps):**
 
 The optimisation sequence matters. Follow this order:
 
@@ -1479,4 +1479,4 @@ CloudWatch log groups often persist long after their usefulness has expired. In 
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

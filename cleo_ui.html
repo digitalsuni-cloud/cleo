@@ -34,6 +34,33 @@
       --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
       --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.65);
     }
+
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --bg-base: #f8fafc;
+        --bg-surface: #ffffff;
+        --bg-card: #f1f5f9;
+        --bg-card-hover: #e2e8f0;
+        --border: #cbd5e1;
+        --border-subtle: rgba(0, 0, 0, 0.08);
+        --border-focus: #0284c7;
+        --text: #0f172a;
+        --text-muted: #475569;
+        --text-dim: #64748b;
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+        --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);
+        --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.15);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
@@ -875,6 +902,40 @@
         opacity: 0.85;
         visibility: visible;
         pointer-events: auto;
+      }
+    }
+    @media (max-width: 768px) {
+      header {
+        padding: 0 10px;
+        gap: 8px;
+        height: 48px;
+      }
+      .brand-tag {
+        display: none;
+      }
+      .history-drawer {
+        position: absolute;
+        top: 48px;
+        left: 0;
+        bottom: 0;
+        z-index: 50;
+        width: 85vw;
+        max-width: 320px;
+        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+      }
+      .history-drawer.collapsed {
+        margin-left: -100%;
+      }
+      .chat-main {
+        width: 100% !important;
+      }
+      .chat-messages {
+        padding: 12px 8px;
+      }
+      .modal-box {
+        width: 95vw !important;
+        max-width: 95vw !important;
+        padding: 16px 14px;
       }
     }
     .user-action-btn {
@@ -2391,9 +2452,9 @@
 <body>
 
   <!-- Top Command Center Header -->
-  <header>
+  <header role="banner">
     <div class="brand-section">
-      <button class="icon-btn" id="btn-toggle-history" onclick="toggleHistoryDrawer()" title="Toggle Sidebar">
+      <button class="icon-btn" id="btn-toggle-history" onclick="toggleHistoryDrawer()" title="Toggle Sidebar" aria-label="Toggle history sidebar">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="3" width="18" height="18" rx="2"></rect>
           <line x1="9" y1="3" x2="9" y2="21"></line>
@@ -2492,7 +2553,7 @@
   <div class="main-container">
 
     <!-- 1. Left Drawer: 100 Chat History & MCP Telemetry -->
-    <aside id="history-drawer" class="history-drawer">
+    <aside id="history-drawer" class="history-drawer" role="navigation" aria-label="Conversation and Telemetry History">
       <!-- Segmented Tab Switcher -->
       <div class="sidebar-tabs">
         <button id="tab-btn-chats" class="sidebar-tab-btn active" onclick="switchSidebarTab('chats')">
@@ -2509,7 +2570,7 @@
           <span>Telemetry</span>
           <span id="sidebar-tool-badge" class="counter-badge" style="background: rgba(52, 211, 153, 0.12); border-color: rgba(52, 211, 153, 0.3); color: #34d399;">0</span>
         </button>
-        <button class="sidebar-new-btn" onclick="newSession()" title="Start New Conversation">
+        <button class="sidebar-new-btn" onclick="newSession()" title="Start New Conversation" aria-label="Start new conversation">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -2520,7 +2581,7 @@
       <!-- Pane 1: Chat Sessions -->
       <div id="sidebar-pane-chats" class="sidebar-pane active">
         <div class="search-container">
-          <input id="history-search-input" class="search-input" placeholder="Search chats..." oninput="filterHistory(this.value)" autocomplete="off">
+          <input id="history-search-input" class="search-input" placeholder="Search chats..." oninput="filterHistory(this.value)" autocomplete="off" aria-label="Search chat sessions">
         </div>
         <div id="history-list" class="history-list">
           <div class="history-empty">Loading chat history...</div>
@@ -2609,8 +2670,8 @@
     </aside>
 
     <!-- 2. Center Stage: Chat Viewport -->
-    <main class="chat-container">
-      <div id="chat-stream">
+    <main class="chat-container" role="main">
+      <div id="chat-stream" role="log" aria-live="polite" aria-relevant="additions text">
         <!-- Default Welcome Hero Card -->
         <div class="welcome-hero">
           <div class="welcome-hero-header">
@@ -2685,9 +2746,9 @@
       <!-- Command Bar Input -->
       <footer>
         <form id="chat-form" class="input-form" onsubmit="handleSend(event)">
-          <textarea id="prompt-input" class="input-box" placeholder="Ask about cloud costs, service forecasts, or waste reclamation..." rows="1" autocomplete="off"></textarea>
+          <textarea id="prompt-input" class="input-box" placeholder="Ask about cloud costs, service forecasts, or waste reclamation..." rows="1" autocomplete="off" aria-label="FinOps query input"></textarea>
           <div class="input-actions">
-            <button id="send-btn" type="submit" class="send-btn" title="Send message (Enter, Shift+Enter for new line)" disabled>
+            <button id="send-btn" type="submit" class="send-btn" title="Send message (Enter, Shift+Enter for new line)" aria-label="Send message" disabled>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="12" y1="19" x2="12" y2="5"></line>
                 <polyline points="5 12 12 5 19 12"></polyline>
@@ -5361,7 +5422,8 @@
           padding: 10,
           callbacks: {
             label: ctx => {
-              const v = ctx.parsed.y ?? ctx.parsed ?? ctx.raw;
+              const isH = ctx.chart?.options?.indexAxis === 'y';
+              const v = isH ? (ctx.parsed.x ?? ctx.raw) : (ctx.parsed.y ?? ctx.parsed ?? ctx.raw);
               const dsLabel = ctx.dataset.label ? `${ctx.dataset.label}: ` : '';
               return typeof v === 'number'
                 ? ` ${dsLabel}$${v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
@@ -5473,8 +5535,7 @@
         }
       };
 
-      const isLineChart = ['line', 'area'].includes(config.type) || 
-                          (config.data?.datasets && config.data.datasets.some(ds => ds.tension !== undefined));
+      const isLineChart = ['line', 'area'].includes(config.type);
       const curveBtn = document.getElementById('chart-modal-curve-btn');
       if (curveBtn) {
         curveBtn.style.display = isLineChart ? 'inline-flex' : 'none';
@@ -5484,6 +5545,7 @@
       }
 
       if (baseOpts.scales) {
+        const isModalHorizontal = (baseOpts.indexAxis === 'y');
         modalOpts.scales = {
           ...baseOpts.scales,
           x: baseOpts.scales.x ? {
@@ -5491,7 +5553,7 @@
             ticks: {
               ...(baseOpts.scales.x.ticks || {}),
               font: { size: 11 },
-              maxRotation: 45,
+              maxRotation: isModalHorizontal ? 0 : 45,
               minRotation: 0
             }
           } : undefined,
@@ -5499,7 +5561,8 @@
             ...baseOpts.scales.y,
             ticks: {
               ...(baseOpts.scales.y.ticks || {}),
-              font: { size: 11 }
+              font: { size: 11 },
+              autoSkip: isModalHorizontal ? false : undefined
             }
           } : undefined
         };
@@ -5684,22 +5747,47 @@
         // it's clear what the numbers mean, not just "there are numbers".
         const axisLabel = spec.value_label || spec.yLabel || (isWaterfall ? 'Cost Change' : 'Cost');
         const axisIsCost = _isCostMetricLabel(axisLabel);
-        if (opts.scales?.y?.ticks) {
-          opts.scales.y.ticks.callback = v => _formatAxisNumber(v, axisIsCost);
+
+        if (isHorizontal) {
+          opts.indexAxis = 'y';
+          // In horizontal bar charts: X is the value axis (Cost), Y is the category axis (Labels)
+          if (opts.scales?.x) {
+            opts.scales.x.ticks = opts.scales.x.ticks || {};
+            opts.scales.x.ticks.callback = v => _formatAxisNumber(v, axisIsCost);
+            opts.scales.x.title = { display: true, text: axisLabel, color: '#64748b', font: { size: 11 } };
+            opts.scales.x.beginAtZero = true;
+          }
+          if (opts.scales?.y) {
+            opts.scales.y.ticks = opts.scales.y.ticks || {};
+            delete opts.scales.y.ticks.callback; // NEVER format category index as currency!
+            opts.scales.y.ticks.autoSkip = false;
+            const categoryLabel = spec.x_label || spec.xLabel || '';
+            if (categoryLabel) {
+              opts.scales.y.title = { display: true, text: categoryLabel, color: '#64748b', font: { size: 11 } };
+            } else {
+              delete opts.scales.y.title;
+            }
+          }
+        } else {
+          // Vertical charts: Y is the value axis (Cost), X is the category axis (Labels)
+          if (opts.scales?.y?.ticks) {
+            opts.scales.y.ticks.callback = v => _formatAxisNumber(v, axisIsCost);
+          }
+          if (opts.scales?.y) {
+            opts.scales.y.title = { display: true, text: axisLabel, color: '#64748b', font: { size: 11 } };
+          }
+          if (opts.scales?.x) {
+            const xLabel = spec.x_label || spec.xLabel || _inferXAxisLabel(labels);
+            if (xLabel) opts.scales.x.title = { display: true, text: xLabel, color: '#64748b', font: { size: 11 } };
+          }
         }
-        if (opts.scales?.y) {
-          opts.scales.y.title = { display: true, text: axisLabel, color: '#64748b', font: { size: 11 } };
-        }
-        if (opts.scales?.x) {
-          const xLabel = spec.x_label || spec.xLabel || _inferXAxisLabel(labels);
-          if (xLabel) opts.scales.x.title = { display: true, text: xLabel, color: '#64748b', font: { size: 11 } };
-        }
+
         // Same JSON-clone problem drops the tooltip's number-formatting callback — re-attach it,
         // matching the axis's cost-vs-non-cost formatting so tooltips and axis agree.
         if (opts.plugins?.tooltip) {
           opts.plugins.tooltip.callbacks = {
             label: ctx => {
-              const v = ctx.parsed.y ?? ctx.parsed ?? ctx.raw;
+              const v = isHorizontal ? (ctx.parsed.x ?? ctx.raw) : (ctx.parsed.y ?? ctx.parsed ?? ctx.raw);
               const dsLabel = ctx.dataset.label ? `${ctx.dataset.label}: ` : '';
               if (typeof v !== 'number') return ` ${dsLabel}${v}`;
               const formatted = axisIsCost
@@ -5875,7 +5963,7 @@
             pointBorderWidth: isStrokedPoint ? 2.4 : 1.5,
             pointRadius: isLine ? 4.5 : 0,
             pointHoverRadius: isLine ? 7.5 : 0,
-            tension: initialTension,
+            tension: isLine ? initialTension : undefined,
             fill: isArea ? (isStacked ? true : 'origin') : (type === 'line' ? false : undefined)
           };
         });
@@ -6214,6 +6302,7 @@
       const input = document.getElementById('prompt-input');
       const text = input.value.trim();
       if (!text) return;
+      window.lastSentPrompt = text;
 
       input.value = '';
       input.style.height = '24px';
@@ -6241,8 +6330,8 @@
         const startTime = performance.now();
         const res = await fetch('/chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, session_id: payloadSessionId }),
+          headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream, application/json' },
+          body: JSON.stringify({ message: text, session_id: payloadSessionId, stream: true }),
           signal: currentAbortController.signal
         });
 
@@ -6266,7 +6355,86 @@
           return;
         }
 
-        const data = await res.json();
+        let data = null;
+        const isEventStream = (res.headers.get('content-type') || '').includes('text/event-stream');
+
+        if (isEventStream && res.body) {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let streamedText = '';
+          let hasRenderedText = false;
+          const bubble = thinkingEl.querySelector('.bubble');
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop();
+
+            for (const part of parts) {
+              const lines = part.split('\n');
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed.startsWith('data:')) continue;
+                const jsonStr = trimmed.replace(/^data:\s*/, '');
+                let evt;
+                try {
+                  evt = JSON.parse(jsonStr);
+                } catch (e) {
+                  // Partial or unparseable SSE line chunk
+                  continue;
+                }
+                if (!evt) continue;
+                if (evt.type === 'status') {
+                  const spinner = thinkingEl.querySelector('.thinking');
+                  if (spinner) {
+                    spinner.innerHTML = `<span class="thinking-spinner"></span> ${escapeHtml(evt.message)}`;
+                  }
+                } else if (evt.type === 'delta') {
+                  streamedText += evt.content;
+                  if (bubble) {
+                    if (!hasRenderedText) {
+                      hasRenderedText = true;
+                      bubble.innerHTML = `<div class="streaming-body markdown-body">${renderMarkdown(streamedText)}</div>`;
+                    } else {
+                      const bodyEl = bubble.querySelector('.streaming-body');
+                      if (bodyEl) {
+                        bodyEl.innerHTML = renderMarkdown(streamedText);
+                      }
+                    }
+                    if (stream) {
+                      stream.scrollTop = stream.scrollHeight;
+                    }
+                  }
+                } else if (evt.type === 'done') {
+                  data = evt;
+                } else if (evt.type === 'cancelled') {
+                  if (bubble) {
+                    bubble.innerHTML = `
+                      <div style="display:inline-flex; align-items:center; gap:8px; padding:6px 12px; background:rgba(239, 68, 68, 0.08); border:1px solid rgba(239, 68, 68, 0.25); border-radius:6px; color:#f87171; font-size:0.82rem; font-family:'JetBrains Mono', monospace;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                          <rect x="5" y="5" width="14" height="14" rx="2.5"></rect>
+                        </svg>
+                        <span>Query stopped by user.</span>
+                      </div>
+                    `;
+                  }
+                  return;
+                } else if (evt.type === 'error') {
+                  throw new Error(evt.error || 'Server generation error');
+                }
+              }
+            }
+          }
+        } else {
+          data = await res.json();
+        }
+
+        if (!data) {
+          throw new Error('No response data received from server.');
+        }
         const durationSecs = data.duration_secs != null ? data.duration_secs : ((performance.now() - startTime) / 1000);
         const tokens = data.tokens != null ? data.tokens : null;
         const tokensPerSec = data.tokens_per_sec != null ? data.tokens_per_sec : (tokens && durationSecs > 0 ? Math.round(tokens / durationSecs) : null);
@@ -6334,7 +6502,9 @@
             `;
           }
         } else {
-          thinkingEl.querySelector('.bubble').innerHTML = `<span style="color:#f87171;">Network error: ${escapeHtml(err.message)}</span>`;
+          const isNet = err.name === 'TypeError' || (err.message && err.message.toLowerCase().includes('fetch'));
+          const errPrefix = isNet ? 'Network error' : 'Error';
+          thinkingEl.querySelector('.bubble').innerHTML = `<span style="color:#f87171;">${errPrefix}: ${escapeHtml(err.message)}</span>`;
         }
       } finally {
         setGeneratingState(false);
@@ -6358,6 +6528,10 @@
           if (promptInputEl.value.trim()) {
             document.getElementById('chat-form').dispatchEvent(new Event('submit', { cancelable: true }));
           }
+        } else if (e.key === 'ArrowUp' && !promptInputEl.value && window.lastSentPrompt) {
+          e.preventDefault();
+          promptInputEl.value = window.lastSentPrompt;
+          updateInputHeight();
         } else {
           setTimeout(updateInputHeight, 0);
         }
@@ -6376,11 +6550,38 @@
       });
     }
 
-    // Global escape key to abort query if running
+    // Global keyboard shortcuts (Escape, Cmd+K, Cmd+N, Cmd+B)
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && isGenerating) {
         e.preventDefault();
         stopQuery();
+        return;
+      }
+      // Cmd+K or Ctrl+K: Focus chat history search
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        const searchInput = document.getElementById('history-search-input');
+        if (searchInput) {
+          const drawer = document.getElementById('history-drawer');
+          if (drawer && !drawer.classList.contains('open')) {
+            toggleHistoryDrawer();
+          }
+          searchInput.focus();
+          searchInput.select();
+        }
+        return;
+      }
+      // Cmd+N or Ctrl+N: Start new chat
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        newSession();
+        return;
+      }
+      // Cmd+B or Ctrl+B: Toggle history sidebar
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        toggleHistoryDrawer();
+        return;
       }
     });
 

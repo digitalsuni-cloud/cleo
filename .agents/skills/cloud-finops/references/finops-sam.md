@@ -311,4 +311,4 @@ Always-on SaaS services, duplicated infrastructure across overlapping tools, and
 > Gartner MQ for SaaS Management Platforms (July 2025), Halit Oener "The SaaSocalypse"
 > (March 2026), Flexera 2025 State of Cloud Report, vendor documentation.
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

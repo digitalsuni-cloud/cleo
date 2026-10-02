@@ -91,4 +91,4 @@ table(topTable)
 
 ---
 
-> *Cloud FinOps Playbook by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Playbook - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

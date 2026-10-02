@@ -55,3 +55,15 @@ skills-lock.json
 .agents/rules/graphify.md
 .agents/workflows/graphify.md
 
+# Tauri & Desktop Release Artifacts
+node_modules/
+src-tauri/
+release/
+dist/
+build/
+build-backend.sh
+build-release.sh
+*.spec
+package.json
+package-lock.json
+

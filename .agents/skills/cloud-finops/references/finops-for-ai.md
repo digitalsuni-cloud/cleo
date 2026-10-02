@@ -459,7 +459,7 @@ tiered routing far more than one at 5x, and that alone can decide whether the ro
 harness is worth building.
 
 **Pull the live rate card before building routing economics on a remembered ratio.**
-Call a pricing tool if one is available, or check <https://optimtoken.optimnow.io>. The
+Call a pricing tool if one is available, or check <https://cloud.google.com/pricing>. The
 payoff from tiered routing depends directly on the current spread. For the Claude
 per-model rate structure, see `finops-anthropic.md` - and treat the figures there as
 illustrative, not as a quotable rate card. For the open-weight vendors' own hosted
@@ -729,6 +729,6 @@ runtime-autonomous agents.
 
 ---
 
-> Sources: FinOps Foundation (State of FinOps 2026), OptimNow methodology.
+> Sources: FinOps Foundation (State of FinOps 2026), FinOps methodology.
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

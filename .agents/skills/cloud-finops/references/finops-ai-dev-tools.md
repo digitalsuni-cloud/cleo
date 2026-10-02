@@ -546,7 +546,7 @@ becomes a cost problem when:
 > figures in this file - treat the table as a shape comparison (who charges for what),
 > not as a quotable rate card, and verify against each vendor's pricing page. For the
 > per-token rates behind the BYOK rows, use a live source such as
-> <https://optimtoken.optimnow.io>.*
+> <https://cloud.google.com/pricing>.*
 
 | Tool | Type | Seat cost | Token / usage model | Enterprise option | Proxy-compatible |
 |---|---|---|---|---|---|
@@ -618,4 +618,4 @@ proportion to invoice legibility rather than to unbounded risk is the common mis
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

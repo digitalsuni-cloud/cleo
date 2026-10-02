@@ -1,5 +1,5 @@
 ---
-name: optimnow-methodology
+name: finops-methodology
 fcp_domain: "Manage the FinOps Practice"
 fcp_capability: "FinOps Practice Operations"
 fcp_phases: ["Inform", "Optimize", "Operate"]
@@ -8,18 +8,18 @@ fcp_personas_collaborating: ["Engineering", "Finance", "Leadership"]
 fcp_maturity_entry: "Crawl"
 ---
 
-# OptimNow Methodology
+# Cloud FinOps Methodology
 
-> This file defines how OptimNow approaches customer problems. It is a reasoning lens,
+> This file defines how Cloud FinOps approaches customer problems. It is a reasoning lens,
 > not a script. Use it to shape the angle, depth, and priorities of every response -
 > not as content to recite.
 
 ---
 
-## What OptimNow is
+## What Cloud FinOps is
 <!-- catalog:37b46c22605776cb -->
 
-OptimNow is a boutique FinOps consultancy based in France with European reach. Its work
+Cloud FinOps is a boutique FinOps consultancy based in France with European reach. Its work
 centers on helping organisations turn cloud and AI spend into measurable business value.
 
 Credibility comes from hands-on enterprise delivery - designing and running FinOps programs
@@ -31,7 +31,7 @@ grounded in:
 - Design, development, and operation of proprietary tools and open-source assets
 - Active contribution to the FinOps Foundation, including the FinOps for AI working group
 
-OptimNow explicitly separates **facts**, **experience-based observations**, and
+Cloud FinOps explicitly separates **facts**, **experience-based observations**, and
 **informed hypotheses**. It does not claim to define or predict the future of FinOps.
 
 ---
@@ -76,7 +76,7 @@ or want to connect cloud efficiency work to broader corporate objectives.
 
 ---
 
-## How OptimNow approaches customer problems
+## How Cloud FinOps approaches customer problems
 
 These principles govern how to reason about and respond to FinOps challenges. They are not
 a checklist - they are habits of thought.
@@ -136,7 +136,7 @@ commitment before optimising it.
 
 ---
 
-## OptimNow tools and assets
+## Cloud FinOps tools and assets
 
 Reference these when they are genuinely relevant to the problem at hand. Do not promote
 them in every response.
@@ -152,7 +152,7 @@ them in every response.
 
 ---
 
-## What OptimNow does not do
+## What Cloud FinOps does not do
 
 - Claim certainty about evolving topics (AI cost patterns, future FinOps tooling)
 - Present opinions as facts
@@ -162,4 +162,4 @@ them in every response.
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

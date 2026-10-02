@@ -14,11 +14,11 @@ fcp_maturity_entry: "Crawl"
 > Waste detection is the most concrete entry point to Cloud FinOps. Unlike
 > commitment strategy or chargeback, waste hunting produces realised savings
 > in the first month, with low organisational change required. This file is
-> the OptimNow taxonomy for systematic waste detection - what to hunt for,
+> the Cloud FinOps taxonomy for systematic waste detection - what to hunt for,
 > how to detect it, how to fix it safely, and how to track realised savings
 > over time.
 >
-> Operationally, OptimNow runs the **WasteLine** appliance - a private,
+> Operationally, Cloud FinOps runs the **WasteLine** appliance - a private,
 > read-only AWS waste-assessment tool with 49 detection rules across the
 > resource-state categories below. WasteLine automates the
 > detection-and-classification
@@ -650,7 +650,7 @@ differently from AWS, so do not port an AWS threshold across providers.
 
 ## Operational tooling
 
-OptimNow's WasteLine appliance is the operational tool for this
+Cloud FinOps's WasteLine appliance is the operational tool for this
 discipline on AWS. It implements Categories 1-7 above as 49
 deterministic detection rules, with read-only AWS access, classification
 confidence per finding, executive reporting, and proposal-only remediation
@@ -767,9 +767,9 @@ roadmap.
   patterns
 - `finops-bedrock.md`, `finops-azure-openai.md`, `finops-vertexai.md` -
   provider-specific AI inefficiency context
-- `optimnow-methodology.md` - the maturity-aware framing this file
+- `finops-methodology.md` - the maturity-aware framing this file
   builds on
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

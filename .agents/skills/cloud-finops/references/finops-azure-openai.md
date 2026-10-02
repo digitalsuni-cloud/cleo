@@ -97,7 +97,7 @@ while the absolute rates have not (structure as of August 2026):
 | GPT-4.1 | 0.25x (75% discount) | 4x |
 
 For the current absolute rates, use the Azure pricing documentation or a live pricing
-tool (<https://optimtoken.optimnow.io>) rather than a figure remembered from this file.
+tool (<https://cloud.google.com/pricing>) rather than a figure remembered from this file.
 
 ### Provisioned vs standard pricing - hourly PTU vs reservation-discounted PTU
 
@@ -431,4 +431,4 @@ it affects how GenAI spend is credited against existing commitments.
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*

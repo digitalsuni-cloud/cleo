@@ -420,10 +420,10 @@ it post-migration costs a quarter of engineering time.
   matters
 - `finops-anomaly-management.md` - new workloads should be added to the
   anomaly-monitoring scope as part of the intake gate
-- `optimnow-methodology.md` - "Diagnose before prescribing" applies
+- `finops-methodology.md` - "Diagnose before prescribing" applies
   especially to migration: understand what the workload actually does
   before recommending architecture or commitment
 
 ---
 
-> *Cloud FinOps Skill by [OptimNow](https://optimnow.io) - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
+> *Cloud FinOps Skill - licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).*
