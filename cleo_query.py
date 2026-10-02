@@ -334,16 +334,50 @@ def parse_query_time_context(query: str) -> dict:
     target_ym = None
     target_label = None
     is_specific = False
+    single_date = None
+    daily_range = None
+    timeframe_days = None
+
+    # 0. Single Day / Date: e.g. 'September 29th', 'Sep 29', '29th of September', '2026-09-29'
+    m_iso_day = re.search(r'\b((?:19|20)\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b', low)
+    if m_iso_day:
+        yr, mo, dy = int(m_iso_day.group(1)), int(m_iso_day.group(2)), int(m_iso_day.group(3))
+        single_date = f"{yr}-{mo:02d}-{dy:02d}"
+        target_ym = f"{yr}-{mo:02d}"
+        target_label = f"{FULL_NAMES[mo]} {dy}, {yr}"
+        is_specific = True
+        daily_range = {"from": single_date, "to": single_date}
+        timeframe_days = 1
+
+    if not single_date:
+        m_day_1 = re.search(r'\b(' + '|'.join(MONTHS.keys()) + r')\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*((?:19|20)\d{2}))?\b', low)
+        m_day_2 = re.search(r'\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(' + '|'.join(MONTHS.keys()) + r')(?:\s*,?\s*((?:19|20)\d{2}))?\b', low)
+        m_day = m_day_1 or m_day_2
+        if m_day:
+            if m_day_1:
+                m_str, d_str, y_str = m_day.group(1), m_day.group(2), m_day.group(3)
+            else:
+                d_str, m_str, y_str = m_day.group(1), m_day.group(2), m_day.group(3)
+            m_num = MONTHS[m_str]
+            day_num = int(d_str)
+            yr = int(y_str) if y_str else (now.year if m_num <= now.month else now.year - 1)
+            single_date = f"{yr}-{m_num:02d}-{day_num:02d}"
+            target_ym = f"{yr}-{m_num:02d}"
+            target_label = f"{FULL_NAMES[m_num]} {day_num}, {yr}"
+            is_specific = True
+            daily_range = {"from": single_date, "to": single_date}
+            timeframe_days = 1
 
     # 1. Month Name + Year (e.g. 'July 2026', 'Jul 26', 'July 2025')
-    m = re.search(r'\b(' + '|'.join(MONTHS.keys()) + r')[,\s]+((?:19|20)\d{2}|\d{2})\b', low)
-    if m:
-        m_num = MONTHS[m.group(1)]
-        yr_str = m.group(2)
-        yr = int(yr_str) if len(yr_str) == 4 else 2000 + int(yr_str)
-        target_ym = f"{yr}-{m_num:02d}"
-        target_label = f"{FULL_NAMES[m_num]} {yr}"
-        is_specific = True
+    if not target_ym:
+        m = re.search(r'\b(' + '|'.join(MONTHS.keys()) + r')[,\s]+((?:19|20)\d{2}|\d{2})\b', low)
+        if m:
+            m_num = MONTHS[m.group(1)]
+            yr_str = m.group(2)
+            yr = int(yr_str) if len(yr_str) == 4 else 2000 + int(yr_str)
+            target_ym = f"{yr}-{m_num:02d}"
+            target_label = f"{FULL_NAMES[m_num]} {yr}"
+            is_specific = True
 
     # 2. ISO YYYY-MM (e.g. '2026-07') or MM/YYYY (e.g. '07/2026')
     if not target_ym:
@@ -386,17 +420,16 @@ def parse_query_time_context(query: str) -> dict:
             is_specific = True
 
     # 5. Relative timeframes
-    timeframe_days = None
-    daily_range = None
-    m_days_ctx = re.search(r'(?:last|past|previous|for)\s+(\d{1,3})\s*days?\b|\b(\d{1,3})\s*(?:days?|d)\b', low)
-    if m_days_ctx:
-        timeframe_days = int(m_days_ctx.group(1) or m_days_ctx.group(2))
-        start_d = now - datetime.timedelta(days=timeframe_days)
-        end_d = now - datetime.timedelta(days=1)  # Ignore current date (in-flight); end closed window at yesterday
-        target_label = f"Last {timeframe_days} Days Trend ({start_d.strftime('%Y-%m-%d')} to {end_d.strftime('%Y-%m-%d')})"
-        target_ym = current_ym
-        is_specific = True
-        daily_range = {"from": start_d.strftime("%Y-%m-%d"), "to": end_d.strftime("%Y-%m-%d")}
+    if daily_range is None:
+        m_days_ctx = re.search(r'(?:last|past|previous|for)\s+(\d{1,3})\s*days?\b|\b(\d{1,3})\s*(?:days?|d)\b', low)
+        if m_days_ctx:
+            timeframe_days = int(m_days_ctx.group(1) or m_days_ctx.group(2))
+            start_d = now - datetime.timedelta(days=timeframe_days)
+            end_d = now - datetime.timedelta(days=1)  # Ignore current date (in-flight); end closed window at yesterday
+            target_label = f"Last {timeframe_days} Days Trend ({start_d.strftime('%Y-%m-%d')} to {end_d.strftime('%Y-%m-%d')})"
+            target_ym = current_ym
+            is_specific = True
+            daily_range = {"from": start_d.strftime("%Y-%m-%d"), "to": end_d.strftime("%Y-%m-%d")}
 
     if not target_ym:
         if any(w in low for w in ["last month", "previous month"]):
@@ -461,7 +494,8 @@ def parse_query_time_context(query: str) -> dict:
         "last_ym": last_ym,
         "limit": limit,
         "timeframe_days": timeframe_days,
-        "daily_range": daily_range
+        "daily_range": daily_range,
+        "single_date": single_date
     }
 
 def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None) -> dict:

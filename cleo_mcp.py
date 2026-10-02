@@ -531,14 +531,9 @@ class MCPClient:
                 txt = res.get("content", [{}])[0].get("text", "")
                 if "FQ-USR-" in txt or "HTTP Error" in txt or '"status": "ERROR"' in txt:
                     is_err = True
-                    # Auto-learn: record the failing SQL so future queries avoid it
+                    # Transient query error detected (e.g. FQ-USR error)
                     if name == "execute_datasource_query":
-                        bad_sql = args.get("queryInput", {}).get("sqlStatement", "")
-                        if bad_sql:
-                            try:
-                                get_memory().record_sql_fix(bad_sql, txt[:200], "")
-                            except Exception:
-                                pass
+                        logger.debug(f"[Datasource Error] {txt[:160]}")
 
         if not is_err:
             now_ym = datetime.date.today().strftime("%Y-%m")

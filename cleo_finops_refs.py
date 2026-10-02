@@ -20,6 +20,23 @@ PLAYBOOKS_DIR = BASE_DIR / ".agents/skills/cloud-finops/playbooks"
 # Keys starting with "playbook:" resolve in PLAYBOOKS_DIR.
 # Other keys resolve in REFS_DIR.
 ROUTING: list[tuple[str, list[str]]] = [
+    # ── Cleo Recommendation Levers Execution Blueprints ───────────────────────
+    ("finops-lever-execution-guides", [
+        "multi-cloud storage modernization & waste elimination", "multi-cloud storage modernization",
+        "storage modernization & waste elimination", "storage modernization", "waste elimination",
+        "how to progress with", "how to progress with multi-cloud storage", "how to progress with storage modernization",
+        "progress with storage modernization", "progress with multi-cloud storage", "progress with",
+        "commercial database modernization & licensing rightsizing", "commercial database modernization",
+        "database licensing rightsizing", "licensing rightsizing", "database modernization",
+        "how to progress with commercial database", "progress with database modernization",
+        "architecture & silicon modernization (arm64/graviton)", "architecture & silicon modernization",
+        "silicon modernization", "arm64 modernization", "graviton modernization",
+        "how to progress with architecture & silicon", "progress with silicon modernization",
+        "ai token economics & batch inference optimization", "ai token economics",
+        "batch inference optimization", "token economics & batch inference",
+        "how to progress with ai token economics", "progress with ai token economics"
+    ]),
+
     # ── High-frequency named playbooks (Exact Pattern Matching) ───────────────
     ("playbook:aws-gp2-to-gp3",                 ["gp2 to gp3", "gp2-to-gp3", "gp2", "gp3", "volume usage gp2", "ebs volume", "upgrade gp2", "migrate gp2", "ebs storage modernization", "gp2 savings"]),
     ("playbook:aws-zombie-nat-gateway",         ["zombie nat", "zombie nat gateway", "idle nat", "nat gateway cost", "nat gateway idle", "eliminate nat gateway", "nat gateway waste", "unused nat"]),
@@ -322,8 +339,11 @@ def _extract_best_sections(text: str, query: str, max_chars: int = 3500) -> str:
         scored.append((score, idx, sec))
 
     scored.sort(key=lambda x: x[0], reverse=True)
-    # Pick top 2 highest scoring sections
-    chosen_indices = [idx for _, idx, _ in scored[:2] if scored[0][0] > 0]
+    # If the top section is a dominant match (e.g. dedicated lever or playbook section), dedicate full budget to it
+    if len(scored) >= 2 and scored[0][0] >= 20 and scored[0][0] >= scored[1][0] * 1.4:
+        chosen_indices = [scored[0][1]]
+    else:
+        chosen_indices = [idx for _, idx, _ in scored[:2] if scored[0][0] > 0]
     if not chosen_indices:
         chosen_indices = [0]
 
