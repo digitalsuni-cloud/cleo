@@ -311,6 +311,26 @@ def extract_requested_cloud(query_text: str) -> Optional[str]:
         return "aws"
     return None
 
+def detect_anomaly_status_filter(query_text: str) -> Optional[str]:
+    """
+    Detects desired anomaly status filter from user query.
+    By default for anomaly queries, returns 'ACTIVE' unless user asks for inactive ones
+    (e.g. 'inactive', 'resolved', 'closed', 'archived'), or None if user asks for both / all statuses.
+    """
+    low = (query_text or "").lower()
+    wants_all_status = any(p in low for p in [
+        "all status", "all statuses", "both active and inactive", "active and inactive",
+        "active or inactive", "regardless of status", "any status"
+    ])
+    if wants_all_status:
+        return None
+    wants_inactive = any(w in low for w in [
+        "inactive", "resolved", "closed", "archived", "the inactive ones", "inactive ones", "past anomalies"
+    ])
+    if wants_inactive:
+        return "INACTIVE"
+    return "ACTIVE"
+
 def parse_query_time_context(query: str) -> dict:
     """
     Extracts time context, target month, limit, and sort direction from user prompt.
@@ -529,9 +549,10 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
             any(c in low for c in ["azure", "aws", "gcp", "google cloud"]) or
             any(s in low for s in ["ec2", "rds", "s3", "lambda", "dynamo", "bedrock"])
         )
-        if has_cloud_or_svc and (
+        has_status_pivot = any(p in low for p in ["inactive", "the inactive ones", "inactive ones", "active ones", "active"])
+        if (has_cloud_or_svc or has_status_pivot) and (
             any(p in low for p in ["what about", "how about", "and for", "now for", "for ", "instead", "too", "also", "as well", "simillar", "similar", "same", "show "]) or
-            len(words) <= 3
+            len(words) <= 4
         ):
             is_short_pivot = True
 
@@ -661,7 +682,8 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
     elif prior_type == "monthly_trend":
         expanded_query = f"give me the monthly spend trend and breakdown for {prov_disp} for the last {inherited_timeframe_months or 6} months"
     elif prior_type == "anomalies":
-        expanded_query = f"show top cost anomalies detected for {prov_disp}"
+        status_word = "inactive " if ("inactive" in low or "inactive" in last_user_low) else ""
+        expanded_query = f"show top {status_word}cost anomalies detected for {prov_disp}"
     elif prior_type == "region_breakdown":
         expanded_query = f"show {prov_disp} spend breakdown by region"
     elif prior_type == "service_breakdown":
@@ -848,7 +870,10 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "roi", "simulation", "simulate", "breakeven", "break-even", "payback",
         "efficiency calculation", "efficiency calculations", "payback period"
     ])
-    is_anomaly = any(w in low for w in ["anomal", "spike", "unusual spend", "unexpected cost"])
+    is_anomaly = any(w in low for w in [
+        "anomal", "spike", "unusual spend", "unexpected cost",
+        "inactive ones", "the inactive ones", "active ones", "the active ones"
+    ]) or (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "anomalies")
 
     is_user_query = bool(re.search(
         r'\b(?:list\s+(?:the\s+)?(?:of\s+)?users?|users?\s+list|all\s+users?|show\s+(?:me\s+)?(?:the\s+)?users?|get\s+(?:me\s+)?(?:the\s+)?users?|give\s+(?:me\s+)?(?:the\s+)?(?:list\s+(?:of\s+)?)?users?|who\s+are\s+the\s+users?|what\s+users?\b|users?\s+in\s+(?:this|the|our)\s+tenant|tenant\s+users?|user\s+accounts?|iam\s+users?|who\s+has\s+access|manage\s+users?|add\s+users?|invite\s+users?)\b',
@@ -1046,6 +1071,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "include_chart": include_chart,
         "include_mom": include_mom,
         "is_new_data_fetch": is_new_data_fetch,
+        "anomaly_status": detect_anomaly_status_filter(last_msg) if is_anomaly else None,
         "corrected_query": cont_ctx.get("expanded_query") or last_msg
     }
 

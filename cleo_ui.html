@@ -1519,6 +1519,158 @@
       width: 100%;
       height: 100%;
     }
+    .cleo-chart-action-btn.active {
+      background: rgba(56, 189, 248, 0.18);
+      border-color: rgba(56, 189, 248, 0.5);
+      color: #38bdf8;
+    }
+    .chart-modal-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 7px 12px;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      margin-bottom: 10px;
+      font-size: 0.75rem;
+      user-select: none;
+    }
+    .chart-modal-toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .chart-modal-control-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .chart-modal-label {
+      font-size: 0.72rem;
+      color: #94a3b8;
+      font-weight: 500;
+    }
+    .chart-modal-divider {
+      width: 1px;
+      height: 16px;
+      background: rgba(255, 255, 255, 0.1);
+      margin: 0 4px;
+    }
+    .chart-modal-select {
+      background: #0d131f;
+      color: #f1f5f9;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 0.73rem;
+      font-family: inherit;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.15s ease;
+    }
+    .chart-modal-select:hover, .chart-modal-select:focus {
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+    .chart-modal-dim-popover {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 290px;
+      max-width: 350px;
+      background: #0d131f;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.75);
+      z-index: 150;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .chart-modal-dim-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .chart-modal-dim-quick-actions {
+      display: flex;
+      gap: 4px;
+    }
+    .btn-dim-quick {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      color: #94a3b8;
+      font-size: 0.68rem;
+      padding: 2px 6px;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .btn-dim-quick:hover {
+      color: #38bdf8;
+      border-color: rgba(56, 189, 248, 0.4);
+      background: rgba(56, 189, 248, 0.1);
+    }
+    .chart-modal-dim-search-wrap {
+      width: 100%;
+    }
+    .chart-modal-dim-search-input {
+      width: 100%;
+      box-sizing: border-box;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 5px;
+      color: #f1f5f9;
+      font-size: 0.72rem;
+      padding: 5px 8px;
+      outline: none;
+    }
+    .chart-modal-dim-search-input:focus {
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+    .chart-modal-dim-list {
+      max-height: 220px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding-right: 2px;
+    }
+    .chart-modal-dim-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.72rem;
+      color: #cbd5e1;
+      user-select: none;
+      transition: background 0.12s;
+    }
+    .chart-modal-dim-item:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .chart-modal-dim-color-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .chart-modal-dim-val-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      color: #64748b;
+      margin-left: 8px;
+      flex-shrink: 0;
+    }
     .table-container {
       position: relative;
       margin: 14px 0;
@@ -3025,8 +3177,8 @@
 
   <!-- Expanded Chart Modal -->
   <div id="chart-modal" class="modal-overlay" onclick="if(event.target === this) closeChartModal()" style="z-index: 130;">
-    <div class="modal-box" style="max-width: 1200px; width: 92vw; height: 85vh; max-height: 860px;">
-      <div class="modal-header" style="margin-bottom: 12px; padding-bottom: 12px;">
+    <div class="modal-box" style="max-width: 1240px; width: 94vw; height: 88vh; max-height: 880px; display: flex; flex-direction: column;">
+      <div class="modal-header" style="margin-bottom: 8px; padding-bottom: 8px;">
         <div class="modal-title-group">
           <div class="modal-title-row">
             <span class="modal-title-icon">
@@ -3038,7 +3190,7 @@
             </span>
             <span class="modal-title" id="chart-modal-title">Expanded Chart</span>
           </div>
-          <span class="modal-subtitle">Click legend or bar to isolate · Shift+Click to exclude · Click again to reset</span>
+          <span class="modal-subtitle">Interactive analytics workbench · Customize chart type, axes, and dimensions</span>
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
           <button class="cleo-chart-action-btn" id="chart-modal-reset-btn" onclick="resetChartFilters()" title="Reset all series to visible" style="display: none; padding: 5px 10px; font-size: 0.74rem;">
@@ -3068,6 +3220,79 @@
           </button>
         </div>
       </div>
+
+      <!-- Interactive Chart Customization Bar -->
+      <div id="chart-modal-toolbar" class="chart-modal-toolbar">
+        <div class="chart-modal-toolbar-group">
+          <!-- Chart Type Selector -->
+          <div class="chart-modal-control-item">
+            <label for="chart-modal-type-select" class="chart-modal-label">Type:</label>
+            <select id="chart-modal-type-select" class="chart-modal-select" onchange="onModalChartTypeChange(this.value)">
+              <option value="stacked_bar">Stacked Bar</option>
+              <option value="grouped_bar">Grouped Bar</option>
+              <option value="horizontal_bar">Horizontal Bar</option>
+              <option value="line">Line Chart</option>
+              <option value="area">Stacked Area</option>
+              <option value="pie">Pie Chart</option>
+              <option value="doughnut">Doughnut Chart</option>
+            </select>
+          </div>
+
+          <div class="chart-modal-divider"></div>
+
+          <!-- Axis & Orientation Controls -->
+          <div class="chart-modal-control-item">
+            <span class="chart-modal-label">Axes:</span>
+            <button class="cleo-chart-action-btn" id="chart-modal-swap-axes-btn" onclick="toggleModalChartTranspose()" title="Swap X and Y axes (transpose dimensions & time/categories)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/>
+              </svg>
+              <span id="chart-modal-swap-axes-text">Swap X ⇄ Y</span>
+            </button>
+            <button class="cleo-chart-action-btn" id="chart-modal-orient-btn" onclick="toggleModalChartOrientation()" title="Toggle Vertical / Horizontal orientation">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                <path d="M7 12h10"></path>
+              </svg>
+              <span id="chart-modal-orient-text">Horizontal</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Dimensions Selector & Filter -->
+        <div class="chart-modal-toolbar-group" style="position: relative;">
+          <div class="chart-modal-control-item" style="position: relative;">
+            <label class="chart-modal-label">Dimensions:</label>
+            <button class="cleo-chart-action-btn" id="chart-modal-dim-dropdown-btn" onclick="toggleModalDimMenu(event)" title="Choose and filter visible dimensions">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+              </svg>
+              <span id="chart-modal-dim-badge">All</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+
+            <!-- Dropdown Popover for Dimensions Selection -->
+            <div id="chart-modal-dim-popover" class="chart-modal-dim-popover" style="display: none;" onclick="event.stopPropagation()">
+              <div class="chart-modal-dim-header">
+                <span style="font-weight: 600; font-size: 0.74rem; color: #f1f5f9;">Filter Dimensions</span>
+                <div class="chart-modal-dim-quick-actions">
+                  <button type="button" class="btn-dim-quick" onclick="filterModalDimensions('all')">All</button>
+                  <button type="button" class="btn-dim-quick" onclick="filterModalDimensions('top3')">Top 3</button>
+                  <button type="button" class="btn-dim-quick" onclick="filterModalDimensions('top5')">Top 5</button>
+                  <button type="button" class="btn-dim-quick" onclick="filterModalDimensions('clear')">Clear</button>
+                </div>
+              </div>
+              <div class="chart-modal-dim-search-wrap">
+                <input type="text" id="chart-modal-dim-search" placeholder="Search dimensions..." oninput="onModalDimSearch(this.value)" class="chart-modal-dim-search-input">
+              </div>
+              <div id="chart-modal-dim-list" class="chart-modal-dim-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="expanded-chart-canvas-wrap">
         <canvas id="expanded-chart-canvas"></canvas>
       </div>
@@ -5216,7 +5441,8 @@
     function handleChartLegendClick(e, legendItem, legend) {
       const ci = legend.chart;
       const isShift = Boolean(e?.native?.shiftKey || e?.shiftKey);
-      const isPie = ['pie', 'doughnut'].includes(ci.config.type);
+      const chartType = ci.config?.type || ci.config?._config?.type || ci.type;
+      const isPie = ['pie', 'doughnut'].includes(chartType);
 
       if (isPie) {
         const index = legendItem.index;
@@ -5259,6 +5485,17 @@
           }
         }
         ci.update();
+        if (typeof _expandedChartInstance !== 'undefined' && ci === _expandedChartInstance && typeof _modalState !== 'undefined') {
+          _modalState.hiddenItems.clear();
+          for (let i = 0; i < total; i++) {
+            if (!ci.getDataVisibility(i)) {
+              _modalState.hiddenItems.add(String(ci.data.labels[i]));
+            }
+          }
+          if (typeof syncModalDimBadgeAndCheckboxes === 'function') {
+            syncModalDimBadgeAndCheckboxes();
+          }
+        }
         updateResetButtonVisibility(ci);
         return;
       }
@@ -5294,12 +5531,24 @@
         }
       }
       ci.update();
+      if (typeof _expandedChartInstance !== 'undefined' && ci === _expandedChartInstance && typeof _modalState !== 'undefined') {
+        _modalState.hiddenItems.clear();
+        datasets.forEach((ds, i) => {
+          if (!ci.isDatasetVisible(i)) {
+            _modalState.hiddenItems.add(String(ds.label));
+          }
+        });
+        if (typeof syncModalDimBadgeAndCheckboxes === 'function') {
+          syncModalDimBadgeAndCheckboxes();
+        }
+      }
       updateResetButtonVisibility(ci);
     }
 
     function handleChartCanvasClick(e, elements, chart) {
       if (!elements || elements.length === 0) return;
-      const isPie = ['pie', 'doughnut'].includes(chart.config.type);
+      const chartType = chart.config?.type || chart.config?._config?.type || chart.type;
+      const isPie = ['pie', 'doughnut'].includes(chartType);
       if (isPie) {
         const sliceIdx = elements[0].index;
         handleChartLegendClick(e, { index: sliceIdx }, { chart });
@@ -5312,7 +5561,8 @@
     function updateResetButtonVisibility(chart) {
       const resetBtn = document.getElementById('chart-modal-reset-btn');
       if (!resetBtn || chart !== _expandedChartInstance) return;
-      const isPie = ['pie', 'doughnut'].includes(chart.config.type);
+      const chartType = chart.config?.type || chart.config?._config?.type || chart.type;
+      const isPie = ['pie', 'doughnut'].includes(chartType);
       let hasHidden = false;
       if (isPie) {
         const total = chart.data.labels ? chart.data.labels.length : 0;
@@ -5320,13 +5570,42 @@
       } else {
         hasHidden = (chart.data.datasets || []).some((_, i) => !chart.isDatasetVisible(i));
       }
-      resetBtn.style.display = hasHidden ? 'inline-flex' : 'none';
+      const hasModalHidden = typeof _modalState !== 'undefined' && _modalState.hiddenItems && _modalState.hiddenItems.size > 0;
+      resetBtn.style.display = (hasHidden || hasModalHidden) ? 'inline-flex' : 'none';
+      if (typeof syncModalDimBadgeAndCheckboxes === 'function') {
+        syncModalDimBadgeAndCheckboxes();
+      }
     }
 
     function resetChartFilters() {
+      if (typeof _modalState !== 'undefined' && _modalState.originalConfig) {
+        _modalState.hiddenItems.clear();
+        if (_expandedChartInstance) {
+          const ci = _expandedChartInstance;
+          const chartType = ci.config?.type || ci.config?._config?.type || ci.type;
+          const isPie = ['pie', 'doughnut'].includes(chartType);
+          if (isPie) {
+            const total = ci.data.labels ? ci.data.labels.length : 0;
+            for (let i = 0; i < total; i++) {
+              if (!ci.getDataVisibility(i)) ci.toggleDataVisibility(i);
+            }
+          } else {
+            (ci.data.datasets || []).forEach((_, i) => ci.setDatasetVisibility(i, true));
+          }
+          ci.update();
+        }
+        if (typeof syncModalDimBadgeAndCheckboxes === 'function') {
+          syncModalDimBadgeAndCheckboxes();
+        }
+        if (typeof renderModalChart === 'function') {
+          renderModalChart();
+          return;
+        }
+      }
       if (!_expandedChartInstance) return;
       const ci = _expandedChartInstance;
-      const isPie = ['pie', 'doughnut'].includes(ci.config.type);
+      const chartType = ci.config?.type || ci.config?._config?.type || ci.type;
+      const isPie = ['pie', 'doughnut'].includes(chartType);
       if (isPie) {
         const total = ci.data.labels ? ci.data.labels.length : 0;
         for (let i = 0; i < total; i++) {
@@ -5338,6 +5617,9 @@
       ci.update();
       const resetBtn = document.getElementById('chart-modal-reset-btn');
       if (resetBtn) resetBtn.style.display = 'none';
+      if (typeof syncModalDimBadgeAndCheckboxes === 'function') {
+        syncModalDimBadgeAndCheckboxes();
+      }
     }
 
     // ── Chart Rendering ───────────────────────────────────────────────────────
@@ -5408,6 +5690,30 @@
 
     function _buildLegendLabelsGenerator() {
       return (chart) => {
+        const chartType = chart.config?.type || chart.config?._config?.type || chart.type;
+        const isPie = ['pie', 'doughnut'].includes(chartType);
+        if (isPie) {
+          const datasets = chart.data?.datasets || [];
+          const labels = chart.data?.labels || [];
+          if (!labels.length || !datasets.length) return [];
+          const ds = datasets[0] || {};
+          return labels.map((label, i) => {
+            const color = Array.isArray(ds.backgroundColor)
+              ? ds.backgroundColor[i]
+              : (Array.isArray(ds.borderColor) ? ds.borderColor[i] : _CHART_PALETTE[i % _CHART_PALETTE.length]);
+            return {
+              text: String(label !== undefined && label !== null && label !== '' ? label : `Item ${i + 1}`),
+              fillStyle: color,
+              strokeStyle: '#0b0f17',
+              lineWidth: 1.5,
+              fontColor: '#cbd5e1',
+              pointStyle: 'circle',
+              hidden: !chart.getDataVisibility(i),
+              index: i,
+              datasetIndex: 0
+            };
+          });
+        }
         const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
         return original.map(item => {
           if (item.datasetIndex !== undefined) {
@@ -5420,6 +5726,10 @@
                 item.lineWidth = 2.4;
               }
             }
+          }
+          if (item.text === undefined || item.text === null || item.text === 'undefined') {
+            const ds = chart.data.datasets[item.datasetIndex || 0];
+            item.text = ds?.label ? String(ds.label) : (chart.data.labels?.[item.index !== undefined ? item.index : (item.datasetIndex || 0)] ? String(chart.data.labels[item.index !== undefined ? item.index : (item.datasetIndex || 0)]) : `Series ${(item.datasetIndex || 0) + 1}`);
           }
           return item;
         });
@@ -5458,11 +5768,23 @@
           callbacks: {
             label: ctx => {
               const isH = ctx.chart?.options?.indexAxis === 'y';
-              const v = isH ? (ctx.parsed.x ?? ctx.raw) : (ctx.parsed.y ?? ctx.parsed ?? ctx.raw);
-              const dsLabel = ctx.dataset.label ? `${ctx.dataset.label}: ` : '';
-              return typeof v === 'number'
-                ? ` ${dsLabel}$${v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
-                : ` ${dsLabel}${v}`;
+              const chartType = ctx.chart?.config?.type || ctx.chart?.config?._config?.type || ctx.chart?.type;
+              const isP = ['pie', 'doughnut'].includes(chartType);
+              const v = isP ? (ctx.parsed ?? ctx.raw) : (isH ? (ctx.parsed.x ?? ctx.raw) : (ctx.parsed.y ?? ctx.parsed ?? ctx.raw));
+              const dsLabel = isP
+                ? (ctx.label ? `${ctx.label}: ` : '')
+                : (ctx.dataset?.label ? `${ctx.dataset.label}: ` : (ctx.label ? `${ctx.label}: ` : ''));
+              if (typeof v !== 'number') return ` ${dsLabel}${v}`;
+              let pctStr = '';
+              if (isP && ctx.chart?.data?.datasets?.[0]?.data) {
+                const allData = ctx.chart.data.datasets[0].data;
+                const total = allData.reduce((acc, n) => acc + (Number(n) || 0), 0);
+                if (total > 0) {
+                  const pct = Math.round((v / total) * 1000) / 10;
+                  pctStr = ` (${pct}%)`;
+                }
+              }
+              return ` ${dsLabel}$${v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}${pctStr}`;
             }
           }
         }
@@ -5490,52 +5812,448 @@
     };
 
     let _expandedChartInstance = null;
+    let _modalState = {
+      originalConfig: null,
+      activeType: 'stacked_bar',
+      isStacked: true,
+      isHorizontal: false,
+      isTransposed: false,
+      hiddenItems: new Set(),
+      tension: 0.35
+    };
 
     function openChartModal(config) {
       if (!config) return;
       const modal = document.getElementById('chart-modal');
       const titleEl = document.getElementById('chart-modal-title');
       const canvas = document.getElementById('expanded-chart-canvas');
-      const resetBtn = document.getElementById('chart-modal-reset-btn');
       if (!modal || !canvas) return;
 
       if (titleEl) {
         titleEl.textContent = cleanChartTitle(config.title) || 'Expanded Chart View';
       }
-      if (resetBtn) {
-        resetBtn.style.display = 'none';
-      }
 
-      if (_expandedChartInstance) {
-        _expandedChartInstance.destroy();
-        _expandedChartInstance = null;
-      }
+      _modalState.originalConfig = {
+        ...config,
+        data: {
+          labels: [...(config.data?.labels || [])],
+          datasets: (config.data?.datasets || []).map(ds => ({
+            ...ds,
+            data: Array.isArray(ds.data) ? [...ds.data] : ds.data
+          }))
+        }
+      };
+
+      const isPie = ['pie', 'doughnut'].includes(config.type);
+      const isLine = ['line', 'area'].includes(config.type);
+      _modalState.isStacked = isPie ? false : Boolean(config.options?.scales?.y?.stacked || config.options?.scales?.x?.stacked || config.type === 'area');
+      _modalState.isHorizontal = Boolean(config.options?.indexAxis === 'y');
+      _modalState.activeType = isPie ? config.type : (isLine ? (config.type === 'area' || _modalState.isStacked ? 'area' : 'line') : (_modalState.isHorizontal ? 'horizontal_bar' : (_modalState.isStacked ? 'stacked_bar' : 'grouped_bar')));
+      _modalState.isTransposed = false;
+      _modalState.hiddenItems.clear();
+      _modalState.tension = config.data?.datasets?.[0]?.tension ?? ((localStorage.getItem('cleo_chart_curve') || 'smooth') === 'sharp' ? 0 : 0.35);
 
       modal.style.display = 'flex';
 
-      // For pie/doughnut: constrain wrap width so Chart.js sizes the canvas
-      // to a smaller parent, then margin:auto centers it in the flex modal.
-      const canvasWrap = canvas.parentElement;
-      canvasWrap.className = 'expanded-chart-canvas-wrap'; // reset any prior class
-      if (['pie', 'doughnut'].includes(config.type)) {
-        canvasWrap.style.maxWidth = 'min(620px, 70%)';
-        canvasWrap.style.margin = 'auto';
-        canvasWrap.style.width = '100%';
-        canvasWrap.style.height = '100%';
-      } else {
-        canvasWrap.style.maxWidth = '';
-        canvasWrap.style.margin = '';
-        canvasWrap.style.width = '100%';
-        canvasWrap.style.height = '100%';
+      syncModalToolbarUI();
+      buildModalDimensionControls();
+      renderModalChart();
+    }
+
+    function syncModalToolbarUI() {
+      const typeSelect = document.getElementById('chart-modal-type-select');
+      if (typeSelect) {
+        typeSelect.value = _modalState.activeType;
+      }
+      const swapBtn = document.getElementById('chart-modal-swap-axes-btn');
+      if (swapBtn) {
+        const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
+        swapBtn.style.display = isPie ? 'none' : 'inline-flex';
+        if (_modalState.isTransposed) {
+          swapBtn.classList.add('active');
+        } else {
+          swapBtn.classList.remove('active');
+        }
+      }
+      const orientBtn = document.getElementById('chart-modal-orient-btn');
+      const orientText = document.getElementById('chart-modal-orient-text');
+      if (orientBtn && orientText) {
+        const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
+        orientBtn.style.display = isPie ? 'none' : 'inline-flex';
+        orientText.textContent = _modalState.isHorizontal ? 'Vertical ↕' : 'Horizontal ↔';
+        orientBtn.title = _modalState.isHorizontal ? 'Current: Horizontal (Click for Vertical)' : 'Current: Vertical (Click for Horizontal)';
+        if (_modalState.isHorizontal) {
+          orientBtn.classList.add('active');
+        } else {
+          orientBtn.classList.remove('active');
+        }
+      }
+      const curveBtn = document.getElementById('chart-modal-curve-btn');
+      if (curveBtn) {
+        const isLineChart = ['line', 'area'].includes(_modalState.activeType);
+        curveBtn.style.display = isLineChart ? 'inline-flex' : 'none';
+        if (isLineChart) {
+          updateModalCurveButton(_modalState.tension > 0.1 ? 'smooth' : 'sharp');
+        }
+      }
+    }
+
+    function onModalChartTypeChange(newVal) {
+      _modalState.activeType = newVal;
+      if (newVal === 'stacked_bar') {
+        _modalState.isStacked = true;
+        _modalState.isHorizontal = false;
+      } else if (newVal === 'grouped_bar') {
+        _modalState.isStacked = false;
+        _modalState.isHorizontal = false;
+      } else if (newVal === 'horizontal_bar') {
+        _modalState.isStacked = true;
+        _modalState.isHorizontal = true;
+      } else if (newVal === 'line') {
+        _modalState.isStacked = false;
+        _modalState.isHorizontal = false;
+      } else if (newVal === 'area') {
+        _modalState.isStacked = true;
+        _modalState.isHorizontal = false;
+      } else if (newVal === 'pie' || newVal === 'doughnut') {
+        _modalState.isStacked = false;
+        _modalState.isHorizontal = false;
+      }
+      syncModalToolbarUI();
+      buildModalDimensionControls();
+      renderModalChart();
+    }
+
+    function toggleModalChartTranspose() {
+      _modalState.isTransposed = !_modalState.isTransposed;
+      _modalState.hiddenItems.clear();
+      syncModalToolbarUI();
+      buildModalDimensionControls();
+      renderModalChart();
+    }
+
+    function toggleModalChartOrientation() {
+      _modalState.isHorizontal = !_modalState.isHorizontal;
+      if (_modalState.activeType === 'horizontal_bar' && !_modalState.isHorizontal) {
+        _modalState.activeType = _modalState.isStacked ? 'stacked_bar' : 'grouped_bar';
+      } else if (['stacked_bar', 'grouped_bar'].includes(_modalState.activeType) && _modalState.isHorizontal) {
+        _modalState.activeType = 'horizontal_bar';
+      }
+      syncModalToolbarUI();
+      renderModalChart();
+    }
+
+    function transposeChartMatrix(labels, datasets) {
+      if (!labels || !labels.length || !datasets || !datasets.length) {
+        return { labels: labels || [], datasets: datasets || [] };
+      }
+      const newLabels = datasets.map(d => d.label || 'Series');
+      const newDatasets = labels.map((colName, colIdx) => {
+        const rawColor = _CHART_PALETTE[colIdx % _CHART_PALETTE.length];
+        return {
+          label: String(colName),
+          data: datasets.map(d => {
+            const val = Array.isArray(d.data) ? d.data[colIdx] : 0;
+            return typeof val === 'number' ? val : (Number(val) || 0);
+          }),
+          backgroundColor: rawColor,
+          borderColor: rawColor,
+          pointStyle: _POINT_STYLES[colIdx % _POINT_STYLES.length],
+          borderRadius: 0,
+          borderWidth: 1
+        };
+      });
+      return { labels: newLabels, datasets: newDatasets };
+    }
+
+    function toggleModalDimMenu(e) {
+      if (e) e.stopPropagation();
+      const popover = document.getElementById('chart-modal-dim-popover');
+      if (!popover) return;
+      const isShown = popover.style.display !== 'none';
+      popover.style.display = isShown ? 'none' : 'flex';
+      if (!isShown) {
+        const searchInput = document.getElementById('chart-modal-dim-search');
+        if (searchInput) {
+          searchInput.value = '';
+          onModalDimSearch('');
+          searchInput.focus();
+        }
+      }
+    }
+
+    function getModalDimensionItems() {
+      if (!_modalState.originalConfig) return [];
+      let labels = [...(_modalState.originalConfig.data?.labels || [])];
+      let datasets = _modalState.originalConfig.data?.datasets || [];
+      if (_modalState.isTransposed) {
+        const t = transposeChartMatrix(labels, datasets);
+        labels = t.labels;
+        datasets = t.datasets;
+      }
+      if (datasets.length > 1) {
+        return datasets.map((ds, i) => {
+          const sum = (ds.data || []).reduce((acc, v) => acc + (Number(v) || 0), 0);
+          const color = ds.borderColor || ds.backgroundColor || _CHART_PALETTE[i % _CHART_PALETTE.length];
+          return {
+            id: String(ds.label || `Series ${i+1}`),
+            name: String(ds.label || `Series ${i+1}`),
+            color: typeof color === 'string' ? color : _CHART_PALETTE[i % _CHART_PALETTE.length],
+            total: Math.round(sum * 100) / 100
+          };
+        });
+      } else if (datasets.length === 1) {
+        const ds = datasets[0];
+        return labels.map((lbl, i) => {
+          const val = Number(Array.isArray(ds.data) ? ds.data[i] : 0) || 0;
+          const color = Array.isArray(ds.backgroundColor) ? ds.backgroundColor[i] : _CHART_PALETTE[i % _CHART_PALETTE.length];
+          return {
+            id: String(lbl),
+            name: String(lbl),
+            color: typeof color === 'string' ? color : _CHART_PALETTE[i % _CHART_PALETTE.length],
+            total: Math.round(val * 100) / 100
+          };
+        });
+      }
+      return [];
+    }
+
+    function buildModalDimensionControls() {
+      const listEl = document.getElementById('chart-modal-dim-list');
+      if (!listEl) return;
+      const items = getModalDimensionItems();
+      listEl.innerHTML = '';
+
+      items.forEach(it => {
+        const isVisible = !_modalState.hiddenItems.has(it.id);
+        const itemEl = document.createElement('label');
+        itemEl.className = 'chart-modal-dim-item';
+        itemEl.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+            <input type="checkbox" class="chart-modal-dim-check" data-id="${escapeAttr(it.id)}" ${isVisible ? 'checked' : ''}>
+            <span class="chart-modal-dim-color-dot" style="background: ${it.color};"></span>
+            <span style="overflow: hidden; text-overflow: ellipsis;" title="${escapeAttr(it.name)}">${escapeHtml(it.name)}</span>
+          </div>
+          <span class="chart-modal-dim-val-badge">${_formatAxisCurrency(it.total)}</span>
+        `;
+        const checkEl = itemEl.querySelector('.chart-modal-dim-check');
+        checkEl.onchange = () => {
+          toggleModalDimensionItem(it.id, checkEl.checked);
+        };
+        listEl.appendChild(itemEl);
+      });
+
+      syncModalDimBadgeAndCheckboxes();
+    }
+
+    function syncModalDimBadgeAndCheckboxes() {
+      const items = getModalDimensionItems();
+      const total = items.length;
+      const visible = items.filter(it => !_modalState.hiddenItems.has(it.id)).length;
+      const badge = document.getElementById('chart-modal-dim-badge');
+      if (badge) {
+        if (visible === total) {
+          badge.textContent = `All (${total})`;
+          badge.style.color = '#94a3b8';
+        } else {
+          badge.textContent = `${visible} of ${total}`;
+          badge.style.color = '#38bdf8';
+        }
       }
 
-      const isPie = ['pie', 'doughnut'].includes(config.type);
-      const baseOpts = config.options || {};
+      document.querySelectorAll('.chart-modal-dim-check').forEach(chk => {
+        const id = chk.getAttribute('data-id');
+        chk.checked = !_modalState.hiddenItems.has(id);
+      });
+
+      const resetBtn = document.getElementById('chart-modal-reset-btn');
+      if (resetBtn) {
+        resetBtn.style.display = _modalState.hiddenItems.size > 0 ? 'inline-flex' : 'none';
+      }
+    }
+
+    function toggleModalDimensionItem(id, isChecked) {
+      if (isChecked) {
+        _modalState.hiddenItems.delete(id);
+      } else {
+        const items = getModalDimensionItems();
+        if (_modalState.hiddenItems.size >= items.length - 1) {
+          syncModalDimBadgeAndCheckboxes();
+          return;
+        }
+        _modalState.hiddenItems.add(id);
+      }
+      syncModalDimBadgeAndCheckboxes();
+      renderModalChart();
+    }
+
+    function filterModalDimensions(mode) {
+      const items = getModalDimensionItems();
+      if (!items.length) return;
+
+      if (mode === 'all') {
+        _modalState.hiddenItems.clear();
+      } else if (mode === 'top3' || mode === 'top5') {
+        const count = mode === 'top3' ? 3 : 5;
+        const sorted = [...items].sort((a, b) => b.total - a.total);
+        const topIds = new Set(sorted.slice(0, count).map(it => it.id));
+        _modalState.hiddenItems.clear();
+        items.forEach(it => {
+          if (!topIds.has(it.id)) {
+            _modalState.hiddenItems.add(it.id);
+          }
+        });
+      } else if (mode === 'clear') {
+        const sorted = [...items].sort((a, b) => b.total - a.total);
+        _modalState.hiddenItems.clear();
+        items.forEach((it) => {
+          if (it.id !== sorted[0]?.id) {
+            _modalState.hiddenItems.add(it.id);
+          }
+        });
+      }
+      syncModalDimBadgeAndCheckboxes();
+      renderModalChart();
+    }
+
+    function onModalDimSearch(query) {
+      const q = String(query || '').toLowerCase().trim();
+      document.querySelectorAll('#chart-modal-dim-list .chart-modal-dim-item').forEach(itemEl => {
+        const text = itemEl.textContent.toLowerCase();
+        itemEl.style.display = (!q || text.includes(q)) ? 'flex' : 'none';
+      });
+    }
+
+    function renderModalChart() {
+      if (!_modalState.originalConfig) return;
+      const canvas = document.getElementById('expanded-chart-canvas');
+      if (!canvas) return;
+
+      let labels = [...(_modalState.originalConfig.data?.labels || [])];
+      let datasets = (_modalState.originalConfig.data?.datasets || []).map(ds => ({
+        ...ds,
+        data: Array.isArray(ds.data) ? [...ds.data] : ds.data
+      }));
+
+      if (_modalState.isTransposed) {
+        const t = transposeChartMatrix(labels, datasets);
+        labels = t.labels;
+        datasets = t.datasets;
+      }
+
+      const isMultiSeries = datasets.length > 1;
+
+      if (isMultiSeries) {
+        datasets = datasets.filter(ds => !_modalState.hiddenItems.has(ds.label));
+      } else if (datasets.length === 1 && _modalState.hiddenItems.size > 0) {
+        const filteredLabels = [];
+        const filteredData = [];
+        const bgColors = Array.isArray(datasets[0].backgroundColor) ? [] : datasets[0].backgroundColor;
+        labels.forEach((lbl, i) => {
+          if (!_modalState.hiddenItems.has(lbl)) {
+            filteredLabels.push(lbl);
+            filteredData.push(datasets[0].data[i]);
+            if (Array.isArray(datasets[0].backgroundColor)) {
+              bgColors.push(datasets[0].backgroundColor[i]);
+            }
+          }
+        });
+        labels = filteredLabels;
+        datasets[0].data = filteredData;
+        if (Array.isArray(datasets[0].backgroundColor)) {
+          datasets[0].backgroundColor = bgColors;
+        }
+      }
+
+      const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
+      const isLine = ['line', 'area'].includes(_modalState.activeType);
+      const isArea = _modalState.activeType === 'area';
+      const isHorizontal = _modalState.isHorizontal;
+      const chartType = isPie ? _modalState.activeType : (isLine ? 'line' : 'bar');
+
+      const canvasWrap = canvas.parentElement;
+      if (canvasWrap) {
+        canvasWrap.className = 'expanded-chart-canvas-wrap';
+        if (isPie) {
+          canvasWrap.style.maxWidth = 'min(620px, 70%)';
+          canvasWrap.style.margin = 'auto';
+        } else {
+          canvasWrap.style.maxWidth = '';
+          canvasWrap.style.margin = '';
+        }
+      }
+
+      if (isPie && isMultiSeries) {
+        const pieLabels = [];
+        const pieData = [];
+        const pieColors = [];
+        datasets.forEach((ds, i) => {
+          pieLabels.push(ds.label || `Series ${i + 1}`);
+          const sum = (ds.data || []).reduce((acc, v) => acc + (Number(v) || 0), 0);
+          pieData.push(Math.round(sum * 100) / 100);
+          pieColors.push(ds.borderColor || ds.backgroundColor || _CHART_PALETTE[i % _CHART_PALETTE.length]);
+        });
+        labels = pieLabels;
+        datasets = [{
+          label: _modalState.originalConfig?.title || 'Cost',
+          data: pieData,
+          backgroundColor: pieColors,
+          borderColor: '#0b0f17',
+          borderWidth: 2
+        }];
+      } else if (isPie && !isMultiSeries) {
+        if (datasets.length > 0 && !Array.isArray(datasets[0].backgroundColor)) {
+          datasets[0].backgroundColor = labels.map((_, i) => _CHART_PALETTE[i % _CHART_PALETTE.length]);
+          datasets[0].borderColor = '#0b0f17';
+          datasets[0].borderWidth = 2;
+        }
+      }
+
+      if (isLine) {
+        datasets.forEach((ds, i) => {
+          const rawColor = ds.borderColor || ds.backgroundColor || _CHART_PALETTE[i % _CHART_PALETTE.length];
+          ds.type = 'line';
+          ds.fill = isArea ? (datasets.length > 1 ? true : 'origin') : false;
+          ds.tension = _modalState.tension;
+          ds.borderColor = rawColor;
+          ds.backgroundColor = isArea ? _toAlpha(rawColor, 0.28) : rawColor;
+          ds.borderWidth = 2.5;
+          ds.pointRadius = 4.5;
+          ds.pointHoverRadius = 7.5;
+          ds.pointStyle = _POINT_STYLES[i % _POINT_STYLES.length];
+          ds.pointBackgroundColor = rawColor;
+          ds.pointBorderColor = '#0c111d';
+          ds.pointBorderWidth = 1.5;
+        });
+      } else if (!isPie) {
+        datasets.forEach((ds, i) => {
+          const rawColor = ds.borderColor || ds.backgroundColor || _CHART_PALETTE[i % _CHART_PALETTE.length];
+          ds.type = 'bar';
+          ds.borderRadius = _modalState.isStacked ? 0 : 4;
+          ds.borderWidth = _modalState.isStacked ? 0.75 : 1.5;
+          ds.tension = undefined;
+          ds.fill = undefined;
+          ds.pointRadius = 0;
+          if (!ds.backgroundColor || typeof ds.backgroundColor !== 'string') {
+            ds.backgroundColor = rawColor;
+          }
+        });
+      }
+
+      const baseOpts = _modalState.originalConfig.options || {};
+      const axisLabel = _modalState.originalConfig.rawSpec?.value_label ||
+                        baseOpts.scales?.y?.title?.text ||
+                        baseOpts.scales?.x?.title?.text || 'Cost';
+      const axisIsCost = _isCostMetricLabel(axisLabel);
+      const categoryLabel = _modalState.isTransposed
+        ? (axisLabel || 'Dimension')
+        : (_modalState.originalConfig.rawSpec?.x_label || baseOpts.scales?.x?.title?.text || baseOpts.scales?.y?.title?.text || _inferXAxisLabel(labels));
 
       const modalOpts = {
         ...baseOpts,
         responsive: true,
         maintainAspectRatio: isPie,
+        indexAxis: isPie ? undefined : (isHorizontal ? 'y' : 'x'),
         onClick: handleChartCanvasClick,
         onHover: (e, elements) => {
           if (e?.native?.target) {
@@ -5546,10 +6264,14 @@
           ...(baseOpts.plugins || {}),
           legend: {
             ...(baseOpts.plugins?.legend || {}),
-            onClick: handleChartLegendClick,
+            display: !(!isPie && datasets.length <= 1),
+            onClick: (e, item, legend) => {
+              handleChartLegendClick(e, item, legend);
+              setTimeout(syncModalDimBadgeAndCheckboxes, 50);
+            },
             onHover: (e) => { if (e?.native?.target) e.native.target.style.cursor = 'pointer'; },
             onLeave: (e) => { if (e?.native?.target) e.native.target.style.cursor = 'default'; },
-            position: isPie ? 'right' : (baseOpts.plugins?.legend?.position || 'top'),
+            position: isPie ? 'right' : 'top',
             labels: {
               ...(baseOpts.plugins?.legend?.labels || {}),
               font: { family: 'Inter', size: 12 },
@@ -5565,72 +6287,121 @@
             padding: 12,
             titleFont: { family: 'Inter', size: 13 },
             bodyFont: { family: 'Inter', size: 12 },
-            footerFont: { family: 'Inter', size: 12 }
+            footerFont: { family: 'Inter', size: 12 },
+            callbacks: {
+              label: ctx => {
+                const isH = ctx.chart?.options?.indexAxis === 'y';
+                const chartType = ctx.chart?.config?.type || ctx.chart?.config?._config?.type || ctx.chart?.type;
+                const isP = ['pie', 'doughnut'].includes(chartType);
+                let v;
+                if (isP) {
+                  v = ctx.parsed ?? ctx.raw;
+                } else if (isH) {
+                  v = ctx.parsed?.x ?? ctx.raw;
+                } else {
+                  v = ctx.parsed?.y ?? ctx.parsed ?? ctx.raw;
+                }
+                const dsLabel = isP
+                  ? (ctx.label ? `${ctx.label}: ` : '')
+                  : (ctx.dataset?.label ? `${ctx.dataset.label}: ` : (ctx.label ? `${ctx.label}: ` : ''));
+                if (typeof v !== 'number') return ` ${dsLabel}${v}`;
+                let pctStr = '';
+                if (isP && ctx.chart?.data?.datasets?.[0]?.data) {
+                  const allData = ctx.chart.data.datasets[0].data;
+                  const total = allData.reduce((acc, n) => acc + (Number(n) || 0), 0);
+                  if (total > 0) {
+                    const pct = Math.round((v / total) * 1000) / 10;
+                    pctStr = ` (${pct}%)`;
+                  }
+                }
+                const formatted = axisIsCost
+                  ? `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+                return ` ${dsLabel}${formatted}${pctStr}`;
+              }
+            }
           }
         }
       };
 
-      const isLineChart = ['line', 'area'].includes(config.type);
-      const curveBtn = document.getElementById('chart-modal-curve-btn');
-      if (curveBtn) {
-        curveBtn.style.display = isLineChart ? 'inline-flex' : 'none';
-        const currentTension = config.data?.datasets?.[0]?.tension ?? 0.35;
-        const currentMode = currentTension > 0.1 ? 'smooth' : 'sharp';
-        updateModalCurveButton(currentMode);
+      if (isPie) {
+        delete modalOpts.scales;
+      } else if (isHorizontal) {
+        modalOpts.scales = {
+          x: {
+            stacked: _modalState.isStacked,
+            ticks: {
+              color: '#64748b',
+              font: { size: 11 },
+              callback: v => _formatAxisNumber(v, axisIsCost)
+            },
+            grid: { color: 'rgba(255,255,255,0.06)' },
+            title: { display: true, text: axisLabel, color: '#64748b', font: { size: 11 } },
+            beginAtZero: true
+          },
+          y: {
+            stacked: _modalState.isStacked,
+            ticks: {
+              color: '#94a3b8',
+              font: { size: 11 },
+              autoSkip: false
+            },
+            grid: { color: 'rgba(255,255,255,0.04)' },
+            title: categoryLabel ? { display: true, text: categoryLabel, color: '#64748b', font: { size: 11 } } : undefined
+          }
+        };
+      } else {
+        modalOpts.scales = {
+          x: {
+            stacked: _modalState.isStacked,
+            ticks: {
+              color: '#94a3b8',
+              font: { size: 11 },
+              maxRotation: 45,
+              minRotation: 0
+            },
+            grid: { color: 'rgba(255,255,255,0.04)' },
+            title: categoryLabel ? { display: true, text: categoryLabel, color: '#64748b', font: { size: 11 } } : undefined
+          },
+          y: {
+            stacked: _modalState.isStacked,
+            ticks: {
+              color: '#64748b',
+              font: { size: 11 },
+              callback: v => _formatAxisNumber(v, axisIsCost)
+            },
+            grid: { color: 'rgba(255,255,255,0.06)' },
+            title: { display: true, text: axisLabel, color: '#64748b', font: { size: 11 } },
+            beginAtZero: true
+          }
+        };
       }
 
-      if (baseOpts.scales) {
-        const isModalHorizontal = (baseOpts.indexAxis === 'y');
-        modalOpts.scales = {
-          ...baseOpts.scales,
-          x: baseOpts.scales.x ? {
-            ...baseOpts.scales.x,
-            ticks: {
-              ...(baseOpts.scales.x.ticks || {}),
-              font: { size: 11 },
-              maxRotation: isModalHorizontal ? 0 : 45,
-              minRotation: 0
-            }
-          } : undefined,
-          y: baseOpts.scales.y ? {
-            ...baseOpts.scales.y,
-            ticks: {
-              ...(baseOpts.scales.y.ticks || {}),
-              font: { size: 11 },
-              autoSkip: isModalHorizontal ? false : undefined
-            }
-          } : undefined
-        };
-        if (!modalOpts.scales.x) delete modalOpts.scales.x;
-        if (!modalOpts.scales.y) delete modalOpts.scales.y;
+      if (_expandedChartInstance) {
+        _expandedChartInstance.destroy();
+        _expandedChartInstance = null;
       }
 
       setTimeout(() => {
-        const modalType = config.type === 'area' ? 'line' : config.type;
         _expandedChartInstance = new Chart(canvas, {
-          type: modalType,
-          data: config.data,
+          type: chartType,
+          data: { labels, datasets },
           options: modalOpts
         });
-      }, 40);
+      }, 20);
     }
 
     function toggleModalChartCurve() {
-      if (!_expandedChartInstance) return;
-      const datasets = _expandedChartInstance.data.datasets || [];
-      if (!datasets.length) return;
-
-      const currentTension = datasets[0].tension ?? 0.35;
-      const nextMode = (currentTension > 0.1) ? 'sharp' : 'smooth';
-      const nextTension = (nextMode === 'sharp') ? 0 : 0.35;
-
-      datasets.forEach(ds => {
-        ds.tension = nextTension;
-      });
-      _expandedChartInstance.update();
-
+      const nextMode = (_modalState.tension > 0.1) ? 'sharp' : 'smooth';
+      _modalState.tension = (nextMode === 'sharp') ? 0 : 0.35;
       localStorage.setItem('cleo_chart_curve', nextMode);
       updateModalCurveButton(nextMode);
+      if (_expandedChartInstance) {
+        (_expandedChartInstance.data.datasets || []).forEach(ds => {
+          ds.tension = _modalState.tension;
+        });
+        _expandedChartInstance.update();
+      }
     }
 
     function updateModalCurveButton(mode) {
@@ -5651,13 +6422,17 @@
       const modal = document.getElementById('chart-modal');
       const resetBtn = document.getElementById('chart-modal-reset-btn');
       const curveBtn = document.getElementById('chart-modal-curve-btn');
+      const dimPopover = document.getElementById('chart-modal-dim-popover');
       if (modal) modal.style.display = 'none';
       if (resetBtn) resetBtn.style.display = 'none';
       if (curveBtn) curveBtn.style.display = 'none';
+      if (dimPopover) dimPopover.style.display = 'none';
       if (_expandedChartInstance) {
         _expandedChartInstance.destroy();
         _expandedChartInstance = null;
       }
+      _modalState.originalConfig = null;
+      _modalState.hiddenItems.clear();
     }
 
     function downloadExpandedChart() {
@@ -5684,8 +6459,10 @@
       if (!raw) return '';
       let s = String(raw).replace(/[`'"]/g, '');
       s = s.replace(/\s*\(\s*([^()]+?)\s*\(\s*([^()]+?)\s*\)\s*\)/g, (m, p1, p2) => ` — ${p1.trim()}: ${p2.trim()}`);
-      s = s.replace(/\s*\(\s*Partner-Wide\s*\)/gi, ' Partner-Wide');
-      s = s.replace(/\s*\(\s*Partner Tenant\s*\)/gi, ' Partner Tenant');
+      s = s.replace(/\s*\(\s*Partner-Wide\s*\)/gi, '');
+      s = s.replace(/\s*\(\s*Partner Tenant\s*\)/gi, '');
+      s = s.replace(/\bPartner-Wide\b/gi, '');
+      s = s.replace(/\bPartner Tenant\b/gi, '');
       s = s.replace(/([—:])\s*\(([^)]+)\)/g, '$1 $2');
       s = s.replace(/\s*\(([^)]+)\)/g, ' — $1');
       s = s.replace(/[()]/g, '');
@@ -5749,10 +6526,25 @@
         }
       }
       if (e.key === 'Escape') {
+        const dimPopover = document.getElementById('chart-modal-dim-popover');
+        if (dimPopover && dimPopover.style.display !== 'none') {
+          dimPopover.style.display = 'none';
+          return;
+        }
         closeChartModal();
         if (typeof closeLogsModal === 'function') closeLogsModal();
         if (typeof closeTokenModal === 'function') closeTokenModal();
         if (typeof closeAuthModal === 'function') closeAuthModal();
+      }
+    });
+
+    document.addEventListener('click', e => {
+      const popover = document.getElementById('chart-modal-dim-popover');
+      const btn = document.getElementById('chart-modal-dim-dropdown-btn');
+      if (popover && popover.style.display !== 'none') {
+        if (!popover.contains(e.target) && !btn?.contains(e.target)) {
+          popover.style.display = 'none';
+        }
       }
     });
 
@@ -5822,13 +6614,26 @@
         if (opts.plugins?.tooltip) {
           opts.plugins.tooltip.callbacks = {
             label: ctx => {
-              const v = isHorizontal ? (ctx.parsed.x ?? ctx.raw) : (ctx.parsed.y ?? ctx.parsed ?? ctx.raw);
-              const dsLabel = ctx.dataset.label ? `${ctx.dataset.label}: ` : '';
+              const chartType = ctx.chart?.config?.type || ctx.chart?.config?._config?.type || ctx.chart?.type || type;
+              const isP = ['pie', 'doughnut'].includes(chartType);
+              const v = isP ? (ctx.parsed ?? ctx.raw) : (isHorizontal ? (ctx.parsed.x ?? ctx.raw) : (ctx.parsed.y ?? ctx.parsed ?? ctx.raw));
+              const dsLabel = isP
+                ? (ctx.label ? `${ctx.label}: ` : '')
+                : (ctx.dataset?.label ? `${ctx.dataset.label}: ` : (ctx.label ? `${ctx.label}: ` : ''));
               if (typeof v !== 'number') return ` ${dsLabel}${v}`;
+              let pctStr = '';
+              if (isP && ctx.chart?.data?.datasets?.[0]?.data) {
+                const allData = ctx.chart.data.datasets[0].data;
+                const total = allData.reduce((acc, n) => acc + (Number(n) || 0), 0);
+                if (total > 0) {
+                  const pct = Math.round((v / total) * 1000) / 10;
+                  pctStr = ` (${pct}%)`;
+                }
+              }
               const formatted = axisIsCost
                 ? `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                 : v.toLocaleString('en-US', { maximumFractionDigits: 2 });
-              return ` ${dsLabel}${formatted}`;
+              return ` ${dsLabel}${formatted}${pctStr}`;
             }
           };
         }
@@ -5913,7 +6718,7 @@
           const wrap = document.createElement('div');
           wrap.className = 'cleo-chart-wrap cleo-chart-type-waterfall';
           const chartTitle = spec.title || 'Waterfall Cost Analysis';
-          const chartConfig = { type: 'bar', data: { labels, datasets }, options: opts, title: chartTitle };
+          const chartConfig = { type: 'bar', data: { labels, datasets }, options: opts, title: chartTitle, rawSpec: spec };
           wrap.appendChild(createChartHeader(chartTitle, () => openChartModal(chartConfig)));
 
           const canvasWrap = document.createElement('div');
@@ -6016,7 +6821,8 @@
           type: chartType,
           data: { labels, datasets },
           options: opts,
-          title: chartTitle
+          title: chartTitle,
+          rawSpec: spec
         };
 
         let chartInstance = null;

@@ -192,8 +192,10 @@ def _clean_chart_title(title: str) -> str:
         return f" — {prefix}: {inner}"
     s = re.sub(r'\s*\(\s*([^()]+?)\s*\(\s*([^()]+?)\s*\)\s*\)', _unparenthesize_nested, s)
     
-    s = re.sub(r'\s*\(\s*Partner-Wide\s*\)', ' Partner-Wide', s, flags=re.IGNORECASE)
-    s = re.sub(r'\s*\(\s*Partner Tenant\s*\)', ' Partner Tenant', s, flags=re.IGNORECASE)
+    s = re.sub(r'\s*\(\s*Partner-Wide\s*\)', '', s, flags=re.IGNORECASE)
+    s = re.sub(r'\s*\(\s*Partner Tenant\s*\)', '', s, flags=re.IGNORECASE)
+    s = re.sub(r'\bPartner-Wide\b', '', s, flags=re.IGNORECASE)
+    s = re.sub(r'\bPartner Tenant\b', '', s, flags=re.IGNORECASE)
     
     s = re.sub(r'([—:])\s*\(([^)]+)\)', r'\1 \2', s)
     s = re.sub(r'\s*\(([^)]+)\)', r' — \1', s)
