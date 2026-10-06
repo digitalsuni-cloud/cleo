@@ -2890,6 +2890,22 @@ def _find_free_port(preferred: int = 8080) -> int:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
 
+def _wait_for_server_ready(port: int, timeout: float = 30.0) -> bool:
+    """Polls the local server /health endpoint until it responds with HTTP 200 or timeout is reached."""
+    health_url = f"http://127.0.0.1:{port}/health"
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            req = urllib.request.Request(health_url)
+            with opener.open(req, timeout=0.5) as resp:
+                if resp.status == 200:
+                    return True
+        except Exception:
+            pass
+        time.sleep(0.1)
+    return False
+
 def _auto_update_on_startup():
     """Checks remote GitHub repo on startup and automatically fetches & applies updates."""
     if os.environ.get("CLEO_NO_UPDATE", "").lower() in ("1", "true", "yes") or "--no-update" in sys.argv:
@@ -2987,12 +3003,14 @@ if __name__ == "__main__":
     # Auto-open browser on startup unless disabled
     if os.environ.get("CLEO_NO_BROWSER", "").lower() not in ("1", "true", "yes") and "--no-browser" not in sys.argv:
         def _open_browser_bg():
-            time.sleep(1.2)
-            try:
-                import webbrowser
-                webbrowser.open(f"http://127.0.0.1:{_port}")
-            except Exception:
-                pass
+            if _wait_for_server_ready(_port):
+                try:
+                    import webbrowser
+                    webbrowser.open(f"http://127.0.0.1:{_port}")
+                except Exception:
+                    pass
+            else:
+                logger.warning("Cleo server did not become ready within 30s; browser not launched automatically.")
         threading.Thread(target=_open_browser_bg, daemon=True, name="browser-open").start()
 
     uvicorn.run("cleo_server:app", host="127.0.0.1", port=_port, reload=False, log_level=_uvicorn_log_level)

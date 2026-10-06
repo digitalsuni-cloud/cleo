@@ -729,7 +729,7 @@ class AIClient:
             "{\n"
             '  "intent": "fetch_data" | "general_finops_advisory" | "reformat_previous" | "history_qa" | "finops_recommendations" | "anomalies" | "unsupported_capability" | "general_chat",\n'
             '  "cloud": "aws" | "azure" | "gcp" | "all" | null,\n'
-            '  "service": "AmazonRDS" | "AmazonEC2" | "AmazonS3" | "AWSLambda" | "AmazonVPC" | string | null,\n'
+            '  "service": "AmazonRDS" | "AmazonEC2" | "AmazonS3" | "AWSLambda" | "AmazonBedrock" | string | null,\n'
             '  "customer": string or null,\n'
             '  "metric_type": "quantity" | "cost",\n'
             '  "target_dimension": "product_InstanceType" | "ServiceSubcategory" | "ServiceCategory" | "PricingCategory" | "SubaccountId" | "BillingAccountId" | "ResourceId" | "RegionId" | "Model" | "ModelProvider" | "Modality" | "ExecutionType" | "TokenType" | "HardwareType" | "HardwareFamily" | "Commitment_Plan" | "Country" | "product_storageClass" | "product_volumeType" | "lineItem_Operation" | "ServiceName" | "provider" | string | null,\n'
@@ -747,7 +747,7 @@ class AIClient:
             "1. GENERAL FINOPS ADVISORY (NO DATA FETCH): Set intent to 'general_finops_advisory' and is_new_data_fetch to false if the user asks a conceptual FinOps, architectural, best practice, or educational question (e.g. 'What is the difference between EffectiveCost and BilledCost?', 'How to optimize NAT gateways?', 'Explain FinOps framework phases', 'Savings Plans vs RIs', 'What is FOCUS?', 'FinOps best practices on egress'). These questions DO NOT require pulling data from CloudHealth.\n"
             "2. DATA FETCH & COMPARISON: Set intent to 'fetch_data' and is_new_data_fetch to true if the user asks to see, show, fetch, get, compare, analyze, or chart their costs, usage, spend, run-rate, or data from cloud providers (AWS, Azure, GCP), even if their prompt has typos (e.g. 'shw me jne 2026 cst for awz').\n"
             "   - CRITICAL: Any request asking to compare costs, calculate projected costs, compare previous month with current month, or asking about a specific customer / organization / tenant (e.g. 'ABC Coffee Mugs', 'Lundbeck') MUST ALWAYS be classified as 'fetch_data' with is_new_data_fetch=true! NEVER classify customer spend queries or cost comparisons as general advisory.\n"
-            "3. TYPO CORRECTION & NORMALIZATION: In corrected_query, fix all spelling mistakes, typos in services (e.g. 'awz' -> 'AWS', 'rds' -> 'RDS', 'jne' -> 'June'), and clarify the sentence. In 'cloud', normalize to 'aws', 'azure', 'gcp', or 'all'. In 'service', normalize to canonical names like 'AmazonEC2', 'AmazonRDS', 'AmazonS3'. In 'target_ym', extract normalized 'YYYY-MM' (e.g. '2026-06').\n"
+            "3. TYPO CORRECTION & NORMALIZATION: In corrected_query, fix all spelling mistakes, typos in services (e.g. 'awz' -> 'AWS', 'rds' -> 'RDS', 'jne' -> 'June'), and clarify the sentence. In 'cloud', normalize to 'aws', 'azure', 'gcp', or 'all'. In 'service', normalize to canonical names like 'AmazonEC2', 'AmazonRDS', 'AmazonS3'. If the query asks about AI models, LLMs, foundation models, token costs, or multi-cloud AI spend, set 'service' to null (do NOT set AmazonRDS or other infrastructure services unless explicitly named). In 'target_ym', extract normalized 'YYYY-MM' (e.g. '2026-06').\n"
             "4. METRIC TYPE (QUANTITY VS COST): Set metric_type='quantity' if user asks for volume, count, operational capacity, or physical usage (e.g. 'number of ec2 instances', 'how many vms', 'instance hours', 'storage used in GB', 'how many invocations', 'count of databases'). Set metric_type='cost' (default) if user asks for financial spend, dollars, cost, or bill.\n"
             "5. MULTI-CLOUD BEST DEFAULT DIMENSIONS: When grouping dimension is not specified by the user:\n"
             "   - For Amazon EC2: target_dimension='product_InstanceType', breakdowns=['instance_type']\n"
@@ -756,6 +756,7 @@ class AIClient:
             "   - For Amazon EBS: target_dimension='product_volumeType', breakdowns=['volume_type']\n"
             "   - For AWS Lambda: target_dimension='lineItem_Operation'\n"
             "   - For Azure & GCP: target_dimension='ServiceSubcategory', breakdowns=['service_subcategory']\n"
+            "   - For AI / Foundation Models: target_dimension='Model', breakdowns=['model'] (set service=null unless Bedrock is explicitly named)\n"
             "   - For Multi-Cloud / Top Services: target_dimension='ServiceName', breakdowns=['service']\n"
             "   - CRITICAL: NEVER default to 'region' or 'location' unless the user explicitly requested region or location! Only include 'region' if user explicitly asked to break down by region.\n"
             "6. REFORMAT ONLY: is_new_data_fetch is false and intent is 'reformat_previous' ONLY when the user asks purely to re-render the immediately preceding table into a different chart format (e.g. 'show that as a pie chart') without requesting new data or changing service.\n"
@@ -831,6 +832,22 @@ class AIClient:
                         bdowns = [b for b in bdowns if b != "region"]
                     if not any(w in low for w in ["location", "locations", "geography", "geographic"]):
                         bdowns = [b for b in bdowns if b != "location"]
+
+                    # Sanitize: prevent hallucinated infrastructure services (AmazonRDS, AmazonEC2, etc.) on AI model queries or ungrounded queries
+                    is_ai_topic = any(w in low for w in [
+                        "ai model", "ai models", "foundation model", "foundation models", "ai spend", "ai cost",
+                        "llm", "llms", "model name", "by model", "model provider", "token type", "token rate", "hardware family"
+                    ]) or parsed.get("target_dimension") in ("Model", "ModelProvider", "Modality", "ExecutionType", "TokenType", "HardwareType", "HardwareFamily") or \
+                    any(b in ("model", "model_provider", "modality", "execution_type", "token_type", "hardware_type", "hardware_family") for b in bdowns)
+
+                    if is_ai_topic and not any(w in low for w in ["rds", "relational database", "aurora", "database", "postgres", "mysql"]):
+                        if parsed.get("service") in ("AmazonRDS", "AmazonEC2", "AmazonS3", "AWSLambda", "AmazonVPC"):
+                            logger.info(f"[Sanitize] Cleared hallucinated service '{parsed.get('service')}' for AI models query")
+                            parsed["service"] = None
+
+                    if parsed.get("service") == "AmazonRDS" and not any(w in low for w in ["rds", "database", "aurora", "relational", "postgres", "mysql"]) and not det_info.get("service"):
+                        logger.info(f"[Sanitize] Cleared unsupported AmazonRDS service not found in prompt or context")
+                        parsed["service"] = None
 
                     inc_chart = bool(parsed.get("include_chart", det_info["include_chart"])) and not is_no_chart_requested(low)
                     inc_mom = bool(parsed.get("include_mom", det_info["include_mom"])) and not is_no_mom_requested(low)
@@ -1922,9 +1939,20 @@ class AIClient:
 
             time_range = {"last": min(months_needed, 12), "qualifier": "MONTH"}
 
+            # ── AI Models and Dimensional Query Detection ─────────────────────
+            is_ai_models_query = (
+                any(w in low for w in [
+                    "ai model", "ai models", "foundation model", "foundation models",
+                    "by model", "model name", "model breakdown", "ai cost", "ai spend",
+                    "llm", "llms", "model provider", "token type", "token rate", "hardware family"
+                ]) or
+                intent_info.get("target_dimension") in ("Model", "ModelProvider", "Modality", "ExecutionType", "TokenType", "HardwareType", "HardwareFamily") or
+                any(b in ("model", "model_provider", "modality", "execution_type", "token_type", "hardware_type", "hardware_family") for b in (intent_info.get("breakdowns") or []))
+            )
+
             # ── Extract or inherit requested AWS service ──────────────────────
             requested_service, requested_service_disp = extract_requested_service(last_msg)
-            if not requested_service and intent_info.get("service") and str(intent_info.get("service")).lower() not in ("ai", "ai models", "ai_models", "models", "foundation models", "ai model"):
+            if not requested_service and intent_info.get("service") and not is_ai_models_query and str(intent_info.get("service")).lower() not in ("ai", "ai models", "ai_models", "models", "foundation models", "ai model"):
                 requested_service = intent_info["service"]
                 requested_service_disp = PCODE_TO_DISPLAY.get(requested_service, requested_service)
 
@@ -2934,9 +2962,11 @@ class AIClient:
 
             # 3-RDS-IT. Dedicated RDS Instance Type, Engine & Spend Analysis via AWS_RDS_COST_AND_USAGE & AWS_CUR
             is_rds_instance_or_usage = (
-                intent_info.get("service") == "AmazonRDS" or
-                any(w in low for w in ["rds", "relational database", "aurora"]) or
-                ("database" in low and any(w in low for w in ["instance", "type", "engine", "usage", "spend", "cost", "breakdown"]))
+                (
+                    (intent_info.get("service") == "AmazonRDS" and not is_ai_models_query) or
+                    any(w in low for w in ["rds", "relational database", "aurora"]) or
+                    ("database" in low and any(w in low for w in ["instance", "type", "engine", "usage", "spend", "cost", "breakdown"]))
+                ) and not is_ai_models_query
             ) and not any(w in low for w in ["recommendation", "anomal", "spike", "optimize rds"])
 
             if not is_rds_instance_or_usage and is_followup:
@@ -3300,10 +3330,12 @@ class AIClient:
 
             # 3-EC2-IT. Dedicated EC2 Instance Type & Usage Analysis via AWS_EC2_COST_AND_USAGE
             is_ec2_instance_query = (
-                (intent_info.get("service") == "AmazonEC2" and any(w in low for w in ["instance", "usage", "spend", "cost", "breakdown", "ec2", "how many", "number of", "count"])) or
-                any(w in low for w in ["instance type", "instancetype", "instance dataset", "ec2_cost_and_usage", "by instance", "instance breakdown", "instances breakdown"]) or
-                ("ec2" in low and any(w in low for w in ["instance", "type", "breakdown", "how many", "number of", "count"])) or
-                (intent_info.get("service") == "AmazonEC2" and intent_info.get("metric_type") == "quantity")
+                (
+                    (intent_info.get("service") == "AmazonEC2" and not is_ai_models_query and any(w in low for w in ["instance", "usage", "spend", "cost", "breakdown", "ec2", "how many", "number of", "count"])) or
+                    (any(w in low for w in ["instance type", "instancetype", "instance dataset", "ec2_cost_and_usage", "by instance", "instance breakdown", "instances breakdown"]) and not is_ai_models_query) or
+                    ("ec2" in low and any(w in low for w in ["instance", "type", "breakdown", "how many", "number of", "count"])) or
+                    (intent_info.get("service") == "AmazonEC2" and not is_ai_models_query and intent_info.get("metric_type") == "quantity")
+                )
             ) and not any(w in low for w in ["recommendation", "anomal", "spike", "rds", "relational", "aurora", "database"]) and intent_info.get("service") != "AmazonRDS"
 
             if not is_ec2_instance_query and is_followup:
