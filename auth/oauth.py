@@ -176,13 +176,13 @@ class OAuth2Helper:
             return None
 
     def _load_token(self) -> Optional[Dict]:
-        if os.path.exists(self.tokens_file):
-            try:
-                with open(self.tokens_file, "r") as f:
-                    return json.load(f)
-            except Exception as e:
-                logger.warning(f"Could not read tokens file {self.tokens_file}: {e}")
-                return None
+        for path in [self.tokens_file, os.path.expanduser("~/.cleo/oauth_tokens.json")]:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r") as f:
+                        return json.load(f)
+                except Exception as e:
+                    logger.warning(f"Could not read tokens file {path}: {e}")
         return None
 
     def _save_token(self, mcp_data: Dict):
@@ -245,7 +245,11 @@ class OAuth2Helper:
         except urllib.error.HTTPError as e:
             err_body = e.read().decode('utf-8', 'ignore') if hasattr(e, 'read') else str(e)
             self.last_error = f"HTTP {e.code}: {err_body}"
-            logger.error(f"[OAuth HTTP Error] Code {e.code}: {err_body}")
+            # Refresh rejection is expected when token expires/revokes; log cleanly without error storm
+            if e.code in (400, 401) and payload.get("grant_type") == "refresh_token":
+                logger.info(f"[OAuth Refresh] Refresh rejected by auth server (Code {e.code}): {err_body}")
+            else:
+                logger.error(f"[OAuth HTTP Error] Code {e.code}: {err_body}")
             return None
         except urllib.error.URLError as e:
             self.last_error = f"Network error: {e}"
@@ -311,7 +315,13 @@ class OAuth2Helper:
             logger.info("✅ [OAuth Refresh] Access token refreshed successfully!")
             return td["access_token"]
             
-        logger.warning(f"⚠️  [OAuth Refresh] Token refresh failed: {self.last_error}")
+        err = self.last_error or ""
+        is_permanent = any(kw in err.lower() for kw in ["invalid_grant", "invalid_client", "unauthorized", "http 400", "http 401", "http 403", "expired"])
+        if is_permanent:
+            logger.info(f"[OAuth Refresh] Stored credentials rejected ({err}). Purging invalid tokens.")
+            self.clear_tokens()
+        else:
+            logger.warning(f"⚠️  [OAuth Refresh] Token refresh failed: {err}")
         return None
 
     def exchange_code(self, code: str, verifier: str, storage_key: str = MCP_RESOURCE, 

@@ -4909,12 +4909,12 @@
           if (sidebarBadge) sidebarBadge.textContent = `${data.tools_count}`;
           renderTools(data.tools);
         } else if (data.mcp === 'unauthorized') {
-          if (chDot) { chDot.className = 'dot'; chDot.style.background = '#ef4444'; }
+          if (chDot) { chDot.className = 'dot'; chDot.style.background = '#64748b'; }
           if (chStatusBtn) chStatusBtn.className = 'ch-status-btn disconnected';
-          badgeText.textContent = 'MCP Unauthorized';
-          if (connectBtn) connectBtn.querySelector('span').textContent = 'Reconnect';
-          if (disconnectBtn) disconnectBtn.style.display = 'flex';
-          if (chChevron) chChevron.style.display = '';
+          badgeText.textContent = 'CloudHealth Disconnected';
+          if (connectBtn) connectBtn.querySelector('span').textContent = 'Connect';
+          if (disconnectBtn) disconnectBtn.style.display = 'none';
+          if (chChevron) chChevron.style.display = 'none';
           if (toolCount) toolCount.textContent = '0 tools';
           if (sidebarBadge) sidebarBadge.textContent = '0';
           renderErrorNotice(data.last_error);
@@ -4964,9 +4964,33 @@
 
     function renderErrorNotice(err) {
       const container = document.getElementById('tools-list');
+      if (!err || err.toLowerCase().includes('disconnected') || err.toLowerCase().includes('401') || err.toLowerCase().includes('unauthorized') || err.toLowerCase().includes('expired')) {
+        container.innerHTML = '<div style="font-size: 0.78rem; color: #64748b;">CloudHealth MCP is disconnected. Sign in to the platform to continue.</div>';
+        return;
+      }
       container.innerHTML = `
         <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 10px; font-size: 0.78rem; color: #f87171; line-height: 1.4;">
           <strong>Authorization Error:</strong><br>${escapeHtml(err || 'Not authorized')}
+        </div>
+      `;
+    }
+
+    function renderMcpDisconnectedNotice() {
+      return `
+        <div style="display:flex; flex-direction:column; gap:10px; padding:14px 16px; background:rgba(99, 102, 241, 0.08); border:1px solid rgba(99, 102, 241, 0.25); border-radius:10px; max-width:480px; margin:4px 0;">
+          <div style="display:flex; align-items:center; gap:8px; font-weight:600; color:#e2e8f0; font-size:0.9rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>CloudHealth MCP is disconnected</span>
+          </div>
+          <p style="margin:0; font-size:0.83rem; color:#94a3b8; line-height:1.45;">
+            Sign in to the platform to continue querying live multi-cloud costs, usage datasets, and FinOps insights.
+          </p>
+          <div style="display:flex; gap:8px; margin-top:2px;">
+            <button onclick="openAuthModal()" style="display:inline-flex; align-items:center; gap:6px; background:#6366f1; color:white; border:none; padding:7px 14px; border-radius:6px; font-size:0.82rem; font-weight:600; cursor:pointer; transition:background 0.15s;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+              <span>Connect CloudHealth</span>
+            </button>
+          </div>
         </div>
       `;
     }
@@ -7192,6 +7216,11 @@
             return;
           }
           const err = await res.json().catch(() => ({ detail: 'Request failed' }));
+          const isDisconnected = res.status === 401 || (err.detail && (err.detail.includes('disconnected') || err.detail.includes('not authenticated') || err.detail.includes('Sign in')));
+          if (isDisconnected) {
+            thinkingEl.querySelector('.bubble').innerHTML = renderMcpDisconnectedNotice();
+            return;
+          }
           thinkingEl.querySelector('.bubble').innerHTML = `<span style="color:#f87171;">${escapeHtml(err.detail || 'Request failed')}</span>`;
           return;
         }
@@ -7343,9 +7372,14 @@
             `;
           }
         } else {
-          const isNet = err.name === 'TypeError' || (err.message && err.message.toLowerCase().includes('fetch'));
-          const errPrefix = isNet ? 'Network error' : 'Error';
-          thinkingEl.querySelector('.bubble').innerHTML = `<span style="color:#f87171;">${errPrefix}: ${escapeHtml(err.message)}</span>`;
+          const isDisc = (err.message && (err.message.includes('disconnected') || err.message.includes('401') || err.message.includes('not authenticated')));
+          if (isDisc) {
+            thinkingEl.querySelector('.bubble').innerHTML = renderMcpDisconnectedNotice();
+          } else {
+            const isNet = err.name === 'TypeError' || (err.message && err.message.toLowerCase().includes('fetch'));
+            const errPrefix = isNet ? 'Network error' : 'Error';
+            thinkingEl.querySelector('.bubble').innerHTML = `<span style="color:#f87171;">${errPrefix}: ${escapeHtml(err.message)}</span>`;
+          }
         }
       } finally {
         setGeneratingState(false);

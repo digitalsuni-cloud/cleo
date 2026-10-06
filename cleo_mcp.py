@@ -300,7 +300,6 @@ class MCPClient:
                 return data.get("result", {})
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8", "ignore") if hasattr(e, "read") else str(e)
-            logger.error(f"[MCP HTTP Error] Status {e.code}: {err_body}")
             if e.code in (401, 403) and self._token_refresher:
                 logger.info(f"[MCP] Token rejected ({e.code}), refreshing via OAuth...")
                 new_token = self._token_refresher()
@@ -308,6 +307,9 @@ class MCPClient:
                     self._token = new_token
                     self._direct_engine.token = new_token
                     return self._http_request(method, params)
+                logger.warning(f"[MCP] Authentication expired ({e.code}). CloudHealth is disconnected.")
+                raise RuntimeError(f"CloudHealth authentication expired (Status {e.code}).")
+            logger.error(f"[MCP HTTP Error] Status {e.code}: {err_body}")
             raise RuntimeError(f"HTTP Error {e.code}: {err_body}")
         except Exception as e:
             logger.error(f"[MCP Network Exception] {e}")
@@ -326,8 +328,8 @@ class MCPClient:
             return res
         except Exception as e:
             err_str = str(e)
-            if "-32001" in err_str or "not authorized" in err_str.lower() or "401" in err_str or "403" in err_str:
-                logger.error(f"❌ [MCP Authorization Rejected] {err_str}")
+            if "-32001" in err_str or "not authorized" in err_str.lower() or "401" in err_str or "403" in err_str or "expired" in err_str.lower():
+                logger.warning(f"[MCP Authorization Rejected] {err_str}. CloudHealth is disconnected.")
                 org_hint = ""
                 try:
                     if self.token and "." in self.token:

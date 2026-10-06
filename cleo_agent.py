@@ -7746,20 +7746,6 @@ def get_access_token(interactive: bool = False) -> Optional[str]:
         if token:
             return token
 
-    # Check legacy token file as fallback
-    legacy_file = os.path.expanduser("~/.cleo/oauth_tokens.json")
-    if os.path.exists(legacy_file):
-        try:
-            with open(legacy_file, "r") as f:
-                leg = json.load(f)
-                if MCP_RESOURCE in leg:
-                    leg_data = leg[MCP_RESOURCE]
-                    token = leg_data.get("token", {}).get("access_token")
-                    if token:
-                        return token
-        except Exception:
-            pass
-
     if interactive:
         mcp_data = auth_helper.authenticate(MCP_RESOURCE)
         if mcp_data:
