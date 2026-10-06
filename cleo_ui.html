@@ -3202,7 +3202,7 @@
           </button>
           <button class="cleo-chart-action-btn" id="chart-modal-curve-btn" onclick="toggleModalChartCurve()" title="Toggle curve style (Smooth / Sharp)" style="display: none; padding: 5px 10px; font-size: 0.74rem;">
             <span id="chart-modal-curve-icon" style="display: inline-flex; align-items: center;"></span>
-            <span id="chart-modal-curve-text">Smooth</span>
+            <span id="chart-modal-curve-text">Sharp</span>
           </button>
           <button class="cleo-chart-action-btn" onclick="downloadExpandedChart()" title="Download PNG" style="padding: 5px 10px; font-size: 0.74rem;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -6411,10 +6411,10 @@
       if (!btn || !label) return;
 
       const isSmooth = (mode === 'smooth');
-      label.textContent = isSmooth ? 'Smooth' : 'Sharp';
-      btn.title = isSmooth ? 'Current: Smooth curves (Click for Sharp lines)' : 'Current: Sharp lines (Click for Smooth curves)';
+      label.textContent = isSmooth ? 'Sharp' : 'Smooth';
+      btn.title = isSmooth ? 'Switch to Sharp lines (currently Smooth curves)' : 'Switch to Smooth curves (currently Sharp lines)';
       if (icon) {
-        icon.innerHTML = isSmooth ? _SVG_CURVE_SMOOTH : _SVG_CURVE_SHARP;
+        icon.innerHTML = isSmooth ? _SVG_CURVE_SHARP : _SVG_CURVE_SMOOTH;
       }
     }
 
@@ -6489,8 +6489,8 @@
         curveBtn.className = 'cleo-chart-action-btn';
         const refreshBtn = () => {
           const isSmooth = getIsSmooth();
-          curveBtn.title = isSmooth ? 'Curve: Smooth (Click for Sharp lines)' : 'Curve: Sharp (Click for Smooth curve)';
-          curveBtn.innerHTML = isSmooth ? _SVG_CURVE_SMOOTH : _SVG_CURVE_SHARP;
+          curveBtn.title = isSmooth ? 'Switch to Sharp lines (currently Smooth)' : 'Switch to Smooth curves (currently Sharp)';
+          curveBtn.innerHTML = isSmooth ? _SVG_CURVE_SHARP : _SVG_CURVE_SMOOTH;
         };
         refreshBtn();
         curveBtn.onclick = () => {
