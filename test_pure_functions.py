@@ -12,7 +12,7 @@ from cleo_agent import (
     _clean_chart_title,
     _classify_service_usage_type,
 )
-from cleo_server import _is_valid_guid, _generate_chat_title
+from cleo_server import _is_valid_guid, _generate_chat_title, _wait_for_server_ready, _find_free_port
 
 
 def test_parse_query_time_context():
@@ -412,6 +412,76 @@ def test_ai_models_12month_dimensional_breakdown_routing():
     assert "Claude 3.5 Sonnet" in resp
     assert "GPT-4o" in resp
 
+    # Test LLM-First Sanitization: If LLM hallucinates 'AmazonRDS' for an AI models query,
+    # _understand_query must sanitize service to None and not route to RDS
+    client_llm = AIClient("gemini", {}, [])
+    fake_llm_json = json.dumps({
+        "intent": "fetch_data",
+        "cloud": "all",
+        "service": "AmazonRDS",
+        "customer": None,
+        "metric_type": "cost",
+        "target_dimension": "Model",
+        "timeframe_months": 12,
+        "breakdowns": ["model"],
+        "chart_types": ["bar"],
+        "include_chart": True,
+        "include_mom": True,
+        "is_new_data_fetch": True,
+        "corrected_query": "Give me the last 12 months cost data for AI models and break it down by model name"
+    })
+    client_llm._call_active_llm = lambda msgs: (fake_llm_json, None)
+    sanitized_intent = client_llm._understand_query([
+        {"role": "user", "content": "Give me the last 12months cost data for AI models and break it down by model name"}
+    ])
+    assert sanitized_intent.get("service") is None, f"Expected None service, got {sanitized_intent.get('service')}"
+
+    # Test RDS Guard: Even if mock_intent has service='AmazonRDS', it must route to MULTICLOUD_AI_COST_AND_USAGE
+    mock_mcp_llm = MockMCP()
+    client_guarded = AIClient("direct", {}, [])
+    client_guarded._understand_query = lambda msgs, mcp=None: json.loads(fake_llm_json)
+    resp_guarded = client_guarded.generate([
+        {"role": "user", "content": "Give me the last 12months cost data for AI models and break it down by model name"}
+    ], mcp=mock_mcp_llm)
+    assert mock_mcp_llm.last_query is not None
+    sql_guarded = mock_mcp_llm.last_query["queryInput"]["sqlStatement"]
+    assert "MULTICLOUD_AI_COST_AND_USAGE" in sql_guarded
+    assert "AWS_RDS" not in sql_guarded
+    assert "Model AS dimension" in sql_guarded
+
+
+def test_wait_for_server_ready():
+    import http.server
+    import threading
+
+    # 1. Unused port should timeout and return False
+    unused_port = _find_free_port(59123)
+    assert _wait_for_server_ready(unused_port, timeout=0.15) is False
+
+    # 2. Responding server on /health should return True
+    class DummyHealthHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/health":
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"status":"ok"}')
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, format, *args):
+            pass  # suppress log output during test
+
+    server = http.server.HTTPServer(("127.0.0.1", unused_port), DummyHealthHandler)
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    try:
+        assert _wait_for_server_ready(unused_port, timeout=2.0) is True
+    finally:
+        server.shutdown()
+        server.server_close()
+
 
 if __name__ == "__main__":
     # Self-run check
@@ -436,6 +506,7 @@ if __name__ == "__main__":
     test_multimonth_dimensional_breakdown_chart()
     test_market_data_intent_and_specs()
     test_ai_models_12month_dimensional_breakdown_routing()
+    test_wait_for_server_ready()
     print("All unit tests passed successfully!")
 
 
