@@ -399,7 +399,9 @@ def test_ai_models_12month_dimensional_breakdown_routing():
     sql = mock_mcp.last_query["queryInput"]["sqlStatement"]
     assert "MULTICLOUD_AI_COST_AND_USAGE" in sql
     assert "Model AS dimension" in sql
+    assert "Model IS NOT NULL" in sql
     assert "AWS_CUR" not in sql
+    assert mock_mcp.last_query["queryInput"]["limit"] == 500
 
     tr = mock_mcp.last_query["queryInput"]["timeRange"]
     assert tr.get("last") == 12
@@ -411,6 +413,25 @@ def test_ai_models_12month_dimensional_breakdown_routing():
     assert '"horizontal": false' in resp
     assert "Claude 3.5 Sonnet" in resp
     assert "GPT-4o" in resp
+
+    # Test AI models query without explicit breakdown also routes to MULTICLOUD_AI_COST_AND_USAGE
+    mock_mcp_implicit = MockMCP()
+    resp_implicit = client.generate([
+        {"role": "user", "content": "Give me the last 12months cost data for AI models"}
+    ], mcp=mock_mcp_implicit)
+    assert mock_mcp_implicit.last_query is not None
+    assert "MULTICLOUD_AI_COST_AND_USAGE" in mock_mcp_implicit.last_query["queryInput"]["sqlStatement"]
+    assert "Multi-Cloud Cost by AI Model — Last 12 Months" in resp_implicit
+
+    # Test Empty State: If AI query returns no rows, must not fall through to Virtual Machines
+    class MockEmptyMCP:
+        def call_tool(self, tool_name, args):
+            return {"content": [{"type": "text", "text": json.dumps({"csv": "month,provider,dimension,val\n"})}]}
+    resp_empty = client.generate([
+        {"role": "user", "content": "Give me the last 12months cost data for AI models and break it down by model name"}
+    ], mcp=MockEmptyMCP())
+    assert "No active AI model spend data was returned" in resp_empty
+    assert "Virtual Machines" not in resp_empty
 
     # Test LLM-First Sanitization: If LLM hallucinates 'AmazonRDS' for an AI models query,
     # _understand_query must sanitize service to None and not route to RDS
