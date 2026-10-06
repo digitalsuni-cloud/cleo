@@ -3276,10 +3276,10 @@
             </select>
           </div>
 
-          <div class="chart-modal-divider"></div>
+          <div class="chart-modal-divider" id="chart-modal-axes-divider"></div>
 
           <!-- Axis & Orientation Controls -->
-          <div class="chart-modal-control-item">
+          <div class="chart-modal-control-item" id="chart-modal-axes-controls">
             <span class="chart-modal-label">Axes:</span>
             <button class="cleo-chart-action-btn" id="chart-modal-swap-axes-btn" onclick="toggleModalChartTranspose()" title="Swap X and Y axes (transpose dimensions & time/categories)">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -5750,6 +5750,27 @@
     const _SVG_CURVE_SMOOTH = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16c3.5 0 4.5-9 9-9s5.5 9 9 9"></path></svg>';
     const _SVG_CURVE_SHARP = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 16 9 8 15 16 21 8"></polyline></svg>';
 
+    function _resolveDatasetThemeColor(ds, index = 0) {
+      if (!ds) return _CHART_PALETTE[index % _CHART_PALETTE.length];
+      if (ds._themeColor) return ds._themeColor;
+      if (typeof ds.pointBackgroundColor === 'string' && !ds.pointBackgroundColor.startsWith('rgba(11, 15, 23') && ds.pointBackgroundColor !== '#0b0f17') {
+        return ds.pointBackgroundColor;
+      }
+      if (typeof ds.borderColor === 'string' && !ds.borderColor.startsWith('rgba(11, 15, 23') && ds.borderColor !== '#0b0f17') {
+        return ds.borderColor;
+      }
+      if (typeof ds.backgroundColor === 'string' && !ds.backgroundColor.startsWith('rgba(11, 15, 23') && ds.backgroundColor !== '#0b0f17') {
+        if (ds.backgroundColor.startsWith('rgba(')) {
+          const parts = ds.backgroundColor.slice(5, -1).split(',').map(s => s.trim());
+          if (parts.length >= 3) {
+            return `rgb(${parts[0]}, ${parts[1]}, ${parts[2]})`;
+          }
+        }
+        return ds.backgroundColor;
+      }
+      return _CHART_PALETTE[index % _CHART_PALETTE.length];
+    }
+
     function _buildLegendLabelsGenerator() {
       return (chart) => {
         const chartType = chart.config?.type || chart.config?._config?.type || chart.type;
@@ -5781,11 +5802,14 @@
           if (item.datasetIndex !== undefined) {
             const ds = chart.data.datasets[item.datasetIndex];
             if (ds) {
-              item.fillStyle = ds.pointBackgroundColor || ds.borderColor || item.fillStyle;
-              item.strokeStyle = ds.borderColor || item.strokeStyle;
+              const primaryColor = _resolveDatasetThemeColor(ds, item.datasetIndex);
+              item.fillStyle = primaryColor;
+              item.strokeStyle = primaryColor;
               if (ds.pointStyle) item.pointStyle = ds.pointStyle;
-              if (['cross', 'crossRot', 'line', 'dash'].includes(ds.pointStyle)) {
+              if (['cross', 'crossRot', 'line', 'dash', 'star'].includes(ds.pointStyle)) {
                 item.lineWidth = 2.4;
+              } else {
+                item.lineWidth = 1.5;
               }
             }
           }
@@ -5899,10 +5923,14 @@
         ...config,
         data: {
           labels: [...(config.data?.labels || [])],
-          datasets: (config.data?.datasets || []).map(ds => ({
-            ...ds,
-            data: Array.isArray(ds.data) ? [...ds.data] : ds.data
-          }))
+          datasets: (config.data?.datasets || []).map((ds, i) => {
+            const rawColor = _resolveDatasetThemeColor(ds, i);
+            return {
+              ...ds,
+              _themeColor: rawColor,
+              data: Array.isArray(ds.data) ? [...ds.data] : ds.data
+            };
+          })
         }
       };
 
@@ -5927,9 +5955,17 @@
       if (typeSelect) {
         typeSelect.value = _modalState.activeType;
       }
+      const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
+      const axesControls = document.getElementById('chart-modal-axes-controls');
+      const axesDivider = document.getElementById('chart-modal-axes-divider');
+      if (axesControls) {
+        axesControls.style.display = isPie ? 'none' : 'flex';
+      }
+      if (axesDivider) {
+        axesDivider.style.display = isPie ? 'none' : '';
+      }
       const swapBtn = document.getElementById('chart-modal-swap-axes-btn');
       if (swapBtn) {
-        const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
         swapBtn.style.display = isPie ? 'none' : 'inline-flex';
         if (_modalState.isTransposed) {
           swapBtn.classList.add('active');
@@ -6012,15 +6048,21 @@
       const newLabels = datasets.map(d => d.label || 'Series');
       const newDatasets = labels.map((colName, colIdx) => {
         const rawColor = _CHART_PALETTE[colIdx % _CHART_PALETTE.length];
+        const pStyle = _POINT_STYLES[colIdx % _POINT_STYLES.length];
+        const isStrokedPoint = ['cross', 'crossRot', 'line', 'dash', 'star'].includes(pStyle);
         return {
           label: String(colName),
           data: datasets.map(d => {
             const val = Array.isArray(d.data) ? d.data[colIdx] : 0;
             return typeof val === 'number' ? val : (Number(val) || 0);
           }),
+          _themeColor: rawColor,
           backgroundColor: rawColor,
           borderColor: rawColor,
-          pointStyle: _POINT_STYLES[colIdx % _POINT_STYLES.length],
+          pointStyle: pStyle,
+          pointBackgroundColor: rawColor,
+          pointBorderColor: isStrokedPoint ? rawColor : '#0c111d',
+          pointBorderWidth: isStrokedPoint ? 2.4 : 1.5,
           borderRadius: 0,
           borderWidth: 1
         };
@@ -6056,11 +6098,11 @@
       if (datasets.length > 1) {
         return datasets.map((ds, i) => {
           const sum = (ds.data || []).reduce((acc, v) => acc + (Number(v) || 0), 0);
-          const color = ds.borderColor || ds.backgroundColor || _CHART_PALETTE[i % _CHART_PALETTE.length];
+          const color = _resolveDatasetThemeColor(ds, i);
           return {
             id: String(ds.label || `Series ${i+1}`),
             name: String(ds.label || `Series ${i+1}`),
-            color: typeof color === 'string' ? color : _CHART_PALETTE[i % _CHART_PALETTE.length],
+            color: color,
             total: Math.round(sum * 100) / 100
           };
         });
@@ -6253,7 +6295,8 @@
           pieLabels.push(ds.label || `Series ${i + 1}`);
           const sum = (ds.data || []).reduce((acc, v) => acc + (Number(v) || 0), 0);
           pieData.push(Math.round(sum * 100) / 100);
-          pieColors.push(ds.borderColor || ds.backgroundColor || _CHART_PALETTE[i % _CHART_PALETTE.length]);
+          const rawColor = _resolveDatasetThemeColor(ds, i);
+          pieColors.push(rawColor);
         });
         labels = pieLabels;
         datasets = [{
@@ -6273,7 +6316,10 @@
 
       if (isLine) {
         datasets.forEach((ds, i) => {
-          const rawColor = ds.borderColor || ds.backgroundColor || _CHART_PALETTE[i % _CHART_PALETTE.length];
+          const rawColor = _resolveDatasetThemeColor(ds, i);
+          const pStyle = _POINT_STYLES[i % _POINT_STYLES.length];
+          const isStrokedPoint = ['cross', 'crossRot', 'line', 'dash', 'star'].includes(pStyle);
+          ds._themeColor = rawColor;
           ds.type = 'line';
           ds.fill = isArea ? (datasets.length > 1 ? true : 'origin') : false;
           ds.tension = _modalState.tension;
@@ -6282,23 +6328,29 @@
           ds.borderWidth = 2.5;
           ds.pointRadius = 4.5;
           ds.pointHoverRadius = 7.5;
-          ds.pointStyle = _POINT_STYLES[i % _POINT_STYLES.length];
+          ds.pointStyle = pStyle;
           ds.pointBackgroundColor = rawColor;
-          ds.pointBorderColor = '#0c111d';
-          ds.pointBorderWidth = 1.5;
+          ds.pointBorderColor = isStrokedPoint ? rawColor : '#0c111d';
+          ds.pointBorderWidth = isStrokedPoint ? 2.4 : 1.5;
         });
       } else if (!isPie) {
         datasets.forEach((ds, i) => {
-          const rawColor = ds.borderColor || ds.backgroundColor || _CHART_PALETTE[i % _CHART_PALETTE.length];
+          const rawColor = _resolveDatasetThemeColor(ds, i);
+          const pStyle = _POINT_STYLES[i % _POINT_STYLES.length];
+          const isStrokedPoint = ['cross', 'crossRot', 'line', 'dash', 'star'].includes(pStyle);
+          ds._themeColor = rawColor;
           ds.type = 'bar';
           ds.borderRadius = _modalState.isStacked ? 0 : 4;
           ds.borderWidth = _modalState.isStacked ? 0.75 : 1.5;
           ds.tension = undefined;
           ds.fill = undefined;
           ds.pointRadius = 0;
-          if (!ds.backgroundColor || typeof ds.backgroundColor !== 'string') {
-            ds.backgroundColor = rawColor;
-          }
+          ds.borderColor = _modalState.isStacked ? 'rgba(11, 15, 23, 0.4)' : rawColor;
+          ds.backgroundColor = rawColor;
+          ds.pointStyle = pStyle;
+          ds.pointBackgroundColor = rawColor;
+          ds.pointBorderColor = isStrokedPoint ? rawColor : '#0c111d';
+          ds.pointBorderWidth = isStrokedPoint ? 2.4 : 1.5;
         });
       }
 
@@ -6846,22 +6898,23 @@
         const initialTension = isLine ? (savedCurve === 'sharp' ? 0 : 0.35) : 0;
 
         const datasets = rawDatasets.map((ds, i) => {
-          const color = ds.borderColor || (isPie
+          const rawColor = _resolveDatasetThemeColor(ds, i);
+          const color = isPie
             ? labels.map((_, j) => _CHART_PALETTE[j % _CHART_PALETTE.length])
-            : _CHART_PALETTE[i % _CHART_PALETTE.length]);
-          const rawColor = Array.isArray(color) ? color[0] : color;
+            : rawColor;
           const pStyle = _POINT_STYLES[i % _POINT_STYLES.length];
-          const isStrokedPoint = ['cross', 'crossRot', 'line', 'dash'].includes(pStyle);
+          const isStrokedPoint = ['cross', 'crossRot', 'line', 'dash', 'star'].includes(pStyle);
 
           return {
             ...ds,
+            _themeColor: rawColor,
             backgroundColor: isPie ? color : (isArea ? (ds.backgroundColor || _toAlpha(rawColor, 0.28)) : (ds.backgroundColor || color)),
-            borderColor: isPie ? '#0b0f17' : (ds.borderColor || (isLine ? rawColor : 'rgba(11, 15, 23, 0.4)')),
+            borderColor: isPie ? '#0b0f17' : (ds.borderColor && !ds.borderColor.startsWith('rgba(11, 15, 23') && ds.borderColor !== '#0b0f17' ? ds.borderColor : (isLine ? rawColor : 'rgba(11, 15, 23, 0.4)')),
             borderWidth: isPie ? 2 : (isLine ? 2.5 : (isStacked ? 0.75 : 1.5)),
             borderRadius: (isBar && !isStacked) ? 4 : 0,
             pointStyle: pStyle,
-            pointBackgroundColor: ds.borderColor || rawColor,
-            pointBorderColor: isStrokedPoint ? (ds.borderColor || rawColor) : '#0c111d',
+            pointBackgroundColor: rawColor,
+            pointBorderColor: isStrokedPoint ? rawColor : '#0c111d',
             pointBorderWidth: isStrokedPoint ? 2.4 : 1.5,
             pointRadius: isLine ? 4.5 : 0,
             pointHoverRadius: isLine ? 7.5 : 0,
