@@ -6,6 +6,7 @@ import pytest
 from cleo_agent import (
     parse_query_time_context,
     extract_requested_service,
+    extract_all_requested_services,
     extract_requested_cloud,
     detect_anomaly_status_filter,
     _csv_to_markdown,
@@ -21,6 +22,7 @@ from cleo_query import (
     _deterministic_understand_query,
 )
 from cleo_server import _is_valid_guid, _generate_chat_title, _wait_for_server_ready, _find_free_port
+import datetime
 
 
 def test_parse_query_time_context():
@@ -32,6 +34,13 @@ def test_parse_query_time_context():
     # Ascending sort
     ctx_asc = parse_query_time_context("Lowest services by cost")
     assert ctx_asc["sort_desc"] is False
+
+    # YTD detection
+    ctx_ytd = parse_query_time_context("give me the RDS and S3 cost and usage data for YTD")
+    now = datetime.date.today()
+    assert ctx_ytd["timeframe_months"] == now.month
+    assert ctx_ytd["months_needed"] == now.month
+    assert "YTD" in ctx_ytd["target_label"]
 
 
 def test_extract_requested_service():
@@ -49,6 +58,28 @@ def test_extract_requested_service():
     # Negation / reset across all services
     match_neg = extract_requested_service("Show total spend across all services, not just EC2")
     assert match_neg[0] is None
+
+    # Multi-service extraction
+    all_matches = extract_all_requested_services("give me the RDS and S3 cost and usage data for YTD")
+    assert len(all_matches) == 2
+    assert all_matches[0].pcode == "AmazonRDS"
+    assert all_matches[1].pcode == "AmazonS3"
+
+    three_matches = extract_all_requested_services("Show EC2, RDS, and S3 spend")
+    assert len(three_matches) == 3
+    assert [m.pcode for m in three_matches] == ["AmazonEC2", "AmazonRDS", "AmazonS3"]
+
+
+def test_multi_service_and_ytd_understanding():
+    now = datetime.date.today()
+    q = "give me the RDS and S3 cost and usage data for YTD"
+    understood = _deterministic_understand_query([{"role": "user", "content": q}])
+    assert understood["intent"] == "fetch_data"
+    assert understood["timeframe_months"] == now.month
+    assert understood["timeframe_days"] is None
+    assert understood["services"] == ["AmazonRDS", "AmazonS3"]
+    assert understood["service"] == "AmazonRDS"
+
 
 
 def test_extract_requested_cloud():
@@ -630,6 +661,7 @@ if __name__ == "__main__":
             def setattr(self, obj, attr, val): setattr(obj, attr, val)
         test_oauth_disconnected_handling(pathlib.Path(td), DummyMonkey())
     test_exclude_other_requested_and_chart_filtering()
+    test_multi_service_and_ytd_understanding()
     print("All unit tests passed successfully!")
 
 

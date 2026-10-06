@@ -334,6 +334,8 @@ def get_realtime_calendar_info() -> dict:
     d15_start = (now - datetime.timedelta(days=15)).strftime("%Y-%m-%d")
     d30_start = (now - datetime.timedelta(days=30)).strftime("%Y-%m-%d")
     d7_start = (now - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+    ytd_start = f"{now.year}-01-01"
+    ytd_months = now.month
     return {
         "today_str": today_str,
         "today_verbose": today_verbose,
@@ -346,6 +348,9 @@ def get_realtime_calendar_info() -> dict:
         "d7_start": d7_start,
         "d15_start": d15_start,
         "d30_start": d30_start,
+        "ytd_start": ytd_start,
+        "ytd_months": ytd_months,
+        "now_year": now.year,
     }
 
 def build_system_prompt(tools: list[dict], engine_label: str = None) -> str:
@@ -360,6 +365,7 @@ def build_system_prompt(tools: list[dict], engine_label: str = None) -> str:
         f"- Yesterday (Latest Closed Billing Day): {cal['yesterday_str']} ({cal['yesterday_verbose']})\n"
         f"- Current Billing Month (MTD): {cal['current_ym']} ({cal['current_month_name']})\n"
         f"- Last Completed Billing Month: {cal['last_ym']} ({cal['last_month_name']})\n"
+        f"- Year-To-Date (YTD): Jan 1, {cal['now_year']} to current month ({cal['current_ym']}), {cal['ytd_months']} months\n"
         f"- Last 7 Days Window: {cal['d7_start']} to {cal['yesterday_str']} (ending yesterday, ignoring today)\n"
         f"- Last 15 Days Window: {cal['d15_start']} to {cal['yesterday_str']} (ending yesterday, ignoring today)\n"
         f"- Last 30 Days Window: {cal['d30_start']} to {cal['yesterday_str']} (ending yesterday, ignoring today)\n\n"
@@ -500,6 +506,7 @@ from cleo_query import (
     _friendly_service_name,
     _fetch_total_cost,
     extract_requested_service,
+    extract_all_requested_services,
     extract_requested_cloud,
     parse_query_time_context,
     detect_anomaly_status_filter,
@@ -724,12 +731,14 @@ class AIClient:
             f"- Yesterday: {cal['yesterday_str']} — ALWAYS REMEMBER that yesterday's data is PARTIAL due to cloud billing settlement latency.\n"
             f"- Current Billing Month (MTD): {cal['current_ym']} ({cal['current_month_name']})\n"
             f"- Last Completed Month: {cal['last_ym']} ({cal['last_month_name']})\n"
+            f"- Year-To-Date (YTD): {cal['ytd_start']} to current month ({cal['current_ym']}), {cal['ytd_months']} months. When user requests YTD, set timeframe_months={cal['ytd_months']}, timeframe_days=null, and target_ym='{cal['current_ym']}'.\n"
             f"- Last 15 Days Window: {cal['d15_start']} to {cal['yesterday_str']} (15 closed days, ending yesterday, ignoring today)\n"
             f"- Last 30 Days Window: {cal['d30_start']} to {cal['yesterday_str']} (30 closed days, ending yesterday, ignoring today)\n\n"
             "Output ONLY a raw JSON object (no markdown, no code fencing, no explanation) with this schema:\n"
             "{\n"
             '  "intent": "fetch_data" | "general_finops_advisory" | "reformat_previous" | "history_qa" | "finops_recommendations" | "anomalies" | "unsupported_capability" | "general_chat",\n'
             '  "cloud": "aws" | "azure" | "gcp" | "all" | null,\n'
+            '  "services": ["AmazonRDS", "AmazonS3", ...] or null,\n'
             '  "service": "AmazonRDS" | "AmazonEC2" | "AmazonS3" | "AWSLambda" | "AmazonBedrock" | string | null,\n'
             '  "customer": string or null,\n'
             '  "metric_type": "quantity" | "cost",\n'
@@ -748,7 +757,7 @@ class AIClient:
             "1. GENERAL FINOPS ADVISORY (NO DATA FETCH): Set intent to 'general_finops_advisory' and is_new_data_fetch to false if the user asks a conceptual FinOps, architectural, best practice, or educational question (e.g. 'What is the difference between EffectiveCost and BilledCost?', 'How to optimize NAT gateways?', 'Explain FinOps framework phases', 'Savings Plans vs RIs', 'What is FOCUS?', 'FinOps best practices on egress'). These questions DO NOT require pulling data from CloudHealth.\n"
             "2. DATA FETCH & COMPARISON: Set intent to 'fetch_data' and is_new_data_fetch to true if the user asks to see, show, fetch, get, compare, analyze, or chart their costs, usage, spend, run-rate, or data from cloud providers (AWS, Azure, GCP), even if their prompt has typos (e.g. 'shw me jne 2026 cst for awz').\n"
             "   - CRITICAL: Any request asking to compare costs, calculate projected costs, compare previous month with current month, or asking about a specific customer / organization / tenant (e.g. 'ABC Coffee Mugs', 'Lundbeck') MUST ALWAYS be classified as 'fetch_data' with is_new_data_fetch=true! NEVER classify customer spend queries or cost comparisons as general advisory.\n"
-            "3. TYPO CORRECTION & NORMALIZATION: In corrected_query, fix all spelling mistakes, typos in services (e.g. 'awz' -> 'AWS', 'rds' -> 'RDS', 'jne' -> 'June'), and clarify the sentence. In 'cloud', normalize to 'aws', 'azure', 'gcp', or 'all'. In 'service', normalize to canonical names like 'AmazonEC2', 'AmazonRDS', 'AmazonS3'. If the query asks about AI models, LLMs, foundation models, token costs, or multi-cloud AI spend, set 'service' to null (do NOT set AmazonRDS or other infrastructure services unless explicitly named). In 'target_ym', extract normalized 'YYYY-MM' (e.g. '2026-06').\n"
+            "3. TYPO CORRECTION & NORMALIZATION: In corrected_query, fix all spelling mistakes, typos in services (e.g. 'awz' -> 'AWS', 'rds' -> 'RDS', 'jne' -> 'June'), and clarify the sentence. In 'cloud', normalize to 'aws', 'azure', 'gcp', or 'all'. In 'service', normalize to canonical names like 'AmazonEC2', 'AmazonRDS', 'AmazonS3'. If multiple services are requested (e.g. 'RDS and S3'), list them all in 'services': ['AmazonRDS', 'AmazonS3'] and set 'service': 'AmazonRDS'. If the query asks about AI models, LLMs, foundation models, token costs, or multi-cloud AI spend, set 'service' to null (do NOT set AmazonRDS or other infrastructure services unless explicitly named). In 'target_ym', extract normalized 'YYYY-MM' (e.g. '2026-06').\n"
             "4. METRIC TYPE (QUANTITY VS COST): Set metric_type='quantity' if user asks for volume, count, operational capacity, or physical usage (e.g. 'number of ec2 instances', 'how many vms', 'instance hours', 'storage used in GB', 'how many invocations', 'count of databases'). Set metric_type='cost' (default) if user asks for financial spend, dollars, cost, or bill.\n"
             "5. MULTI-CLOUD BEST DEFAULT DIMENSIONS: When grouping dimension is not specified by the user:\n"
             "   - For Amazon EC2: target_dimension='product_InstanceType', breakdowns=['instance_type']\n"
@@ -877,6 +886,7 @@ class AIClient:
                         "intent": parsed.get("intent", det_info["intent"]),
                         "cloud": parsed.get("cloud") or det_info.get("cloud"),
                         "service": parsed.get("service") or det_info["service"],
+                        "services": parsed.get("services") or det_info.get("services") or ([parsed.get("service")] if parsed.get("service") else []),
                         "customer": parsed.get("customer") or det_info["customer"],
                         "metric_type": parsed.get("metric_type") or det_info.get("metric_type", "cost"),
                         "target_dimension": parsed.get("target_dimension") or det_info.get("target_dimension"),
@@ -980,6 +990,9 @@ class AIClient:
                         }
                         if is_exclude_other_requested(last_msg):
                             sys_msg["content"] += " CRITICAL 5: The user explicitly requested to EXCLUDE 'Other' / unallocated categories. Under NO circumstance should you mention, analyze, or recommend actions on 'Other' or unallocated items in your insights."
+                        all_req_svcs = extract_all_requested_services(last_msg)
+                        if len(all_req_svcs) >= 2:
+                            sys_msg["content"] += " CRITICAL 6: The user asked for multiple services (" + ", ".join([s.display_name or s.pcode for s in all_req_svcs]) + "). Provide balanced, actionable insights across each requested service. Never claim a service is missing or unqueried if its section is present in the data."
                         # Strip raw HTML canvas tags to avoid confusing the LLM and wasting tokens
                         clean_resp_text = re.sub(r'<canvas.*?</canvas>', '', resp, flags=re.DOTALL)
                         user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{clean_resp_text}"}
@@ -1970,6 +1983,19 @@ class AIClient:
                 intent_info.get("target_dimension") in ("Model", "ModelProvider", "Modality", "ExecutionType", "TokenType", "HardwareType", "HardwareFamily") or
                 any(b in ("model", "model_provider", "modality", "execution_type", "token_type", "hardware_type", "hardware_family") for b in (intent_info.get("breakdowns") or []))
             )
+
+            # ── Multi-Service Detection ───────────────────────────────────────
+            all_requested_services = extract_all_requested_services(last_msg)
+            is_multi_service_request = len(all_requested_services) >= 2 and not is_ai_models_query
+            if not is_multi_service_request and intent_info.get("services") and len(intent_info.get("services")) >= 2 and not is_ai_models_query:
+                matched_list = []
+                for s_name in intent_info["services"]:
+                    pcode = str(s_name)
+                    disp = PCODE_TO_DISPLAY.get(pcode, pcode)
+                    prov = PCODE_TO_PROVIDER.get(pcode, "aws")
+                    matched_list.append(ServiceMatch(pcode, disp, prov))
+                all_requested_services = matched_list
+                is_multi_service_request = True
 
             # ── Extract or inherit requested AWS service ──────────────────────
             requested_service, requested_service_disp = extract_requested_service(last_msg)
@@ -2982,6 +3008,542 @@ class AIClient:
                     f"💡 *Live FinOps data retrieved from CloudHealth ({prov_title}).*"
                 )
 
+            # 3-MultiService. Dedicated Multi-Service Query Handler (e.g. "RDS and S3", "EC2 and RDS", "S3 and EBS")
+            if is_multi_service_request and mcp:
+                now = datetime.date.today()
+                is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
+                is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
+                m_months = re.search(r'(?:last|past|trailing|for)\s+(\d{1,2})\s*months?\b|\b(\d{1,2})\s*(?:months?|m)\b', low)
+                m_days = re.search(r'(?:last|past|trailing|for)\s+(\d{1,3})\s*days?\b|\b(\d{1,3})\s*(?:days?|d)\b', low)
+
+                if is_ytd:
+                    num_months = now.month
+                    num_days = 0
+                    period_str = f"Year-To-Date (YTD {now.year})"
+                elif is_qtd:
+                    q_num = ((now.month - 1) // 3) + 1
+                    num_months = ((now.month - 1) % 3) + 1
+                    num_days = 0
+                    period_str = f"Q{q_num} QTD ({now.year})"
+                elif m_months or intent_info.get("timeframe_months") or any(w in low for w in ["months", "month by month", "monthly"]):
+                    num_months = intent_info.get("timeframe_months") or (int(m_months.group(1) or m_months.group(2)) if m_months else 12)
+                    num_days = 0
+                    period_str = f"Last {min(num_months, 12)} Months"
+                elif m_days or intent_info.get("timeframe_days") or any(w in low for w in ["days", "daily", "day by day", "trend"]):
+                    num_days = intent_info.get("timeframe_days") or (int(m_days.group(1) or m_days.group(2)) if m_days else 30)
+                    num_months = 0
+                    period_str = f"Last {num_days} Days Trend"
+                else:
+                    num_days = 30
+                    num_months = 0
+                    period_str = "Last 30 Days Trend"
+
+                tenant_suffix = " (Tenant)" if any(w in low for w in ["tenant"]) else ""
+                cust_label = named_customer or (f"All Accounts{tenant_suffix}" if tenant_suffix else "All Accounts")
+                wants_table = _detect_wants_table(low)
+                chart_type = _detect_chart_type(low)
+
+                service_sections = []
+                all_service_insights = []
+                service_grand_totals = {}
+
+                for s_idx, s_match in enumerate(all_requested_services):
+                    svc_pcode = s_match.pcode
+                    svc_disp = s_match.display_name or PCODE_TO_DISPLAY.get(svc_pcode, svc_pcode)
+                    svc_prov = s_match.provider or PCODE_TO_PROVIDER.get(svc_pcode, "aws")
+
+                    if svc_pcode == "AmazonRDS":
+                        if num_days > 0:
+                            rds_sql = (
+                                "SELECT TimeInterval_Day AS time_val, InstanceType AS category, "
+                                "SUM(BilledCost) AS cost, SUM(Instances) AS instances, "
+                                "SUM(ComputeCost) AS compute_cost, SUM(StorageCost) AS storage_cost, "
+                                "SUM(GP2StorageCost) AS gp2_cost, SUM(GP3StorageCost) AS gp3_cost "
+                                "FROM AWS_RDS_COST_AND_USAGE "
+                                "GROUP BY TimeInterval_Day, InstanceType "
+                                "ORDER BY time_val ASC, cost DESC"
+                            )
+                            rds_tr = {"last": num_days, "qualifier": "DAY"}
+                            rds_gran = "DAILY"
+                        else:
+                            rds_sql = (
+                                "SELECT Month AS time_val, InstanceType AS category, "
+                                "SUM(BilledCost) AS cost, SUM(Instances) AS instances, "
+                                "SUM(ComputeCost) AS compute_cost, SUM(StorageCost) AS storage_cost, "
+                                "SUM(GP2StorageCost) AS gp2_cost, SUM(GP3StorageCost) AS gp3_cost "
+                                "FROM AWS_RDS_COST_AND_USAGE "
+                                "GROUP BY Month, InstanceType "
+                                "ORDER BY time_val ASC, cost DESC"
+                            )
+                            rds_tr = {"last": min(num_months, 12), "qualifier": "MONTH"}
+                            rds_gran = "MONTHLY"
+
+                        rds_q_params = {
+                            "queryInput": {
+                                "sqlStatement": rds_sql,
+                                "dataGranularity": rds_gran,
+                                "limit": 5000 if num_days > 0 else 500,
+                                "timeRange": rds_tr
+                            },
+                            "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                        }
+                        if named_customer_crn:
+                            rds_q_params["channelCustomerId"] = named_customer_crn
+
+                        rds_rows = []
+                        try:
+                            res_rds = mcp.call_tool("execute_datasource_query", rds_q_params)
+                            txt_rds = res_rds.get("content", [{}])[0].get("text", "{}")
+                            raw_csv = json.loads(txt_rds).get("csv", "")
+                            for row in csv.DictReader(io.StringIO(raw_csv)):
+                                try:
+                                    c = float(row.get("cost") or row.get("BilledCost") or 0.0)
+                                    it = (row.get("category") or row.get("instance_type") or row.get("InstanceType") or "").strip()
+                                    tv = (row.get("time_val") or row.get("day") or row.get("month") or row.get("TimeInterval_Day") or "").strip()
+                                    inst = float(row.get("instances") or 0.0)
+                                    comp = float(row.get("compute_cost") or 0.0)
+                                    stor = float(row.get("storage_cost") or 0.0)
+                                    gp2 = float(row.get("gp2_cost") or 0.0)
+                                    gp3 = float(row.get("gp3_cost") or 0.0)
+                                    if it and tv and c > 0 and (num_days == 0 or tv != today_str):
+                                        rds_rows.append({
+                                            "time_val": tv, "category": it, "cost": c,
+                                            "instances": inst, "compute_cost": comp, "storage_cost": stor,
+                                            "gp2_cost": gp2, "gp3_cost": gp3
+                                        })
+                                except (ValueError, TypeError):
+                                    pass
+                        except Exception as e:
+                            logger.warning(f"[AWS_RDS_COST_AND_USAGE Multi Query] {e}")
+
+                        if rds_rows:
+                            total_rds = sum(r["cost"] for r in rds_rows)
+                            service_grand_totals[svc_disp] = total_rds
+                            agg_rds = {}
+                            for r in rds_rows:
+                                cat = r["category"]
+                                if cat not in agg_rds:
+                                    agg_rds[cat] = {"cost": 0.0, "instances": 0.0, "compute": 0.0, "storage": 0.0}
+                                agg_rds[cat]["cost"] += r["cost"]
+                                agg_rds[cat]["instances"] += r["instances"]
+                                agg_rds[cat]["compute"] += r["compute_cost"]
+                                agg_rds[cat]["storage"] += r["storage_cost"]
+
+                            sorted_rds = sorted(agg_rds.items(), key=lambda x: x[1]["cost"], reverse=True)
+                            tbl_lines = []
+                            graviton_cands = []
+                            months_present = sorted(list({r["time_val"] for r in rds_rows}))
+                            m_count = len(months_present) or 1
+                            for idx, (it, d) in enumerate(sorted_rds[:12]):
+                                c = d["cost"]
+                                pct = (c / total_rds * 100) if total_rds else 0.0
+                                avg_inst = (d["instances"] / m_count) if d["instances"] > 0 else 0.0
+                                inst_str = f"{avg_inst:.1f}" if avg_inst >= 0.1 else "—"
+                                comp_str = f"${d['compute']:,.2f}" if d['compute'] > 0 else "—"
+                                stor_str = f"${d['storage']:,.2f}" if d['storage'] > 0 else "—"
+                                tbl_lines.append(f"| {idx+1} | `{it}` | **${c:,.2f}** | {pct:.1f}% | {inst_str} | {comp_str} | {stor_str} |")
+                                if any(fam in it for fam in ["m5.", "m5d.", "r5.", "t3."]):
+                                    graviton_cands.append((it, c))
+
+                            rem_rds = sorted_rds[12:]
+                            if rem_rds:
+                                rem_c = sum(d["cost"] for _, d in rem_rds)
+                                rem_pct = (rem_c / total_rds * 100) if total_rds else 0.0
+                                tbl_lines.append(f"| - | *Other ({len(rem_rds)} instance types)* | **${rem_c:,.2f}** | {rem_pct:.1f}% | — | — | — |")
+
+                            tbl_block = (
+                                f"| # | Instance Type | Billed Spend | % of Spend | Avg Instances | Compute Spend | Storage Spend |\n"
+                                f"|:---|:---|:---|:---|:---|:---|:---|\n"
+                                f"{chr(10).join(tbl_lines)}\n"
+                                f"| **Total** | **All Instance Types** | **${total_rds:,.2f}** | **100.0%** | | | |\n\n"
+                            ) if wants_table else ""
+
+                            if chart_type in ["doughnut", "pie"]:
+                                chart_rds_md = _chart_block(chart_type, f"Amazon RDS Spend by Instance Type ({period_str}) — {cust_label}", [it for it, _ in sorted_rds[:8]], values=[round(d["cost"], 2) for _, d in sorted_rds[:8]], value_label="Cost ($)")
+                            elif chart_type == "horizontal-bar":
+                                chart_rds_md = _chart_block("horizontal-bar", f"Amazon RDS Spend by Instance Type ({period_str}) — {cust_label}", [it for it, _ in sorted_rds[:8]], values=[round(d["cost"], 2) for _, d in sorted_rds[:8]], value_label="Cost ($)", horizontal=True)
+                            else:
+                                chart_rds_md = _build_time_category_stacked_chart(f"Amazon RDS Spend by Instance Type ({period_str}) — {cust_label}", rds_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8)
+
+                            service_sections.append(
+                                f"#### 🗄️ {s_idx+1}. {svc_disp} Spend & Usage Breakdown\n\n"
+                                f"- **Total RDS Spend**: **${total_rds:,.2f}** across **{len(sorted_rds)}** active database instance types\n\n"
+                                f"{tbl_block}"
+                                f"{chart_rds_md}"
+                            )
+
+                            rds_insights = []
+                            if graviton_cands:
+                                grav_sp = sum(c for _, c in graviton_cands)
+                                rds_insights.append(
+                                    f"- **AWS Graviton Modernization for RDS**: Identified **${grav_sp:,.2f}** across legacy x86 instances ({', '.join([f'`{it}`' for it, _ in graviton_cands[:3]])}). Transitioning to Graviton3/4 equivalents (`db.m7g`, `db.r7g`, `db.t4g`) yields up to **20% direct savings** (~**${grav_sp * 0.20:,.2f}**) with seamless engine compatibility."
+                                )
+                            tot_gp2 = sum(r["gp2_cost"] for r in rds_rows)
+                            if tot_gp2 > 50.0:
+                                rds_insights.append(
+                                    f"- **RDS gp2 to gp3 Storage Upgrade**: Detected **${tot_gp2:,.2f}** in gp2 storage. Upgrading to gp3 delivers an immediate **20% storage cost reduction** (~**${tot_gp2 * 0.20:,.2f}**) with baseline 3,000 IOPS and 125 MB/s throughput."
+                                )
+                            rds_insights.append(
+                                f"- **Database Reserved Instances / Savings Plans**: Steady-state databases run 24/7. Committing to 1-Year or 3-Year Database RIs reduces hourly run-rates by 30% to 55% compared to On-Demand."
+                            )
+                            all_service_insights.append(f"##### 🗄️ {svc_disp} Optimization Levers:\n" + "\n".join(rds_insights))
+                        else:
+                            service_sections.append(
+                                f"#### 🗄️ {s_idx+1}. {svc_disp} Spend & Usage Breakdown\n\n"
+                                f"*No live billing data returned for **{svc_disp}** ({cust_label}) in `{period_str}` (Total Spend: **$0.00**).*"
+                            )
+
+                    elif svc_pcode == "AmazonS3":
+                        time_col = "timeInterval_Day" if num_days > 0 else "timeInterval_Month"
+                        s3_tr = {"last": num_days, "qualifier": "DAY"} if num_days > 0 else {"last": min(num_months, 12), "qualifier": "MONTH"}
+                        s3_gran = "DAILY" if num_days > 0 else "MONTHLY"
+
+                        s3_sql = (
+                            f"SELECT {time_col} AS time_val, lineItem_UsageType AS usage_type, lineItem_Operation AS operation, "
+                            f"SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_qty "
+                            f"FROM AWS_CUR "
+                            f"WHERE lineItem_ProductCode = 'AmazonS3' "
+                            f"GROUP BY {time_col}, lineItem_UsageType, lineItem_Operation "
+                            f"ORDER BY time_val ASC, cost DESC"
+                        )
+                        s3_q_params = {
+                            "queryInput": {
+                                "sqlStatement": s3_sql,
+                                "dataGranularity": s3_gran,
+                                "limit": 500,
+                                "timeRange": s3_tr
+                            },
+                            "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                        }
+                        if named_customer_crn:
+                            s3_q_params["channelCustomerId"] = named_customer_crn
+
+                        s3_rows = []
+                        try:
+                            res_s3 = mcp.call_tool("execute_datasource_query", s3_q_params)
+                            txt_s3 = res_s3.get("content", [{}])[0].get("text", "{}")
+                            raw_csv = json.loads(txt_s3).get("csv", "")
+                            for row in csv.DictReader(io.StringIO(raw_csv)):
+                                try:
+                                    c = float(row.get("cost") or row.get("lineItem_UnblendedCost") or 0.0)
+                                    ut = (row.get("usage_type") or row.get("lineItem_UsageType") or "").strip()
+                                    op = (row.get("operation") or row.get("lineItem_Operation") or "").strip()
+                                    tv = (row.get("time_val") or row.get(time_col) or "").strip()
+                                    q = float(row.get("usage_qty") or row.get("lineItem_UsageAmount") or 0.0)
+                                    if (c > 0 or q > 0) and tv and (num_days == 0 or tv != today_str):
+                                        cat = _classify_service_usage_type("AmazonS3", ut, op)
+                                        s3_rows.append({
+                                            "time_val": tv, "usage_type": ut, "operation": op,
+                                            "category": cat, "cost": c, "usage_qty": q
+                                        })
+                                except (ValueError, TypeError):
+                                    pass
+                        except Exception as e:
+                            logger.warning(f"[AWS_CUR AmazonS3 Multi Query] {e}")
+
+                        if s3_rows:
+                            total_s3 = sum(r["cost"] for r in s3_rows)
+                            service_grand_totals[svc_disp] = total_s3
+                            agg_s3 = {}
+                            for r in s3_rows:
+                                cat = r["category"]
+                                if cat not in agg_s3:
+                                    agg_s3[cat] = {"cost": 0.0, "qty": 0.0, "op": r["operation"]}
+                                agg_s3[cat]["cost"] += r["cost"]
+                                agg_s3[cat]["qty"] += r["usage_qty"]
+                                if not agg_s3[cat]["op"] and r["operation"]:
+                                    agg_s3[cat]["op"] = r["operation"]
+
+                            sorted_s3 = sorted(agg_s3.items(), key=lambda x: x[1]["cost"], reverse=True)
+                            tbl_lines = []
+                            for idx, (cat, d) in enumerate(sorted_s3[:12]):
+                                c = d["cost"]
+                                pct = (c / total_s3 * 100) if total_s3 else 0.0
+                                q_str = f"{d['qty']:,.1f} GB-Mo" if d['qty'] > 0 and "Storage" in cat else (f"{d['qty']:,.0f} reqs" if d['qty'] > 0 and "Request" in cat else (f"{d['qty']:,.1f} units" if d['qty'] > 0 else "—"))
+                                op_str = f" | {d['op']}" if d['op'] else ""
+                                tbl_lines.append(f"| {idx+1} | **{cat}** | **${c:,.2f}** | {pct:.1f}% | {q_str}{op_str} |")
+
+                            rem_s3 = sorted_s3[12:]
+                            if rem_s3:
+                                rem_c = sum(d["cost"] for _, d in rem_s3)
+                                rem_pct = (rem_c / total_s3 * 100) if total_s3 else 0.0
+                                tbl_lines.append(f"| - | *Other ({len(rem_s3)} categories)* | **${rem_c:,.2f}** | {rem_pct:.1f}% | — |")
+
+                            tbl_block = (
+                                f"| # | Storage Tier / Meter Category | Billed Spend | % of Spend | Usage Volume / Operations |\n"
+                                f"|:---|:---|:---|:---|:---|\n"
+                                f"{chr(10).join(tbl_lines)}\n"
+                                f"| **Total** | **All S3 Categories** | **${total_s3:,.2f}** | **100.0%** | |\n\n"
+                            ) if wants_table else ""
+
+                            if chart_type in ["doughnut", "pie"]:
+                                chart_s3_md = _chart_block(chart_type, f"Amazon S3 Spend by Category ({period_str}) — {cust_label}", [c for c, _ in sorted_s3[:8]], values=[round(d["cost"], 2) for _, d in sorted_s3[:8]], value_label="Cost ($)")
+                            elif chart_type == "horizontal-bar":
+                                chart_s3_md = _chart_block("horizontal-bar", f"Amazon S3 Spend by Category ({period_str}) — {cust_label}", [c for c, _ in sorted_s3[:8]], values=[round(d["cost"], 2) for _, d in sorted_s3[:8]], value_label="Cost ($)", horizontal=True)
+                            else:
+                                chart_s3_md = _build_time_category_stacked_chart(f"Amazon S3 Spend Breakdown ({period_str}) — {cust_label}", s3_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8)
+
+                            service_sections.append(
+                                f"#### 🪣 {s_idx+1}. {svc_disp} Spend & Usage Breakdown\n\n"
+                                f"- **Total S3 Spend**: **${total_s3:,.2f}** across **{len(sorted_s3)}** active storage and operational categories\n\n"
+                                f"{tbl_block}"
+                                f"{chart_s3_md}"
+                            )
+
+                            s3_insights = [
+                                "- **S3 Intelligent-Tiering (INT) Activation**: For buckets with unknown or changing access patterns, enabling Intelligent-Tiering automatically transitions objects to Infrequent Access (40% lower) and Archive Instant Access (68% lower) tiers with zero operational overhead and zero retrieval fees.",
+                                "- **S3 Lifecycle Management & Archive Transitions**: Configure automated expiration rules for temporary data, logs, and scratch files. Transition aged compliance and audit archives (>90–180 days) to Glacier Flexible or Deep Archive ($0.00099/GB vs $0.023/GB for Standard, a 95% reduction).",
+                                "- **Abort Incomplete Multipart Uploads**: Implement a bucket lifecycle rule to automatically abort incomplete multipart uploads after 7 days, eliminating ghost storage costs from abandoned upload parts."
+                            ]
+                            all_service_insights.append(f"##### 🪣 {svc_disp} Optimization Levers:\n" + "\n".join(s3_insights))
+                        else:
+                            service_sections.append(
+                                f"#### 🪣 {s_idx+1}. {svc_disp} Spend & Usage Breakdown\n\n"
+                                f"*No live billing data returned for **{svc_disp}** ({cust_label}) in `{period_str}` (Total Spend: **$0.00**).*"
+                            )
+
+                    elif svc_pcode == "AmazonEC2":
+                        if num_days > 0:
+                            ec2_sql = (
+                                "SELECT TimeInterval_Day AS time_val, InstanceType AS category, "
+                                "SUM(BilledCost) AS cost, SUM(InstanceHours) AS hours, SUM(Instances) AS instances "
+                                "FROM AWS_EC2_COST_AND_USAGE "
+                                "GROUP BY TimeInterval_Day, InstanceType "
+                                "ORDER BY time_val ASC, cost DESC"
+                            )
+                            ec2_tr = {"last": num_days, "qualifier": "DAY"}
+                            ec2_gran = "DAILY"
+                        else:
+                            ec2_sql = (
+                                "SELECT Month AS time_val, InstanceType AS category, "
+                                "SUM(BilledCost) AS cost, SUM(InstanceHours) AS hours, SUM(Instances) AS instances "
+                                "FROM AWS_EC2_COST_AND_USAGE "
+                                "GROUP BY Month, InstanceType "
+                                "ORDER BY time_val ASC, cost DESC"
+                            )
+                            ec2_tr = {"last": min(num_months, 12), "qualifier": "MONTH"}
+                            ec2_gran = "MONTHLY"
+
+                        ec2_q_params = {
+                            "queryInput": {
+                                "sqlStatement": ec2_sql,
+                                "dataGranularity": ec2_gran,
+                                "limit": 5000 if num_days > 0 else 500,
+                                "timeRange": ec2_tr
+                            },
+                            "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                        }
+                        if named_customer_crn:
+                            ec2_q_params["channelCustomerId"] = named_customer_crn
+
+                        ec2_rows = []
+                        try:
+                            res_ec2 = mcp.call_tool("execute_datasource_query", ec2_q_params)
+                            txt_ec2 = res_ec2.get("content", [{}])[0].get("text", "{}")
+                            raw_csv = json.loads(txt_ec2).get("csv", "")
+                            for row in csv.DictReader(io.StringIO(raw_csv)):
+                                try:
+                                    c = float(row.get("cost") or row.get("BilledCost") or 0.0)
+                                    it = (row.get("category") or row.get("InstanceType") or "").strip()
+                                    tv = (row.get("time_val") or row.get("TimeInterval_Day") or row.get("Month") or "").strip()
+                                    h = float(row.get("hours") or row.get("InstanceHours") or 0.0)
+                                    inst = float(row.get("instances") or row.get("Instances") or 0.0)
+                                    if it and tv and c > 0 and (num_days == 0 or tv != today_str):
+                                        ec2_rows.append({"time_val": tv, "category": it, "cost": c, "hours": h, "instances": inst})
+                                except (ValueError, TypeError):
+                                    pass
+                        except Exception as e:
+                            logger.warning(f"[AWS_EC2_COST_AND_USAGE Multi Query] {e}")
+
+                        if ec2_rows:
+                            total_ec2 = sum(r["cost"] for r in ec2_rows)
+                            service_grand_totals[svc_disp] = total_ec2
+                            agg_ec2 = {}
+                            for r in ec2_rows:
+                                cat = r["category"]
+                                if cat not in agg_ec2:
+                                    agg_ec2[cat] = {"cost": 0.0, "hours": 0.0, "instances": 0.0}
+                                agg_ec2[cat]["cost"] += r["cost"]
+                                agg_ec2[cat]["hours"] += r["hours"]
+                                agg_ec2[cat]["instances"] += r["instances"]
+
+                            sorted_ec2 = sorted(agg_ec2.items(), key=lambda x: x[1]["cost"], reverse=True)
+                            tbl_lines = []
+                            grav_cands = []
+                            for idx, (it, d) in enumerate(sorted_ec2[:12]):
+                                c = d["cost"]
+                                pct = (c / total_ec2 * 100) if total_ec2 else 0.0
+                                tbl_lines.append(f"| {idx+1} | `{it}` | **${c:,.2f}** | {pct:.1f}% | {d['hours']:,.0f} hrs |")
+                                if any(fam in it for fam in ["m5.", "c5.", "r5.", "t3."]):
+                                    grav_cands.append((it, c))
+
+                            rem_ec2 = sorted_ec2[12:]
+                            if rem_ec2:
+                                rem_c = sum(d["cost"] for _, d in rem_ec2)
+                                rem_pct = (rem_c / total_ec2 * 100) if total_ec2 else 0.0
+                                tbl_lines.append(f"| - | *Other ({len(rem_ec2)} instance types)* | **${rem_c:,.2f}** | {rem_pct:.1f}% | — |")
+
+                            tbl_block = (
+                                f"| # | Instance Type | Billed Spend | % of Spend | Runtime Hours |\n"
+                                f"|:---|:---|:---|:---|:---|\n"
+                                f"{chr(10).join(tbl_lines)}\n"
+                                f"| **Total** | **All Instance Types** | **${total_ec2:,.2f}** | **100.0%** | |\n\n"
+                            ) if wants_table else ""
+
+                            if chart_type in ["doughnut", "pie"]:
+                                chart_ec2_md = _chart_block(chart_type, f"Amazon EC2 Spend by Instance Type ({period_str}) — {cust_label}", [it for it, _ in sorted_ec2[:8]], values=[round(d["cost"], 2) for _, d in sorted_ec2[:8]], value_label="Cost ($)")
+                            elif chart_type == "horizontal-bar":
+                                chart_ec2_md = _chart_block("horizontal-bar", f"Amazon EC2 Spend by Instance Type ({period_str}) — {cust_label}", [it for it, _ in sorted_ec2[:8]], values=[round(d["cost"], 2) for _, d in sorted_ec2[:8]], value_label="Cost ($)", horizontal=True)
+                            else:
+                                chart_ec2_md = _build_time_category_stacked_chart(f"Amazon EC2 Spend Breakdown ({period_str}) — {cust_label}", ec2_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8)
+
+                            service_sections.append(
+                                f"#### 🖥️ {s_idx+1}. {svc_disp} Spend & Usage Breakdown\n\n"
+                                f"- **Total EC2 Spend**: **${total_ec2:,.2f}** across **{len(sorted_ec2)}** active instance types\n\n"
+                                f"{tbl_block}"
+                                f"{chart_ec2_md}"
+                            )
+
+                            ec2_insights = []
+                            if grav_cands:
+                                g_spend = sum(c for _, c in grav_cands)
+                                ec2_insights.append(
+                                    f"- **AWS Graviton Modernization for EC2**: Identified **${g_spend:,.2f}** across x86 instances. Migrating to Graviton3/4 equivalents (`m7g`, `c7g`, `r7g`) yields up to **20% direct savings** (~**${g_spend * 0.20:,.2f}**) with superior price-performance."
+                                )
+                            ec2_insights.append(
+                                "- **1-Year Compute Savings Plans**: For steady-state baseline instances, purchasing Compute Savings Plans delivers 25%–35% savings over On-Demand rates without instance family lock-in."
+                            )
+                            all_service_insights.append(f"##### 🖥️ {svc_disp} Optimization Levers:\n" + "\n".join(ec2_insights))
+                        else:
+                            service_sections.append(
+                                f"#### 🖥️ {s_idx+1}. {svc_disp} Spend & Usage Breakdown\n\n"
+                                f"*No live billing data returned for **{svc_disp}** ({cust_label}) in `{period_str}` (Total Spend: **$0.00**).*"
+                            )
+
+                    else:
+                        time_col = "timeInterval_Day" if num_days > 0 else "timeInterval_Month"
+                        other_tr = {"last": num_days, "qualifier": "DAY"} if num_days > 0 else {"last": min(num_months, 12), "qualifier": "MONTH"}
+                        other_gran = "DAILY" if num_days > 0 else "MONTHLY"
+
+                        if svc_prov == "aws":
+                            where_cl = f"WHERE lineItem_ProductCode = '{svc_pcode}'"
+                            other_sql = (
+                                f"SELECT {time_col} AS time_val, lineItem_UsageType AS usage_type, lineItem_Operation AS operation, "
+                                f"SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_qty "
+                                f"FROM AWS_CUR {where_cl} "
+                                f"GROUP BY {time_col}, lineItem_UsageType, lineItem_Operation "
+                                f"ORDER BY time_val ASC, cost DESC"
+                            )
+                        else:
+                            prov_filter = "provider IN ('OCI', 'Oracle Cloud')" if svc_prov == "oci" else f"provider = '{svc_prov}'"
+                            other_sql = (
+                                f"SELECT Month AS time_val, ServiceName AS usage_type, PricingUnit AS operation, "
+                                f"SUM(EffectiveCost) AS cost, SUM(PricingQuantity) AS usage_qty "
+                                f"FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
+                                f"WHERE {prov_filter} AND ServiceName = '{svc_pcode}' "
+                                f"GROUP BY Month, ServiceName, PricingUnit "
+                                f"ORDER BY Month ASC, cost DESC"
+                            )
+                            other_tr = {"last": min(num_months, 12) if num_months > 0 else 2, "qualifier": "MONTH"}
+                            other_gran = "MONTHLY"
+
+                        other_q_params = {
+                            "queryInput": {
+                                "sqlStatement": other_sql,
+                                "dataGranularity": other_gran,
+                                "limit": 300,
+                                "timeRange": other_tr
+                            },
+                            "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                        }
+                        if named_customer_crn:
+                            other_q_params["channelCustomerId"] = named_customer_crn
+
+                        other_rows = []
+                        try:
+                            res_oth = mcp.call_tool("execute_datasource_query", other_q_params)
+                            txt_oth = res_oth.get("content", [{}])[0].get("text", "{}")
+                            raw_csv = json.loads(txt_oth).get("csv", "")
+                            for row in csv.DictReader(io.StringIO(raw_csv)):
+                                try:
+                                    c = float(row.get("cost") or row.get("EffectiveCost") or 0.0)
+                                    ut = (row.get("usage_type") or row.get("ServiceName") or "").strip()
+                                    op = (row.get("operation") or row.get("PricingUnit") or "").strip()
+                                    tv = (row.get("time_val") or "").strip()
+                                    q = float(row.get("usage_qty") or row.get("PricingQuantity") or 0.0)
+                                    if c > 0 and tv and (num_days == 0 or tv != today_str):
+                                        cat = _classify_service_usage_type(svc_pcode, ut, op)
+                                        other_rows.append({"time_val": tv, "category": cat, "cost": c, "usage_qty": q, "operation": op})
+                                except (ValueError, TypeError):
+                                    pass
+                        except Exception as e:
+                            logger.warning(f"[{svc_disp} Multi Query] {e}")
+
+                        if other_rows:
+                            total_oth = sum(r["cost"] for r in other_rows)
+                            service_grand_totals[svc_disp] = total_oth
+                            agg_oth = {}
+                            for r in other_rows:
+                                cat = r["category"]
+                                agg_oth[cat] = agg_oth.get(cat, 0.0) + r["cost"]
+
+                            sorted_oth = sorted(agg_oth.items(), key=lambda x: x[1], reverse=True)
+                            tbl_lines = [f"| {idx+1} | **{cat}** | **${c:,.2f}** | {(c/total_oth*100):.1f}% |" for idx, (cat, c) in enumerate(sorted_oth[:10])]
+                            tbl_block = (
+                                f"| # | Service Category | Spend | % of Spend |\n"
+                                f"|:---|:---|:---|:---|\n"
+                                f"{chr(10).join(tbl_lines)}\n"
+                                f"| **Total** | **All Categories** | **${total_oth:,.2f}** | **100.0%** |\n\n"
+                            ) if wants_table else ""
+
+                            chart_oth_md = _build_time_category_stacked_chart(f"{svc_disp} Spend Breakdown ({period_str}) — {cust_label}", other_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8)
+
+                            service_sections.append(
+                                f"#### ☁️ {s_idx+1}. {svc_disp} Spend & Usage Breakdown\n\n"
+                                f"- **Total {svc_disp} Spend**: **${total_oth:,.2f}**\n\n"
+                                f"{tbl_block}"
+                                f"{chart_oth_md}"
+                            )
+                            all_service_insights.append(f"##### ☁️ {svc_disp} Optimization Levers:\n- Audit steady-state usage, rightsizing, and committed use opportunities for {svc_disp}.")
+                        else:
+                            service_sections.append(
+                                f"#### ☁️ {s_idx+1}. {svc_disp} Spend & Usage Breakdown\n\n"
+                                f"*No live billing data returned for **{svc_disp}** ({cust_label}) in `{period_str}` (Total Spend: **$0.00**).*"
+                            )
+
+                grand_total = sum(service_grand_totals.values())
+                svc_title = " & ".join([s.display_name or s.pcode for s in all_requested_services])
+                breakdown_summary = ", ".join([f"**{name}**: ${val:,.2f}" for name, val in service_grand_totals.items()]) if service_grand_totals else "No spend detected"
+
+                partial_notice = (
+                    f"> ⚠️ **FinOps Ingestion Notice**: Current date (`{today_str}`) is excluded from closed analysis as in-flight; "
+                    f"yesterday's data (`{yesterday_str}`) is preliminary/partial across all cloud providers due to standard 24–48h billing ingestion latency.\n\n"
+                ) if num_days > 0 else ""
+
+                header_md = (
+                    f"### 📊 CloudHealth Multi-Service Spend Analysis: {svc_title}\n\n"
+                    f"Queried live from standard CloudHealth datasets for **{cust_label}**:\n\n"
+                    f"- **Target Billing Period**: {period_str}\n"
+                    f"- **Combined Multi-Service Spend**: **${grand_total:,.2f}** ({breakdown_summary})\n\n"
+                    f"{partial_notice}"
+                )
+
+                body_md = "\n\n---\n\n".join(service_sections)
+
+                insights_block = ""
+                if all_service_insights:
+                    insights_block = (
+                        f"\n\n---\n\n### 💡 FinOps Insights & Multi-Service Optimization Levers:\n\n"
+                        + "\n\n".join(all_service_insights)
+                    )
+
+                return (
+                    f"{header_md}"
+                    f"{body_md}"
+                    f"{insights_block}\n\n"
+                    f"*Source: Standard CloudHealth FlexReports datasets via CloudHealth MCP.*"
+                )
+
             # 3-RDS-IT. Dedicated RDS Instance Type, Engine & Spend Analysis via AWS_RDS_COST_AND_USAGE & AWS_CUR
             is_rds_instance_or_usage = (
                 (
@@ -2989,20 +3551,22 @@ class AIClient:
                     any(w in low for w in ["rds", "relational database", "aurora"]) or
                     ("database" in low and any(w in low for w in ["instance", "type", "engine", "usage", "spend", "cost", "breakdown"]))
                 ) and not is_ai_models_query
-            ) and not any(w in low for w in ["recommendation", "anomal", "spike", "optimize rds"])
+            ) and not any(w in low for w in ["recommendation", "anomal", "spike", "optimize rds"]) and not is_multi_service_request
 
             if not is_rds_instance_or_usage and is_followup:
                 prev_is_rds = any("aws_rds_cost_and_usage" in a.lower() or "rds spend analysis" in a.lower() or "rds usage" in a.lower() for a in prior_assistant_msgs[-1:]) or \
                               any(w in prior_cost_low for w in ["rds", "database engine", "rds instance", "relational database"])
-                if prev_is_rds and not any(w in low for w in ["customer", "tenant", "anomal", "recommendation", "ec2", "s3", "bigquery", "azure"]):
+                if prev_is_rds and not any(w in low for w in ["customer", "tenant", "anomal", "recommendation", "ec2", "s3", "bigquery", "azure"]) and not is_multi_service_request:
                     is_rds_instance_or_usage = True
 
             if is_rds_instance_or_usage and mcp:
+                is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
+                is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
                 m_months = re.search(r'\b(\d+)\s*(?:months?|m)\b', low)
                 m_days = re.search(r'\b(\d+)\s*(?:days?|d)\b', low)
-                has_explicit_months = bool(m_months) or bool(intent_info.get("timeframe_months")) or any(w in low for w in ["12months", "12 months", "year", "annual", "months", "month by month", "monthly"])
+                has_explicit_months = is_ytd or is_qtd or bool(m_months) or bool(intent_info.get("timeframe_months")) or any(w in low for w in ["12months", "12 months", "year", "annual", "months", "month by month", "monthly"])
                 if has_explicit_months:
-                    num_months = intent_info.get("timeframe_months") or (int(m_months.group(1)) if m_months else 12)
+                    num_months = intent_info.get("timeframe_months") or (datetime.date.today().month if is_ytd else (((datetime.date.today().month - 1) % 3) + 1 if is_qtd else (int(m_months.group(1)) if m_months else 12)))
                     num_days = 0
                 else:
                     # User rule: "use last 30days trend for such requests by default unless I ask for the specific time window"
@@ -3358,19 +3922,21 @@ class AIClient:
                     ("ec2" in low and any(w in low for w in ["instance", "type", "breakdown", "how many", "number of", "count"])) or
                     (intent_info.get("service") == "AmazonEC2" and not is_ai_models_query and intent_info.get("metric_type") == "quantity")
                 )
-            ) and not any(w in low for w in ["recommendation", "anomal", "spike", "rds", "relational", "aurora", "database"]) and intent_info.get("service") != "AmazonRDS"
+            ) and not any(w in low for w in ["recommendation", "anomal", "spike", "rds", "relational", "aurora", "database"]) and intent_info.get("service") != "AmazonRDS" and not is_multi_service_request
 
             if not is_ec2_instance_query and is_followup:
                 prev_is_ec2 = any("aws_ec2_cost_and_usage" in a.lower() or "instance type breakdown" in a.lower() for a in prior_assistant_msgs[-1:]) or \
                               any(w in prior_cost_low for w in ["instance type", "instance breakdown", "ec2 usage by instance"])
-                if prev_is_ec2 and not any(w in low for w in ["customer", "tenant", "anomal", "recommendation", "gp2", "rds", "s3", "bigquery", "azure"]):
+                if prev_is_ec2 and not any(w in low for w in ["customer", "tenant", "anomal", "recommendation", "gp2", "rds", "s3", "bigquery", "azure"]) and not is_multi_service_request:
                     is_ec2_instance_query = True
 
             if is_ec2_instance_query and mcp:
+                is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
+                is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
                 m_days = re.search(r'\b(\d+)\s*(?:days?|d)\b', low)
                 m_months = re.search(r'\b(\d+)\s*(?:months?|m)\b', low)
-                has_explicit_months = bool(m_months) or bool(intent_info.get("timeframe_months")) or is_specific or bool(intent_info.get("target_ym")) or any(w in low for w in ["month by month", "monthly", "12 months", "year", "months", "last month", "past month", "previous month", "prior month"])
-                if has_explicit_months and not (m_days or (intent_info.get("timeframe_days") and not is_specific)):
+                has_explicit_months = is_ytd or is_qtd or bool(m_months) or bool(intent_info.get("timeframe_months")) or is_specific or bool(intent_info.get("target_ym")) or any(w in low for w in ["month by month", "monthly", "12 months", "year", "months", "last month", "past month", "previous month", "prior month"])
+                if (is_ytd or is_qtd or has_explicit_months) and not (m_days or (intent_info.get("timeframe_days") and not is_specific and not is_ytd and not is_qtd)):
                     num_days = 0
                 else:
                     # User rule: "use last 30days trend for such requests by default unless I ask for the specific time window"
@@ -3903,16 +4469,18 @@ class AIClient:
 
             is_major_service_inquiry = bool(
                 major_svc_target and not is_dimensional_query and
-                not any(w in low for w in ["recommendation", "recommendations", "anomal", "spike", "usagetype", "usage-type", "usage type"])
+                not any(w in low for w in ["recommendation", "recommendations", "anomal", "spike", "usagetype", "usage-type", "usage type"]) and not is_multi_service_request
             )
 
             if is_major_service_inquiry:
                 # Resolve timeframe: daily trend vs monthly
+                is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
+                is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
                 is_trend_query = any(w in low for w in ["trend", "daily", "day", "days", "last 15", "last 30", "trailing", "over time"])
                 m_days = re.search(r'(?:last|past|trailing|for)\s+(\d{1,3})\s*days?\b|\b(\d{1,3})\s*(?:days?|d)\b', low)
-                num_days = intent_info.get("timeframe_days") or (int(m_days.group(1) or m_days.group(2)) if m_days else (30 if is_trend_query else 0))
+                num_days = 0 if (is_ytd or is_qtd) else (intent_info.get("timeframe_days") or (int(m_days.group(1) or m_days.group(2)) if m_days else (30 if is_trend_query else 0)))
                 m_months = re.search(r'(?:last|past|trailing|for)\s+(\d{1,2})\s*months?\b|\b(\d{1,2})\s*(?:months?|m)\b', low)
-                num_months = intent_info.get("timeframe_months") or (int(m_months.group(1) or m_months.group(2)) if m_months else 0)
+                num_months = datetime.date.today().month if is_ytd else (((datetime.date.today().month - 1) % 3) + 1 if is_qtd else (intent_info.get("timeframe_months") or (int(m_months.group(1) or m_months.group(2)) if m_months else 0)))
                 time_col = "timeInterval_Day" if num_days > 0 else "timeInterval_Month"
                 t_format = "day" if num_days > 0 else ("quarter" if "quarter" in low else "month")
 
@@ -3921,6 +4489,15 @@ class AIClient:
                     svc_time_range = {"from": d_start, "to": yesterday_str}
                     svc_granularity = "DAILY"
                     svc_period_label = f"Trailing {num_days} Days: {d_start} to {yesterday_str}"
+                elif is_ytd:
+                    svc_time_range = {"last": min(num_months, 12), "qualifier": "MONTH"}
+                    svc_granularity = "MONTHLY"
+                    svc_period_label = f"Year-To-Date (YTD {datetime.date.today().year})"
+                elif is_qtd:
+                    q_num = ((datetime.date.today().month - 1) // 3) + 1
+                    svc_time_range = {"last": min(num_months, 12), "qualifier": "MONTH"}
+                    svc_granularity = "MONTHLY"
+                    svc_period_label = f"Q{q_num} QTD ({datetime.date.today().year})"
                 elif num_months > 1:
                     svc_time_range = {"last": min(num_months, 12), "qualifier": "MONTH"}
                     svc_granularity = "MONTHLY"
