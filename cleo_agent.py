@@ -280,6 +280,7 @@ from cleo_mcp import (
 from cleo_charts import (
     is_no_chart_requested,
     is_no_mom_requested,
+    is_exclude_other_requested,
     prune_mom_columns_from_markdown,
     _detect_chart_type,
     _detect_wants_variance,
@@ -977,6 +978,8 @@ class AIClient:
                                 "and (6) Provisioned Throughput (PTUs / Bedrock Provisioned) vs. Pay-per-Token crossover analysis for high steady-state workloads."
                             )
                         }
+                        if is_exclude_other_requested(last_msg):
+                            sys_msg["content"] += " CRITICAL 5: The user explicitly requested to EXCLUDE 'Other' / unallocated categories. Under NO circumstance should you mention, analyze, or recommend actions on 'Other' or unallocated items in your insights."
                         # Strip raw HTML canvas tags to avoid confusing the LLM and wasting tokens
                         clean_resp_text = re.sub(r'<canvas.*?</canvas>', '', resp, flags=re.DOTALL)
                         user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{clean_resp_text}"}
@@ -1371,6 +1374,14 @@ class AIClient:
             if parsed_hist and parsed_hist["rows"]:
                 rows = parsed_hist["rows"]
                 total = parsed_hist["total"]
+                is_exclude_other = is_exclude_other_requested(low)
+                if is_exclude_other:
+                    rows = [
+                        r for r in rows
+                        if r["label"].lower() not in ("other", "(unallocated / other)", "unallocated", "other services", "other (combined)", "other categories", "other models")
+                        and not r["label"].lower().startswith("other ")
+                    ]
+                    total = sum(r["cost"] for r in rows)
 
                 if is_chart_transform:
                     detected_types = []
@@ -1395,7 +1406,7 @@ class AIClient:
 
                     chart_labels = [r["label"] for r in top_rows]
                     chart_values = [round(r["cost"], 2) for r in top_rows]
-                    if remainder > 0.5:
+                    if remainder > 0.5 and not is_exclude_other:
                         chart_labels.append("Other (combined)")
                         chart_values.append(round(remainder, 2))
 
@@ -1408,7 +1419,7 @@ class AIClient:
                             h_str = f" | {r['hours']:,.0f} hrs" if has_hours else ""
                             tbl_lines.append(f"| {idx} | `{r['label']}` | **${r['cost']:,.2f}** | {p:.1f}%{h_str} |")
 
-                        if remainder > 0.5:
+                        if remainder > 0.5 and not is_exclude_other:
                             rem_pct = (remainder / total) * 100 if total else 0.0
                             h_blank = " | —" if has_hours else ""
                             tbl_lines.append(f"| {len(top_rows)+1} | *Other Categories (combined)* | **${remainder:,.2f}** | {rem_pct:.1f}%{h_blank} |")
@@ -6354,6 +6365,8 @@ class AIClient:
                     prov_col = matched_dim.get("provider_col", "provider")
                     is_cost = (metric_col == "EffectiveCost")
 
+                    is_exclude_other = is_exclude_other_requested(low) or is_exclude_other_requested(intent_info.get("corrected_query", ""))
+
                     where_clauses = []
                     if cloud_target == "aws":
                         where_clauses.append(f"{prov_col} = 'AWS'")
@@ -6364,6 +6377,8 @@ class AIClient:
 
                     if matched_dim["id"] in ("ai_model", "ai_model_provider"):
                         where_clauses.append(f"{dim_col} IS NOT NULL AND {dim_col} != ''")
+                    if is_exclude_other:
+                        where_clauses.append(f"LOWER({dim_col}) NOT IN ('other', 'unallocated', '(unallocated / other)', 'other services', 'other categories', 'other models') AND LOWER({dim_col}) NOT LIKE 'other %'")
 
                     if requested_service and str(requested_service).lower() not in ("ai", "ai models", "ai_models", "models", "foundation models", "all", "cloud") and dataset in ("MULTICLOUD_FOCUS_COST_AND_USAGE", "MULTICLOUD_AI_COST_AND_USAGE"):
                         where_clauses.append(f"ServiceName = '{requested_service}'")
@@ -6430,11 +6445,6 @@ class AIClient:
 
                         raw_csv = res_json.get("csv", "")
                         acc_map = self._get_account_name_map(mcp) if matched_dim["id"] == "account" else {}
-                        is_exclude_other = any(w in low for w in [
-                            "exclude other", "exclude the other", "without other",
-                            "exclude unallocated", "without unallocated",
-                            "filter out other", "remove other", "ignore other"
-                        ])
 
                         for r in csv.DictReader(io.StringIO(raw_csv)):
                             v = float(r.get("val") or 0.0)
@@ -6444,7 +6454,10 @@ class AIClient:
                             elif matched_dim["id"] == "account" and d_val in acc_map:
                                 d_val = f"{acc_map[d_val]} ({d_val})"
 
-                            if is_exclude_other and d_val.lower() in ("other", "(unallocated / other)", "unallocated", "other services"):
+                            if is_exclude_other and (
+                                d_val.lower() in ("other", "(unallocated / other)", "unallocated", "other services", "other (combined)", "other categories", "other models")
+                                or d_val.lower().startswith("other ")
+                            ):
                                 continue
 
                             prov = (r.get("provider") or "").strip()
@@ -7191,6 +7204,7 @@ class AIClient:
                     else:
                         multi_rows = []
                         used_fallback = False
+                        is_exclude_other = is_exclude_other_requested(low) or is_exclude_other_requested(intent_info.get("corrected_query", ""))
                         try:
                             res = mcp.call_tool("execute_datasource_query", {
                                 "queryInput": {
@@ -7204,6 +7218,11 @@ class AIClient:
                                 c = float(r.get("cost") or 0.0)
                                 s = _friendly_service_name(r.get("service") or "")
                                 p = r.get("provider") or "AWS"
+                                if is_exclude_other and (
+                                    s.lower() in ("other", "(unallocated / other)", "unallocated", "other services", "other (combined)", "other categories", "other models")
+                                    or s.lower().startswith("other ")
+                                ):
+                                    continue
                                 if s and c > 0:
                                     multi_rows.append((p, s, c))
                         except Exception as e:
@@ -7225,6 +7244,11 @@ class AIClient:
                                     c = float(r.get("cost") or 0.0)
                                     s = _friendly_service_name(r.get("service") or "")
                                     p = r.get("provider") or "AWS"
+                                    if is_exclude_other and (
+                                        s.lower() in ("other", "(unallocated / other)", "unallocated", "other services", "other (combined)", "other categories", "other models")
+                                        or s.lower().startswith("other ")
+                                    ):
+                                        continue
                                     if s and c > 0:
                                         multi_rows.append((p, s, c))
                                 if multi_rows:

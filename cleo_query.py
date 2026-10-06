@@ -17,7 +17,7 @@ except ImportError:
     logger = logging.getLogger("cleo.query")
     logger.setLevel(logging.INFO)
 
-from cleo_charts import is_no_chart_requested, is_no_mom_requested
+from cleo_charts import is_no_chart_requested, is_no_mom_requested, is_exclude_other_requested
 
 # ── Multi-Cloud Service Mapping & Extraction (AWS, Azure, GCP) ────────
 class ServiceMatch(tuple):
@@ -540,7 +540,9 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         r'|\b(?:do\s+the\s+same|show\s+the\s+same|can\s+you\s+do\s+the\s+same|repeat\s+(?:the\s+same|this|that))\b'
         r'|\b(?:what\s+about|how\s+about|and\s+for|now\s+for|what\s+is\s+the\s+same)\b',
         low
-    ))
+    )) or is_exclude_other_requested(low) or any(t in low for t in [
+        "from the above", "above data", "above result", "the above data", "the above result", "previous data", "previous result"
+    ])
 
     words = low.split()
     is_short_pivot = False
@@ -652,6 +654,19 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
     ):
         prior_type = "service_breakdown"
 
+    # Check for AI Model / Foundation Model Breakdown:
+    elif (
+        "cost by ai model" in last_asst_head or
+        "spend by ai model" in last_asst_head or
+        "cost by model" in last_asst_head or
+        "spend by model" in last_asst_head or
+        "top ai model" in last_asst_body or
+        any(w in last_user_low for w in ["ai usage", "ai model", "ai models", "foundation model", "foundation models", "llm", "llms", "model breakdown"])
+    ):
+        prior_type = "ai_model_breakdown"
+        m_m = re.search(r'last\s*(\d{1,2})\s*months?', last_asst_head + " " + last_user_low)
+        inherited_timeframe_months = int(m_m.group(1)) if m_m else 6
+
     # Check for Top Services:
     elif (
         "top aws services" in last_asst_head or
@@ -688,6 +703,8 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         expanded_query = f"show {prov_disp} spend breakdown by region"
     elif prior_type == "service_breakdown":
         expanded_query = f"show {prov_disp} spend breakdown"
+    elif prior_type == "ai_model_breakdown":
+        expanded_query = f"give me the multi-cloud spend by ai model for the last {inherited_timeframe_months or 6} months"
     elif prior_type == "top_services":
         expanded_query = f"show top services by spend for {prov_disp}"
     elif prior_type == "customer_spend":
@@ -796,7 +813,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         if cont_ctx.get("prior_query_type") == "forecast":
             timeframe_months = 12
             timeframe_days = None
-        elif cont_ctx.get("prior_query_type") == "monthly_trend":
+        elif cont_ctx.get("prior_query_type") in ("monthly_trend", "ai_model_breakdown"):
             timeframe_months = cont_ctx.get("inherited_timeframe_months", 6)
             timeframe_days = None
         elif has_explicit_months:
@@ -988,7 +1005,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     elif any(w in low for w in ["by model provider", "per model provider", "model provider breakdown", "ai provider"]):
         breakdowns.append("model_provider")
         target_dimension = "ModelProvider"
-    elif any(w in low for w in ["by model", "per model", "ai model", "model breakdown", "by llm", "llm breakdown"]):
+    elif any(w in low for w in ["by model", "per model", "ai model", "model breakdown", "by llm", "llm breakdown"]) or cont_ctx.get("prior_query_type") == "ai_model_breakdown" or (is_exclude_other_requested(low) and any(w in low for w in ["model", "models", "ai"])):
         breakdowns.append("model")
         target_dimension = "Model"
     elif any(w in low for w in ["by modality", "per modality", "modality breakdown"]):

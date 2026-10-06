@@ -31,6 +31,26 @@ def is_no_mom_requested(low: str) -> bool:
     return any(p in low for p in negative_mom_patterns)
 
 
+def is_exclude_other_requested(text: str) -> bool:
+    """
+    Check if the user explicitly asked to omit or exclude 'Other', 'Unallocated', etc.
+    Handles quotes, punctuation, typos, and variations like 'exclude "other" model',
+    'without other', 'remove other category', 'filter out other'.
+    """
+    if not text:
+        return False
+    low = text.lower().strip()
+    pattern = r'\b(?:exclude|excluding|without|remove|filter\s+out|ignore|omit|drop|no|don\'t\s+include|dont\s+include|hide)\b.*?\b(?:[\'"]?other[\'"]?|unallocated|un-allocated)\b'
+    if re.search(pattern, low):
+        return True
+    return any(p in low for p in [
+        "exclude other", "exclude the other", "without other",
+        "exclude unallocated", "without unallocated",
+        "filter out other", "remove other", "ignore other",
+        "no other", "omit other", "drop other", "hide other"
+    ])
+
+
 def prune_mom_columns_from_markdown(text: str) -> str:
     """Prunes Month-over-Month (MoM) or Day-over-Day (DoD) variance columns from markdown tables."""
     lines = text.split("\n")
@@ -296,6 +316,12 @@ def _build_time_category_stacked_chart(
         time_cat_matrix[t][clean_c] = time_cat_matrix[t].get(clean_c, 0.0) + val
 
     sorted_cats = sorted(cat_totals.items(), key=lambda x: x[1], reverse=True)
+    if exclude_other:
+        sorted_cats = [
+            (c, v) for c, v in sorted_cats
+            if c.lower() not in ("other", "(unallocated / other)", "unallocated", "other services", "other (combined)", "other categories", "other models")
+            and not c.lower().startswith("other ")
+        ]
     top_cats = [c for c, _ in sorted_cats[:max_cats]]
     other_cats = [c for c, _ in sorted_cats[max_cats:]]
 
