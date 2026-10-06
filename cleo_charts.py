@@ -257,7 +257,8 @@ def _build_time_category_stacked_chart(
     cost_col: str = "cost",
     time_format: str = "month",
     max_cats: int = 12,
-    unit: str = "Cost ($)"
+    unit: str = "Cost ($)",
+    exclude_other: bool = False
 ) -> str:
     """
     Build a multi-dataset vertical stacked bar chart where:
@@ -308,7 +309,7 @@ def _build_time_category_stacked_chart(
             "data": d
         })
 
-    if other_cats:
+    if not exclude_other and other_cats:
         other_d = [round(sum(time_cat_matrix[t].get(oc, 0.0) for oc in other_cats), 2) for t in raw_times]
         if any(v > 0 for v in other_d):
             datasets.append({
