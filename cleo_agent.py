@@ -6430,6 +6430,11 @@ class AIClient:
 
                         raw_csv = res_json.get("csv", "")
                         acc_map = self._get_account_name_map(mcp) if matched_dim["id"] == "account" else {}
+                        is_exclude_other = any(w in low for w in [
+                            "exclude other", "exclude the other", "without other",
+                            "exclude unallocated", "without unallocated",
+                            "filter out other", "remove other", "ignore other"
+                        ])
 
                         for r in csv.DictReader(io.StringIO(raw_csv)):
                             v = float(r.get("val") or 0.0)
@@ -6438,6 +6443,9 @@ class AIClient:
                                 d_val = "(Unallocated / Other)"
                             elif matched_dim["id"] == "account" and d_val in acc_map:
                                 d_val = f"{acc_map[d_val]} ({d_val})"
+
+                            if is_exclude_other and d_val.lower() in ("other", "(unallocated / other)", "unallocated", "other services"):
+                                continue
 
                             prov = (r.get("provider") or "").strip()
                             if not prov:
