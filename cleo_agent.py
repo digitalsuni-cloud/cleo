@@ -964,7 +964,17 @@ class AIClient:
                                 "and exactly what the user can do with this information to optimize spend. "
                                 "CRITICAL 1: If you see massive Month-over-Month spikes or 100% drops in third-party software, SaaS, or security platforms (e.g., WIZ, Reltio, IBM, Datadog, Snowflake), DO NOT classify them as 'discontinued' or 'unexpected usage spikes'. Correctly identify them as likely one-time or annual Cloud Marketplace commitments/renewals. "
                                 "CRITICAL 2: If 'ComputeSavingsPlans', 'SavingsPlans', or 'Reserved Instances' dominate the spend, explicitly identify them as upfront/partial-upfront commitment fees rather than standard run-rate compute usage. "
-                                "CRITICAL 3: When discussing ROI or break-even timelines, NEVER claim a flat, uniform timeline (such as 22 days for everything). Differentiate: Quick Wins are Immediate / Day 1 (0–7 days), Storage tiering is 7–30 days, Commitments are 7–9 months (1-yr) / 14–18 months (3-yr), and Strategic/Architecture migrations are 90–180 days (3–6 months)."
+                                "CRITICAL 3: When discussing ROI or break-even timelines, NEVER claim a flat, uniform timeline (such as 22 days for everything). Differentiate: Quick Wins are Immediate / Day 1 (0–7 days), Storage tiering is 7–30 days, Commitments are 7–9 months (1-yr) / 14–18 months (3-yr), and Strategic/Architecture migrations are 90–180 days (3–6 months). "
+                                "CRITICAL 4 (AI & Foundation Models): When analyzing AI model costs, token usage, or MULTICLOUD_AI_COST_AND_USAGE: "
+                                "NEVER recommend 'Shift from Heavy-Compute to Serverless' for managed API models (Gemini, Claude, GPT-4o, etc. are ALREADY serverless pay-per-token API endpoints). "
+                                "NEVER confuse high total spend with high per-token cost: a model like Gemini Flash or GPT-4o-mini has high spend due to massive transaction volume, but has a very low unit cost per token. Never suggest migrating from a cheap model (Flash/mini) to an expensive reasoning model (Sonnet/Opus/Pro) to 'save cost'. "
+                                "Always ground AI recommendations in actual AI Tokenomics levers: "
+                                "(1) Prompt Caching (50–90% cost reduction on repeated system prompts and RAG contexts), "
+                                "(2) Semantic Router / Model Cascading (routing simple queries to Flash-Lite/mini and reserving heavy frontier models only for complex reasoning), "
+                                "(3) Context Window & Token Pruning (preventing quadratic input token accumulation in multi-turn agent loops), "
+                                "(4) Batch Inference (50% discount for asynchronous evaluation or extraction workloads), "
+                                "(5) Output Token Optimization (strict max_tokens and concise formatting), "
+                                "and (6) Provisioned Throughput (PTUs / Bedrock Provisioned) vs. Pay-per-Token crossover analysis for high steady-state workloads."
                             )
                         }
                         # Strip raw HTML canvas tags to avoid confusing the LLM and wasting tokens
