@@ -80,6 +80,25 @@ def test_multi_service_and_ytd_understanding():
     assert understood["services"] == ["AmazonRDS", "AmazonS3"]
     assert understood["service"] == "AmazonRDS"
 
+    # MTD test
+    q_mtd = "What is our AWS MTD spend?"
+    ctx_mtd = parse_query_time_context(q_mtd)
+    assert ctx_mtd["target_ym"] == now.strftime("%Y-%m")
+    assert "MTD" in ctx_mtd["target_label"]
+    und_mtd = _deterministic_understand_query([{"role": "user", "content": q_mtd}])
+    assert und_mtd["timeframe_months"] == 1
+    assert und_mtd["timeframe_days"] is None
+
+    # QTD test
+    q_qtd = "Show EC2 cost for QTD"
+    ctx_qtd = parse_query_time_context(q_qtd)
+    expected_qtd_m = ((now.month - 1) % 3) + 1
+    assert ctx_qtd["timeframe_months"] == expected_qtd_m
+    assert "QTD" in ctx_qtd["target_label"]
+    und_qtd = _deterministic_understand_query([{"role": "user", "content": q_qtd}])
+    assert und_qtd["timeframe_months"] == expected_qtd_m
+    assert und_qtd["timeframe_days"] is None
+
 
 
 def test_extract_requested_cloud():
