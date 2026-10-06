@@ -504,6 +504,38 @@ def test_wait_for_server_ready():
         server.server_close()
 
 
+def test_oauth_disconnected_handling(tmp_path, monkeypatch):
+    from auth.oauth import OAuth2Helper
+    from cleo_agent import get_access_token
+    import cleo_agent
+
+    # Test that permanent refresh failure purges tokens and returns None
+    tokens_file = str(tmp_path / "mcp_tokens.json")
+    helper = OAuth2Helper(client_id="test-client", client_secret="test-sec")
+    helper.tokens_file = tokens_file
+
+    sample_token_data = {
+        "token": {
+            "access_token": "expired_at",
+            "refresh_token": "invalid_rt",
+            "expires_at": 1000  # long past
+        }
+    }
+    # Simulate failed refresh returning 400 invalid_grant
+    monkeypatch.setattr(helper, "_post_request", lambda payload: None)
+    helper.last_error = "HTTP 400: {\"error\":\"invalid_grant\"}"
+
+    # Verify refresh_token purges invalid tokens
+    refreshed = helper.refresh_token(sample_token_data)
+    assert refreshed is None
+
+    # Test get_access_token does not return dead token
+    monkeypatch.setattr(cleo_agent.auth_helper, "load_token", lambda: None)
+    monkeypatch.setattr(cleo_agent.auth_helper, "refresh_token", lambda d: None)
+    token = get_access_token(interactive=False)
+    assert token is None
+
+
 if __name__ == "__main__":
     # Self-run check
     test_parse_query_time_context()
@@ -528,6 +560,7 @@ if __name__ == "__main__":
     test_market_data_intent_and_specs()
     test_ai_models_12month_dimensional_breakdown_routing()
     test_wait_for_server_ready()
+    test_oauth_disconnected_handling(None, None)
     print("All unit tests passed successfully!")
 
 

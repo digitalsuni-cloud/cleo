@@ -1347,6 +1347,7 @@ def init_mcp_if_authenticated() -> bool:
         logger.debug("[MCP Init Check] No CloudHealth access token found in storage")
         _mcp = None
         _tools = []
+        _last_error = ""
         return False
     try:
         logger.info("[MCP Init] Initializing CloudHealth connection with stored access token...")
@@ -1410,7 +1411,10 @@ def init_mcp_if_authenticated() -> bool:
         _last_error = str(e)
         _mcp = None
         _tools = []
-        logger.error(f"❌ [MCP Init Error] {e}")
+        if any(w in str(e).lower() for w in ["401", "403", "unauthorized", "expired", "-32001"]):
+            logger.info(f"ℹ️ [MCP Init] CloudHealth is disconnected ({e}).")
+        else:
+            logger.error(f"❌ [MCP Init Error] {e}")
         return False
 
 
@@ -1620,25 +1624,35 @@ def get_logs(limit: int = 150):
     """Returns the latest backend verbose logs for in-GUI inspection."""
     return {"logs": get_recent_logs(limit)}
 
+_last_health_init_attempt = 0.0
+_HEALTH_INIT_COOLDOWN_SECS = 60.0
+
 @app.get("/health")
 def health():
-    global _mcp, _tools, _last_error
-    token = get_access_token(interactive=False)
-    has_token = bool(token)
-    if has_token and (not _mcp or not _tools):
-        init_mcp_if_authenticated()
-
+    global _mcp, _tools, _last_error, _last_health_init_attempt
     is_connected = bool(_mcp and _tools and not getattr(_mcp, "_use_fallback", False))
     
+    # If not connected, only attempt an auto-init probe if cooldown has elapsed
+    if not is_connected:
+        now = time.time()
+        if (now - _last_health_init_attempt) >= _HEALTH_INIT_COOLDOWN_SECS:
+            _last_health_init_attempt = now
+            token = get_access_token(interactive=False)
+            if token:
+                init_mcp_if_authenticated()
+                is_connected = bool(_mcp and _tools and not getattr(_mcp, "_use_fallback", False))
+
+    has_token = bool(_mcp and _tools) or bool(auth_helper.load_token())
+
     if is_connected:
         mcp_status = "connected"
-    elif _last_error:
+    elif _last_error and not any(w in _last_error.lower() for w in ["expired", "disconnected", "401", "unauthorized"]):
         mcp_status = "unauthorized"
     else:
         mcp_status = "disconnected"
 
     return {
-        "status": "ok" if is_connected else ("error" if _last_error else "unauthenticated"),
+        "status": "ok" if is_connected else ("error" if mcp_status == "unauthorized" else "unauthenticated"),
         "mcp": mcp_status,
         "has_token": has_token,
         "tools_count": len(_tools) if is_connected else 0,
@@ -2209,7 +2223,7 @@ def chat(req: ChatRequest, request: Request):
         if not init_mcp_if_authenticated():
             raise HTTPException(
                 status_code=401, 
-                detail="CloudHealth is not authenticated. Please click 'Connect CloudHealth' in the top header."
+                detail="CloudHealth MCP is disconnected. Sign in to the platform to continue."
             )
 
     if not _ai:
