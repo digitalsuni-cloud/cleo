@@ -2050,6 +2050,7 @@ class AIClient:
             is_monthly_trend_query = (
                 not requested_service
                 and not is_future_forecast
+                and not is_ai_models_query
                 and not any(w in low for w in [
                     "by service", "service level", "each service", "top services", "services across",
                     "service category", "service spend", "by product", "services by",
@@ -6332,6 +6333,8 @@ class AIClient:
                         break
                 if not matched_dim and "ai" in low and any(w in low for w in ["by provider", "per provider"]):
                     matched_dim = next((d for d in DIMENSIONAL_BREAKDOWNS if d["id"] == "ai_model_provider"), None)
+                if not matched_dim and is_ai_models_query:
+                    matched_dim = next((d for d in DIMENSIONAL_BREAKDOWNS if d["id"] == "ai_model"), None)
 
                 if matched_dim:
                     dim_col = matched_dim["column"]
@@ -6348,6 +6351,9 @@ class AIClient:
                         where_clauses.append(f"{prov_col} = 'Azure'")
                     elif cloud_target == "gcp":
                         where_clauses.append(f"{prov_col} IN ('GCP', 'Google Cloud')")
+
+                    if matched_dim["id"] in ("ai_model", "ai_model_provider"):
+                        where_clauses.append(f"{dim_col} IS NOT NULL AND {dim_col} != ''")
 
                     if requested_service and str(requested_service).lower() not in ("ai", "ai models", "ai_models", "models", "foundation models", "all", "cloud") and dataset in ("MULTICLOUD_FOCUS_COST_AND_USAGE", "MULTICLOUD_AI_COST_AND_USAGE"):
                         where_clauses.append(f"ServiceName = '{requested_service}'")
@@ -6371,7 +6377,7 @@ class AIClient:
                             f"GROUP BY Month, {prov_col}, {dim_col} "
                             f"ORDER BY month ASC, val DESC"
                         )
-                        q_limit = -1
+                        q_limit = 500
                     else:
                         dim_sql = (
                             f"SELECT {prov_col} AS provider, {dim_col} AS dimension, "
@@ -6395,7 +6401,24 @@ class AIClient:
                             },
                             "requestInfo": {"sourceType": "API", "caller": "mcp"}
                         })
-                        raw_csv = json.loads(res["content"][0]["text"]).get("csv", "")
+                        res_text = (res.get("content") or [{}])[0].get("text", "")
+                        res_json = json.loads(res_text) if res_text.startswith("{") else {}
+                        if "error" in res_json:
+                            logger.warning(f"[{dim_label} Query Error] Initial query returned error: {res_json['error']}. Retrying once...")
+                            time.sleep(1.0)
+                            res = mcp.call_tool("execute_datasource_query", {
+                                "queryInput": {
+                                    "sqlStatement": dim_sql,
+                                    "dataGranularity": svc_granularity,
+                                    "limit": 200,
+                                    "timeRange": svc_time_range
+                                },
+                                "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                            })
+                            res_text = (res.get("content") or [{}])[0].get("text", "")
+                            res_json = json.loads(res_text) if res_text.startswith("{") else {}
+
+                        raw_csv = res_json.get("csv", "")
                         acc_map = self._get_account_name_map(mcp) if matched_dim["id"] == "account" else {}
 
                         for r in csv.DictReader(io.StringIO(raw_csv)):
@@ -6554,7 +6577,19 @@ class AIClient:
                             f"{chart_md}\n\n"
                             f"💡 *Live FinOps data from `{dataset}` via CloudHealth FlexReports.*"
                         )
-                    # Fall through to service breakdown if no dimensional data returned
+                    else:
+                        scope_disp = cloud_target.upper() if cloud_target != "all" else "Multi-Cloud"
+                        if matched_dim["id"].startswith("ai_") or dataset == "MULTICLOUD_AI_COST_AND_USAGE":
+                            return (
+                                f"### 🤖 CloudHealth Spend Analysis: {scope_disp} Cost by {dim_label} — {svc_scope_label}\n\n"
+                                f"No active AI model spend data was returned from `{dataset}` for {svc_scope_label}.\n\n"
+                                f"*Source: `{dataset}` via CloudHealth FlexReports.*"
+                            )
+                        return (
+                            f"### 📊 CloudHealth Spend Analysis: {scope_disp} Cost by {dim_label} — {svc_scope_label}\n\n"
+                            f"No spend data was returned from `{dataset}` for {dim_label} in {svc_scope_label}.\n\n"
+                            f"*Source: `{dataset}` via CloudHealth FlexReports.*"
+                        )
 
                 # ── Single Service Query ──
                 if requested_service:
