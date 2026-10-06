@@ -992,7 +992,8 @@ class AIClient:
                             sys_msg["content"] += " CRITICAL 5: The user explicitly requested to EXCLUDE 'Other' / unallocated categories. Under NO circumstance should you mention, analyze, or recommend actions on 'Other' or unallocated items in your insights."
                         all_req_svcs = extract_all_requested_services(last_msg)
                         if len(all_req_svcs) >= 2:
-                            sys_msg["content"] += " CRITICAL 6: The user asked for multiple services (" + ", ".join([s.display_name or s.pcode for s in all_req_svcs]) + "). Provide balanced, actionable insights across each requested service. Never claim a service is missing or unqueried if its section is present in the data."
+                            svc_names_list = [getattr(s, "display_name", None) or getattr(s, "disp", None) or (s[1] if len(s) > 1 else s[0]) for s in all_req_svcs]
+                            sys_msg["content"] += " CRITICAL 6: The user asked for multiple services (" + ", ".join(svc_names_list) + "). Provide balanced, actionable insights across each requested service. Never claim a service is missing or unqueried if its section is present in the data."
                         # Strip raw HTML canvas tags to avoid confusing the LLM and wasting tokens
                         clean_resp_text = re.sub(r'<canvas.*?</canvas>', '', resp, flags=re.DOTALL)
                         user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{clean_resp_text}"}
@@ -3048,9 +3049,9 @@ class AIClient:
                 service_grand_totals = {}
 
                 for s_idx, s_match in enumerate(all_requested_services):
-                    svc_pcode = s_match.pcode
-                    svc_disp = s_match.display_name or PCODE_TO_DISPLAY.get(svc_pcode, svc_pcode)
-                    svc_prov = s_match.provider or PCODE_TO_PROVIDER.get(svc_pcode, "aws")
+                    svc_pcode = getattr(s_match, "pcode", None) or s_match[0]
+                    svc_disp = getattr(s_match, "display_name", None) or getattr(s_match, "disp", None) or PCODE_TO_DISPLAY.get(svc_pcode, svc_pcode)
+                    svc_prov = getattr(s_match, "provider", None) or PCODE_TO_PROVIDER.get(svc_pcode, "aws")
 
                     if svc_pcode == "AmazonRDS":
                         if num_days > 0:
@@ -3512,7 +3513,7 @@ class AIClient:
                             )
 
                 grand_total = sum(service_grand_totals.values())
-                svc_title = " & ".join([s.display_name or s.pcode for s in all_requested_services])
+                svc_title = " & ".join([getattr(s, "display_name", None) or getattr(s, "disp", None) or getattr(s, "pcode", None) or s[0] for s in all_requested_services])
                 breakdown_summary = ", ".join([f"**{name}**: ${val:,.2f}" for name, val in service_grand_totals.items()]) if service_grand_totals else "No spend detected"
 
                 partial_notice = (
