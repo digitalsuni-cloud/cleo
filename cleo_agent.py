@@ -6537,7 +6537,8 @@ class AIClient:
                                 cost_col="val",
                                 time_format="month",
                                 max_cats=10,
-                                unit="Cost ($)" if is_cost else unit_str
+                                unit="Cost ($)" if is_cost else unit_str,
+                                exclude_other=is_exclude_other
                             )
                             if chart_md:
                                 chart_md = f"\n\n{chart_md}"
