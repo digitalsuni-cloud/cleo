@@ -29,6 +29,10 @@ class ServiceMatch(tuple):
         self.disp = disp
         self.provider = provider
 
+    @property
+    def display_name(self):
+        return self.disp
+
 CLOUD_SERVICES_MAP = {
     # ── AWS ──
     "ebs": ("AmazonEC2_EBS", "Amazon EBS", "aws"),

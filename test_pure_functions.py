@@ -63,11 +63,19 @@ def test_extract_requested_service():
     all_matches = extract_all_requested_services("give me the RDS and S3 cost and usage data for YTD")
     assert len(all_matches) == 2
     assert all_matches[0].pcode == "AmazonRDS"
+    assert all_matches[0].display_name == "RDS"
+    assert all_matches[0].disp == "RDS"
+    assert all_matches[0].provider == "aws"
+    pcode, disp = all_matches[0]
+    assert pcode == "AmazonRDS"
+    assert disp == "RDS"
     assert all_matches[1].pcode == "AmazonS3"
+    assert all_matches[1].display_name == "S3"
 
     three_matches = extract_all_requested_services("Show EC2, RDS, and S3 spend")
     assert len(three_matches) == 3
     assert [m.pcode for m in three_matches] == ["AmazonEC2", "AmazonRDS", "AmazonS3"]
+    assert [m.display_name for m in three_matches] == ["EC2", "RDS", "S3"]
 
 
 def test_multi_service_and_ytd_understanding():
