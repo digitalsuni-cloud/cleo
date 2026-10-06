@@ -464,6 +464,7 @@ def parse_query_time_context(query: str) -> dict:
 
     is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
     is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
+    is_mtd = bool(re.search(r'\b(?:mtd|month\s*to\s*date|this\s*month|current\s*month)\b', low))
 
     if not target_ym:
         if is_ytd:
@@ -475,15 +476,15 @@ def parse_query_time_context(query: str) -> dict:
             q_num = ((now.month - 1) // 3) + 1
             target_label = f"Q{q_num} QTD ({now.year})"
             is_specific = True
+        elif is_mtd:
+            target_ym = current_ym
+            target_label = f"MTD ({FULL_NAMES[now.month]} {now.year})"
+            is_specific = True
         elif any(w in low for w in ["last month", "previous month"]):
             target_ym = last_ym
             prev_m = (now.month - 1) if now.month > 1 else 12
             prev_yr = now.year if now.month > 1 else (now.year - 1)
             target_label = f"Last Month ({FULL_NAMES[prev_m]} {prev_yr})"
-            is_specific = True
-        elif any(w in low for w in ["mtd", "this month", "current month"]):
-            target_ym = current_ym
-            target_label = f"MTD ({FULL_NAMES[now.month]} {now.year})"
             is_specific = True
 
     # Default fallback if no month specified
@@ -827,9 +828,10 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     # Timeframe detection
     is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
     is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
+    is_mtd = bool(re.search(r'\b(?:mtd|month\s*to\s*date|this\s*month|current\s*month)\b', low))
     m_months = re.search(r'\b(\d+)\s*(?:months?|m)\b', low)
     m_days = re.search(r'\b(\d+)\s*(?:days?|d)\b', low)
-    has_explicit_months = is_ytd or is_qtd or bool(m_months) or any(w in low for w in ["12months", "12 months", "year", "annual", "months", "month by month", "monthly"])
+    has_explicit_months = is_ytd or is_qtd or is_mtd or bool(m_months) or any(w in low for w in ["12months", "12 months", "year", "annual", "months", "month by month", "monthly"])
     has_explicit_days = bool(m_days) or any(w in low for w in ["60days", "60 days", "30days", "30 days", "daily", "by day", "day by day", "per day"])
 
     timeframe_months = None
@@ -839,6 +841,9 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         timeframe_days = None
     elif is_qtd:
         timeframe_months = ((datetime.date.today().month - 1) % 3) + 1
+        timeframe_days = None
+    elif is_mtd and not has_explicit_days:
+        timeframe_months = 1
         timeframe_days = None
     elif cont_ctx.get("is_continuation"):
         if cont_ctx.get("prior_query_type") == "forecast":
