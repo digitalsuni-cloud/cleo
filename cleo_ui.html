@@ -1794,6 +1794,44 @@
       font-size: 0.8rem;
     }
 
+    /* ── Seamless Chart Loading Skeleton (Hide raw JSON during stream) ── */
+    .bubble pre:has(code[class*="language-chart"]),
+    pre:has(code[class*="language-chart"]) {
+      position: relative;
+      background: rgba(255, 255, 255, 0.02) !important;
+      border: 1px dashed rgba(59, 130, 246, 0.4) !important;
+      border-radius: 10px !important;
+      padding: 32px 20px !important;
+      margin: 16px 0 !important;
+      min-height: 120px;
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden !important;
+    }
+    .bubble pre:has(code[class*="language-chart"]) code,
+    pre:has(code[class*="language-chart"]) code,
+    code[class*="language-chart"] {
+      display: none !important;
+    }
+    .bubble pre:has(code[class*="language-chart"])::after,
+    pre:has(code[class*="language-chart"])::after {
+      content: "📊 Preparing interactive spend visualization...";
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: #94a3b8;
+      font-size: 0.85rem;
+      font-family: inherit;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      animation: pulse-chart-loading 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse-chart-loading {
+      0%, 100% { opacity: 0.5; transform: scale(0.99); }
+      50% { opacity: 1; transform: scale(1); }
+    }
+
     /* ── Cloud Service & Region Badges (Multi-Cloud: AWS, Azure, GCP) ── */
     .cloud-service-badge, .cloud-region-badge {
       display: inline-flex;
@@ -6905,6 +6943,14 @@
 
       // Normalize table formatting: collapse empty lines between markdown table rows
       text = text.replace(/(\|.+?\|)\s*\n\s*(?=\|)/g, '$1\n');
+
+      // Auto-close unclosed chart block during streaming so markdown parsing stays clean
+      const chartOpenCount = (text.match(/```chart\b/g) || []).length;
+      const totalFenceCount = (text.match(/```/g) || []).length;
+      if (chartOpenCount > 0 && totalFenceCount % 2 !== 0) {
+        text += '\n```';
+      }
+
       if (typeof marked !== 'undefined' && marked.parse) {
         try {
           return sanitizeHtml(decorateCloudServices(marked.parse(text, { breaks: true, gfm: true })));
@@ -6914,8 +6960,9 @@
       }
 
       let out = text;
-      out = out.replace(/```([\s\S]*?)```/g, (match, code) => {
-        return '<pre><code>' + escapeHtml(code.trim()) + '</code></pre>';
+      out = out.replace(/```(?:(\w+)\s*\n)?([\s\S]*?)```/g, (match, lang, code) => {
+        const cls = lang ? ` class="language-${escapeHtml(lang)}"` : '';
+        return `<pre><code${cls}>` + escapeHtml(code.trim()) + '</code></pre>';
       });
 
       const lines = out.split('\n');

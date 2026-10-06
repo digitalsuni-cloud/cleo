@@ -12,6 +12,14 @@ from cleo_agent import (
     _clean_chart_title,
     _classify_service_usage_type,
 )
+from cleo_charts import (
+    is_exclude_other_requested,
+    _build_time_category_stacked_chart,
+)
+from cleo_query import (
+    _detect_contextual_continuation,
+    _deterministic_understand_query,
+)
 from cleo_server import _is_valid_guid, _generate_chat_title, _wait_for_server_ready, _find_free_port
 
 
@@ -536,6 +544,63 @@ def test_oauth_disconnected_handling(tmp_path, monkeypatch):
     assert token is None
 
 
+def test_exclude_other_requested_and_chart_filtering():
+    # 1. Test is_exclude_other_requested predicate
+    assert is_exclude_other_requested('exclude "other" model from the above data') is True
+    assert is_exclude_other_requested('exclude other from the abouve resoult') is True
+    assert is_exclude_other_requested('without other') is True
+    assert is_exclude_other_requested('filter out other models') is True
+    assert is_exclude_other_requested('remove other') is True
+    assert is_exclude_other_requested('omit other categories') is True
+    assert is_exclude_other_requested('exclude unallocated') is True
+    assert is_exclude_other_requested("Give me the last 6 months cost and usage reports for the AI Usage") is False
+    assert is_exclude_other_requested("Show spend on other services") is False
+
+    # 2. Test _build_time_category_stacked_chart with exclude_other=True
+    raw_rows = [
+        {"month": "2026-08", "dimension": f"Model_{i}", "val": 100 - i} for i in range(15)
+    ]
+    raw_rows.append({"month": "2026-08", "dimension": "Other", "val": 500})
+
+    # When exclude_other=True: "Other" is excluded AND no 11th remainder "Other" dataset is added
+    chart_json_str = _build_time_category_stacked_chart(
+        "Spend by Model", raw_rows, time_col="month", cat_col="dimension", cost_col="val",
+        max_cats=10, exclude_other=True
+    )
+    import json
+    chart_data = json.loads(chart_json_str.replace("```chart\n", "").replace("\n```", ""))
+    dataset_labels = [ds["label"] for ds in chart_data["datasets"]]
+    assert "Other" not in dataset_labels
+    assert len(chart_data["datasets"]) == 10
+
+    # When exclude_other=False: remainder categories are aggregated into "Other"
+    chart_json_str_with_other = _build_time_category_stacked_chart(
+        "Spend by Model", raw_rows, time_col="month", cat_col="dimension", cost_col="val",
+        max_cats=10, exclude_other=False
+    )
+    chart_data_with_other = json.loads(chart_json_str_with_other.replace("```chart\n", "").replace("\n```", ""))
+    dataset_labels_with_other = [ds["label"] for ds in chart_data_with_other["datasets"]]
+    assert "Other" in dataset_labels_with_other
+
+    # 3. Test continuation detection and deterministic understanding for follow-up
+    session_messages = [
+        {"role": "user", "content": "Give me the last 6 months cost and usage reports for the AI Usage"},
+        {"role": "assistant", "content": "### 📊 CloudHealth Spend Analysis: Multi-Cloud Cost by AI Model — Last 6 Months\n\n| Month | Total Spend |\n|:---|:---|\n| 2026-09 | $273,995.51 |"},
+        {"role": "user", "content": 'exclude "other" model from the above data'}
+    ]
+    cont = _detect_contextual_continuation(session_messages)
+    assert cont["is_continuation"] is True
+    assert cont["prior_query_type"] == "ai_model_breakdown"
+    assert cont["inherited_timeframe_months"] == 6
+
+    intent = _deterministic_understand_query(session_messages)
+    assert intent["intent"] == "fetch_data"
+    assert intent["target_dimension"] == "Model"
+    assert "model" in intent["breakdowns"]
+    assert intent["timeframe_months"] == 6
+    assert intent["is_new_data_fetch"] is True
+
+
 if __name__ == "__main__":
     # Self-run check
     test_parse_query_time_context()
@@ -559,8 +624,12 @@ if __name__ == "__main__":
     test_multimonth_dimensional_breakdown_chart()
     test_market_data_intent_and_specs()
     test_ai_models_12month_dimensional_breakdown_routing()
-    test_wait_for_server_ready()
-    test_oauth_disconnected_handling(None, None)
+    import tempfile, pathlib
+    with tempfile.TemporaryDirectory() as td:
+        class DummyMonkey:
+            def setattr(self, obj, attr, val): setattr(obj, attr, val)
+        test_oauth_disconnected_handling(pathlib.Path(td), DummyMonkey())
+    test_exclude_other_requested_and_chart_filtering()
     print("All unit tests passed successfully!")
 
 
