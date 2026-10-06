@@ -255,25 +255,27 @@ def _fetch_total_cost(mcp, sql: str, granularity: str, time_range: dict, crn: st
         logger.warning(f"[True Total Query] {e}")
     return 0.0
 
-def extract_requested_service(query_text: str):
-    """Extracts cloud service identifier, display label, and provider from query text, respecting negations and resets."""
-    q_low = query_text.lower()
+def extract_all_requested_services(query_text: str) -> list[ServiceMatch]:
+    """Extracts all cloud service identifiers, display labels, and providers mentioned in query text, respecting negations and resets."""
+    q_low = (query_text or "").lower()
 
     # 1. Explicit resets to all services, overall spend, or complaints about sticking to a service
     all_svcs_patterns = [
         "all service", "all the service", "all the services", "all services",
         "all product", "all products", "every service", "every product",
-        "across all services", "across services", "total spend", "overall spend",
+        "across all services", "across services", "total spend across all", "overall spend across all",
         "overall breakdown", "general spend", "entire spend", "all of them",
         "all aws services", "all cloud services", "multi cloud", "multicloud",
-        "not just", "not only", "stuck at", "stuck on", "stop showing"
+        "stop showing"
     ]
     if any(p in q_low for p in all_svcs_patterns):
-        return None, None
+        return []
 
-    # 2. Check individual services, skipping negated references. Longest alias first so a more
-    # specific match (e.g. "bigquery reservation api") wins over a shorter one it contains
-    # (e.g. "bigquery") instead of the shorter one matching first by dict iteration order.
+    found_matches = []
+    seen_pcodes = set()
+
+    # Check individual services, skipping negated references. Longest alias first so a more
+    # specific match (e.g. "bigquery reservation api") wins over a shorter one it contains.
     for alias, (pcode, disp, prov) in sorted(CLOUD_SERVICES_MAP.items(), key=lambda kv: -len(kv[0])):
         for m in re.finditer(r'\b' + re.escape(alias) + r'\b', q_low):
             prefix = q_low[:m.start()].strip()
@@ -281,10 +283,19 @@ def extract_requested_service(query_text: str):
                 r'\b(?:not\s+(?:just\s+)?(?:for\s+)?(?:the\s+)?|no\s+|except\s+|excluding\s+|without\s+|other\s+than\s+|stuck\s+at\s+|stuck\s+on\s+|why\s+(?:you\'?re\s+)?(?:still\s+)?(?:stuck\s+at\s+)?)$',
                 prefix
             ))
-            if not is_negated:
-                return ServiceMatch(pcode, disp, prov)
+            if not is_negated and pcode not in seen_pcodes:
+                seen_pcodes.add(pcode)
+                found_matches.append((m.start(), ServiceMatch(pcode, disp, prov)))
 
-    return None, None
+    # Sort matches in the order they appear in user's prompt
+    found_matches.sort(key=lambda x: x[0])
+    return [match for _, match in found_matches]
+
+
+def extract_requested_service(query_text: str):
+    """Extracts cloud service identifier, display label, and provider from query text, respecting negations and resets."""
+    svcs = extract_all_requested_services(query_text)
+    return svcs[0] if svcs else (None, None)
 
 def extract_requested_cloud(query_text: str) -> Optional[str]:
     """Detects if user specifically asks for a cloud provider: aws, azure, gcp, or all/multi-cloud."""
@@ -451,8 +462,20 @@ def parse_query_time_context(query: str) -> dict:
             is_specific = True
             daily_range = {"from": start_d.strftime("%Y-%m-%d"), "to": end_d.strftime("%Y-%m-%d")}
 
+    is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
+    is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
+
     if not target_ym:
-        if any(w in low for w in ["last month", "previous month"]):
+        if is_ytd:
+            target_ym = current_ym
+            target_label = f"Year-To-Date (YTD {now.year})"
+            is_specific = True
+        elif is_qtd:
+            target_ym = current_ym
+            q_num = ((now.month - 1) // 3) + 1
+            target_label = f"Q{q_num} QTD ({now.year})"
+            is_specific = True
+        elif any(w in low for w in ["last month", "previous month"]):
             target_ym = last_ym
             prev_m = (now.month - 1) if now.month > 1 else 12
             prev_yr = now.year if now.month > 1 else (now.year - 1)
@@ -473,11 +496,11 @@ def parse_query_time_context(query: str) -> dict:
     # Calculate months needed for CloudHealth timeRange (cap at 12 to respect CloudHealth 13-month limit)
     t_yr, t_mo = int(target_ym.split("-")[0]), int(target_ym.split("-")[1])
     diff = (now.year - t_yr) * 12 + (now.month - t_mo)
-    months_needed = min(12, max(2, diff + 2))
+    months_needed = now.month if is_ytd else (((now.month - 1) % 3) + 1 if is_qtd else min(12, max(2, diff + 2)))
 
     # Check for requested duration count e.g. "last 6 months", "past 3 months"
     m_count = re.search(r'(?:last|past|previous|for)\s+(\d{1,2})\s*months?\b|\b([1-9]|[1-4]\d)\s+months\b', low)
-    timeframe_months = None
+    timeframe_months = now.month if is_ytd else (((now.month - 1) % 3) + 1 if is_qtd else None)
     if m_count:
         try:
             req_cnt = int(m_count.group(1) or m_count.group(2))
@@ -753,13 +776,13 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     cloud = cont_ctx.get("new_cloud") or extract_requested_cloud(last_msg)
 
     # Service detection
+    all_svcs = extract_all_requested_services(last_msg)
     service = cont_ctx.get("new_service")
     if not service:
-        svc_match = extract_requested_service(last_msg)
-        if svc_match and svc_match[0]:
-            service = svc_match[0]
+        if all_svcs:
+            service = all_svcs[0][0]
             if not cloud:
-                cloud = getattr(svc_match, "provider", None) or PCODE_TO_PROVIDER.get(service)
+                cloud = getattr(all_svcs[0], "provider", None) or PCODE_TO_PROVIDER.get(service)
 
     if not service:
         if cloud == "azure":
@@ -802,14 +825,22 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
                 cloud = "gcp"
 
     # Timeframe detection
+    is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
+    is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
     m_months = re.search(r'\b(\d+)\s*(?:months?|m)\b', low)
     m_days = re.search(r'\b(\d+)\s*(?:days?|d)\b', low)
-    has_explicit_months = bool(m_months) or any(w in low for w in ["12months", "12 months", "year", "annual", "months", "month by month", "monthly"])
+    has_explicit_months = is_ytd or is_qtd or bool(m_months) or any(w in low for w in ["12months", "12 months", "year", "annual", "months", "month by month", "monthly"])
     has_explicit_days = bool(m_days) or any(w in low for w in ["60days", "60 days", "30days", "30 days", "daily", "by day", "day by day", "per day"])
 
     timeframe_months = None
     timeframe_days = None
-    if cont_ctx.get("is_continuation"):
+    if is_ytd:
+        timeframe_months = datetime.date.today().month
+        timeframe_days = None
+    elif is_qtd:
+        timeframe_months = ((datetime.date.today().month - 1) % 3) + 1
+        timeframe_days = None
+    elif cont_ctx.get("is_continuation"):
         if cont_ctx.get("prior_query_type") == "forecast":
             timeframe_months = 12
             timeframe_days = None
@@ -1077,6 +1108,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "intent": intent,
         "cloud": cloud,
         "service": service,
+        "services": [s[0] for s in all_svcs] if all_svcs else ([service] if service else []),
         "customer": customer,
         "metric_type": metric_type,
         "target_dimension": target_dimension,
