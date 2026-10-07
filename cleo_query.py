@@ -17,7 +17,7 @@ except ImportError:
     logger = logging.getLogger("cleo.query")
     logger.setLevel(logging.INFO)
 
-from cleo_charts import is_no_chart_requested, is_no_mom_requested, is_exclude_other_requested
+from cleo_charts import is_no_chart_requested, is_no_mom_requested, is_exclude_other_requested, is_other_category_name
 
 # ── Multi-Cloud Service Mapping & Extraction (AWS, Azure, GCP) ────────
 class ServiceMatch(tuple):
@@ -678,9 +678,24 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         "spend by engine" in last_asst_head or
         "spend by storage class" in last_asst_head or
         "spend by volume type" in last_asst_head or
+        "spend by rds instance type" in last_asst_body or
+        "spend by ec2 instance type" in last_asst_body or
         any(w in last_user_low for w in ["instance type", "engine type", "storage class", "volume type"])
     ):
         prior_type = "service_breakdown"
+        if "year-to-date" in last_asst_body or "(ytd" in last_asst_body or "ytd" in last_user_low:
+            inherited_is_ytd = True
+            inherited_timeframe_months = datetime.date.today().month
+        elif "quarter-to-date" in last_asst_body or "(qtd" in last_asst_body or "qtd" in last_user_low:
+            inherited_is_qtd = True
+            inherited_timeframe_months = ((datetime.date.today().month - 1) % 3) + 1
+        else:
+            m_m = re.search(r'last\s*(\d{1,2})\s*months?', last_asst_body + " " + last_user_low)
+            if m_m:
+                inherited_timeframe_months = int(m_m.group(1))
+            m_d = re.search(r'last\s*(\d{1,3})\s*days?', last_asst_body + " " + last_user_low)
+            if m_d:
+                inherited_timeframe_days = int(m_d.group(1))
 
     # Check for AI Model / Foundation Model Breakdown:
     elif (
@@ -714,6 +729,28 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
     ):
         prior_type = "customer_spend"
 
+    # Check for Multi-Service Spend:
+    elif (
+        "multi-service spend analysis" in last_asst_head or
+        "multi-service spend" in last_asst_head or
+        "multi-service" in last_asst_head or
+        ("multi-service" in last_asst_body and "combined multi-service spend" in last_asst_body)
+    ):
+        prior_type = "multi_service"
+        if "year-to-date" in last_asst_body or "(ytd" in last_asst_body or "ytd" in last_user_low:
+            inherited_is_ytd = True
+            inherited_timeframe_months = datetime.date.today().month
+        elif "quarter-to-date" in last_asst_body or "(qtd" in last_asst_body or "qtd" in last_user_low:
+            inherited_is_qtd = True
+            inherited_timeframe_months = ((datetime.date.today().month - 1) % 3) + 1
+        else:
+            m_m = re.search(r'last\s*(\d{1,2})\s*months?', last_asst_body + " " + last_user_low)
+            if m_m:
+                inherited_timeframe_months = int(m_m.group(1))
+            m_d = re.search(r'last\s*(\d{1,3})\s*days?', last_asst_body + " " + last_user_low)
+            if m_d:
+                inherited_timeframe_days = int(m_d.group(1))
+
     if not prior_type:
         return {"is_continuation": False}
 
@@ -737,6 +774,9 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         expanded_query = f"show top services by spend for {prov_disp}"
     elif prior_type == "customer_spend":
         expanded_query = f"show spend breakdown for customer {new_customer or 'target'}"
+    elif prior_type == "multi_service":
+        svc_part = f"for {new_svc_disp}" if new_svc_disp else ""
+        expanded_query = f"give me the multi-service spend analysis {svc_part}".strip()
     else:
         expanded_query = last_msg
 
@@ -746,7 +786,10 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         "inherited_target_year": inherited_target_year or 2027,
         "inherited_target_period_title": inherited_period_title or f"FY {inherited_target_year or 2027}",
         "inherited_timeframe_months": inherited_timeframe_months or 12,
+        "inherited_timeframe_days": inherited_timeframe_days if 'inherited_timeframe_days' in locals() else None,
         "inherited_target_ym": inherited_target_ym,
+        "inherited_is_ytd": inherited_is_ytd if 'inherited_is_ytd' in locals() else False,
+        "inherited_is_qtd": inherited_is_qtd if 'inherited_is_qtd' in locals() else False,
         "new_cloud": new_cloud,
         "new_service": new_svc,
         "new_service_disp": new_svc_disp,
@@ -830,11 +873,13 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
                 cloud = "gcp"
 
     # Timeframe detection
-    is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
-    is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
     is_mtd = bool(re.search(r'\b(?:mtd|month\s*to\s*date|this\s*month|current\s*month)\b', low))
     m_months = re.search(r'\b(\d+)\s*(?:months?|m)\b', low)
     m_days = re.search(r'\b(\d+)\s*(?:days?|d)\b', low)
+    inherited_ytd = cont_ctx.get("inherited_is_ytd", False) and not (bool(m_months) or bool(m_days) or is_mtd)
+    inherited_qtd = cont_ctx.get("inherited_is_qtd", False) and not (bool(m_months) or bool(m_days) or is_mtd)
+    is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low)) or inherited_ytd
+    is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low)) or inherited_qtd
     has_explicit_months = is_ytd or is_qtd or is_mtd or bool(m_months) or any(w in low for w in ["12months", "12 months", "year", "annual", "months", "month by month", "monthly"])
     has_explicit_days = bool(m_days) or any(w in low for w in ["60days", "60 days", "30days", "30 days", "daily", "by day", "day by day", "per day"])
 
@@ -856,6 +901,23 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         elif cont_ctx.get("prior_query_type") in ("monthly_trend", "ai_model_breakdown"):
             timeframe_months = cont_ctx.get("inherited_timeframe_months", 6)
             timeframe_days = None
+        elif cont_ctx.get("prior_query_type") in ("multi_service", "service_breakdown"):
+            if is_ytd:
+                timeframe_months = datetime.date.today().month
+                timeframe_days = None
+            elif is_qtd:
+                timeframe_months = ((datetime.date.today().month - 1) % 3) + 1
+                timeframe_days = None
+            elif cont_ctx.get("inherited_timeframe_months"):
+                timeframe_months = cont_ctx.get("inherited_timeframe_months")
+                timeframe_days = None
+            elif cont_ctx.get("inherited_timeframe_days"):
+                timeframe_days = cont_ctx.get("inherited_timeframe_days")
+                timeframe_months = None
+            elif has_explicit_months:
+                timeframe_months = int(m_months.group(1)) if m_months else 12
+            elif has_explicit_days:
+                timeframe_days = int(m_days.group(1)) if m_days else 30
         elif has_explicit_months:
             timeframe_months = int(m_months.group(1)) if m_months else 12
         elif has_explicit_days:

@@ -1524,6 +1524,28 @@
       border-color: rgba(56, 189, 248, 0.5);
       color: #38bdf8;
     }
+    .cleo-chart-loading-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 24px 18px;
+      margin: 16px 0;
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px dashed rgba(56, 189, 248, 0.35);
+      border-radius: 8px;
+      color: #94a3b8;
+      font-size: 0.82rem;
+    }
+    .cleo-chart-loading-placeholder .chart-loading-spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(56, 189, 248, 0.25);
+      border-top-color: #38bdf8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
     .chart-modal-toolbar {
       display: flex;
       align-items: center;
@@ -5735,31 +5757,36 @@
       '#10b981', '#f43f5e', '#a855f7', '#38bdf8', '#fb7185', '#d946ef',
       '#3b82f6', '#b45309', '#991b1b', '#0f766e', '#6b21a8', '#1e40af'
     ];
-    // GCP-style distinct geometric point & legend shapes for each category
+    // GCP-style distinct solid geometric point & legend shapes for each category
     const _POINT_STYLES = [
       'circle',        // ● Circle
       'rect',          // ■ Square
       'triangle',      // ▲ Triangle
       'rectRot',       // ◆ Diamond
-      'star',          // ★ Star
-      'cross',         // ✚ Plus
-      'crossRot',      // ✕ Rotated Cross
-      'rectRounded',   // ▢ Rounded Square
-      'dash'           // — Dash
+      'rectRounded'    // ▢ Rounded Square
     ];
     const _SVG_CURVE_SMOOTH = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16c3.5 0 4.5-9 9-9s5.5 9 9 9"></path></svg>';
     const _SVG_CURVE_SHARP = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 16 9 8 15 16 21 8"></polyline></svg>';
 
+    function _isDarkBgOrBorderColor(c) {
+      if (!c || typeof c !== 'string') return true;
+      const s = c.trim().toLowerCase();
+      if (s === '#0b0f17' || s === '#0c111d' || s === '#000000' || s === '#000' || s === 'black' || s === '#101828' || s === '#0f172a' || s === '#1e293b') return true;
+      if (s.startsWith('rgba(11, 15, 23') || s.startsWith('rgba(12, 17, 29') || s.startsWith('rgba(0, 0, 0') || s.startsWith('rgba(16, 24, 40')) return true;
+      if (s.startsWith('rgb(11, 15, 23') || s.startsWith('rgb(12, 17, 29') || s.startsWith('rgb(0, 0, 0') || s.startsWith('rgb(16, 24, 40')) return true;
+      return false;
+    }
+
     function _resolveDatasetThemeColor(ds, index = 0) {
       if (!ds) return _CHART_PALETTE[index % _CHART_PALETTE.length];
-      if (ds._themeColor) return ds._themeColor;
-      if (typeof ds.pointBackgroundColor === 'string' && !ds.pointBackgroundColor.startsWith('rgba(11, 15, 23') && ds.pointBackgroundColor !== '#0b0f17') {
+      if (ds._themeColor && !_isDarkBgOrBorderColor(ds._themeColor)) return ds._themeColor;
+      if (typeof ds.pointBackgroundColor === 'string' && !_isDarkBgOrBorderColor(ds.pointBackgroundColor)) {
         return ds.pointBackgroundColor;
       }
-      if (typeof ds.borderColor === 'string' && !ds.borderColor.startsWith('rgba(11, 15, 23') && ds.borderColor !== '#0b0f17') {
+      if (typeof ds.borderColor === 'string' && !_isDarkBgOrBorderColor(ds.borderColor)) {
         return ds.borderColor;
       }
-      if (typeof ds.backgroundColor === 'string' && !ds.backgroundColor.startsWith('rgba(11, 15, 23') && ds.backgroundColor !== '#0b0f17') {
+      if (typeof ds.backgroundColor === 'string' && !_isDarkBgOrBorderColor(ds.backgroundColor)) {
         if (ds.backgroundColor.startsWith('rgba(')) {
           const parts = ds.backgroundColor.slice(5, -1).split(',').map(s => s.trim());
           if (parts.length >= 3) {
@@ -5959,10 +5986,10 @@
       const axesControls = document.getElementById('chart-modal-axes-controls');
       const axesDivider = document.getElementById('chart-modal-axes-divider');
       if (axesControls) {
-        axesControls.style.display = isPie ? 'none' : 'flex';
+        axesControls.style.setProperty('display', isPie ? 'none' : 'flex', 'important');
       }
       if (axesDivider) {
-        axesDivider.style.display = isPie ? 'none' : '';
+        axesDivider.style.setProperty('display', isPie ? 'none' : 'block', 'important');
       }
       const swapBtn = document.getElementById('chart-modal-swap-axes-btn');
       if (swapBtn) {
@@ -6985,7 +7012,7 @@
       return escaper.innerHTML;
     }
 
-    function renderMarkdown(text) {
+    function renderMarkdown(text, isStreaming = false) {
       if (!text) return '';
       // Strip internal thinking process / reasoning trace from UI rendering
       if (text.includes('</think>')) {
@@ -6997,11 +7024,18 @@
       // Normalize table formatting: collapse empty lines between markdown table rows
       text = text.replace(/(\|.+?\|)\s*\n\s*(?=\|)/g, '$1\n');
 
-      // Auto-close unclosed chart block during streaming so markdown parsing stays clean
-      const chartOpenCount = (text.match(/```chart\b/g) || []).length;
-      const totalFenceCount = (text.match(/```/g) || []).length;
-      if (chartOpenCount > 0 && totalFenceCount % 2 !== 0) {
-        text += '\n```';
+      if (isStreaming) {
+        // While streaming, hide raw JSON chart blocks and show an animated placeholder
+        text = text.replace(/```chart\b[\s\S]*?(?:```|$)/gi, () => {
+          return '\n\n<div class="cleo-chart-loading-placeholder"><span class="chart-loading-spinner"></span><span>Generating interactive FinOps visualization…</span></div>\n\n';
+        });
+      } else {
+        // Auto-close unclosed chart block during rendering so markdown parsing stays clean
+        const chartOpenCount = (text.match(/```chart\b/g) || []).length;
+        const totalFenceCount = (text.match(/```/g) || []).length;
+        if (chartOpenCount > 0 && totalFenceCount % 2 !== 0) {
+          text += '\n```';
+        }
       }
 
       if (typeof marked !== 'undefined' && marked.parse) {
@@ -7367,11 +7401,11 @@
                   if (bubble) {
                     if (!hasRenderedText) {
                       hasRenderedText = true;
-                      bubble.innerHTML = `<div class="streaming-body markdown-body">${renderMarkdown(streamedText)}</div>`;
+                      bubble.innerHTML = `<div class="streaming-body markdown-body">${renderMarkdown(streamedText, true)}</div>`;
                     } else {
                       const bodyEl = bubble.querySelector('.streaming-body');
                       if (bodyEl) {
-                        bodyEl.innerHTML = renderMarkdown(streamedText);
+                        bodyEl.innerHTML = renderMarkdown(streamedText, true);
                       }
                     }
                     if (stream) {

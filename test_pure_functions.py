@@ -15,6 +15,7 @@ from cleo_agent import (
 )
 from cleo_charts import (
     is_exclude_other_requested,
+    is_other_category_name,
     _build_time_category_stacked_chart,
 )
 from cleo_query import (
@@ -657,6 +658,70 @@ def test_exclude_other_requested_and_chart_filtering():
     assert "model" in intent["breakdowns"]
     assert intent["timeframe_months"] == 6
     assert intent["is_new_data_fetch"] is True
+
+
+def test_is_other_category_name_and_multiservice_continuation():
+    # 1. is_other_category_name checks
+    assert is_other_category_name("Other") is True
+    assert is_other_category_name("other") is True
+    assert is_other_category_name("(Unallocated / Other)") is True
+    assert is_other_category_name("RDS Other") is True
+    assert is_other_category_name("EC2 Other") is True
+    assert is_other_category_name("*Other (14 instance types)*") is True
+    assert is_other_category_name("Other / Unclassified") is True
+    assert is_other_category_name("Other Models") is True
+    assert is_other_category_name("Other (8 items)") is True
+
+    # Real categories should NOT match
+    assert is_other_category_name("db.m5.large") is False
+    assert is_other_category_name("Standard Storage") is False
+    assert is_other_category_name("Amazon RDS") is False
+    assert is_other_category_name("Provisioned IOPS") is False
+
+    # 2. Multi-Service YTD continuation
+    now = datetime.date.today()
+    ms_messages = [
+        {"role": "user", "content": "give me the RDS and S3 cost and usage data for YTD"},
+        {"role": "assistant", "content": (
+            "### 📊 CloudHealth Multi-Service Spend Analysis: RDS & S3\n\n"
+            "Queried live from standard CloudHealth datasets for **All Accounts**:\n\n"
+            "- **Target Billing Period**: Year-to-Date (YTD 2026)\n"
+            "- **Combined Multi-Service Spend**: **$48,120.00**\n\n"
+        )},
+        {"role": "user", "content": "remove Other from above data for RDS Usage"}
+    ]
+    cont = _detect_contextual_continuation(ms_messages)
+    assert cont["is_continuation"] is True
+    assert cont["prior_query_type"] == "multi_service"
+    assert cont["inherited_is_ytd"] is True
+
+    intent = _deterministic_understand_query(ms_messages)
+    assert intent["timeframe_months"] == now.month
+    assert intent["timeframe_days"] is None
+    assert is_exclude_other_requested(ms_messages[-1]["content"]) is True
+
+    # 3. Service breakdown YTD continuation (e.g. RDS instance type)
+    sb_messages = [
+        {"role": "user", "content": "give me RDS spend by instance type for YTD"},
+        {"role": "assistant", "content": (
+            "### 🗄️ CloudHealth RDS Spend Analysis: Instance Type Breakdown\n\n"
+            "- **Target Billing Period**: Year-to-Date (YTD 2026)\n"
+            "- **Total RDS Billed Spend**: **$30,000.00** across 12 active database instance types\n\n"
+            "#### 🖥️ Spend by RDS Instance Type\n\n"
+            "| # | Instance Type | Total Spend | % of Total |\n"
+            "|:---|:---|:---|:---|\n"
+            "| 1 | `db.r5.large` | **$12,000.00** | 40.0% |\n"
+        )},
+        {"role": "user", "content": "remove Other from above data"}
+    ]
+    cont_sb = _detect_contextual_continuation(sb_messages)
+    assert cont_sb["is_continuation"] is True
+    assert cont_sb["prior_query_type"] == "service_breakdown"
+    assert cont_sb["inherited_is_ytd"] is True
+
+    intent_sb = _deterministic_understand_query(sb_messages)
+    assert intent_sb["timeframe_months"] == now.month
+    assert intent_sb["timeframe_days"] is None
 
 
 if __name__ == "__main__":
