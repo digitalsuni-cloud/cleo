@@ -206,7 +206,7 @@ def build_llm_schema_context() -> str:
     lines = ["CLOUDHEALTH DATASOURCE SCHEMAS & KEY COLUMNS (AUTO-GENERATED FROM MCP METADATA):"]
     priority_keys = [
         "AWS_CUR", "MULTICLOUD_FOCUS_COST_AND_USAGE", "AWS_FOCUS_COST_AND_USAGE",
-        "AZURE_FOCUS_COST_AND_USAGE", "GCP_FOCUS_COST_AND_USAGE", "CLOUDHEALTH_CONSUMPTION_BREAKDOWN",
+        "AZURE_FOCUS_COST_AND_USAGE", "AZURE_COST_USAGE", "GCP_FOCUS_COST_AND_USAGE", "CLOUDHEALTH_CONSUMPTION_BREAKDOWN",
         "AWS_COST_ANOMALY", "AZURE_COST_ANOMALY", "GCP_COST_ANOMALY",
         "AWS_EC2_COST_AND_USAGE", "AWS_RDS_COST_AND_USAGE",
         "AWS_AI_COST_AND_USAGE", "MULTICLOUD_AI_COST_AND_USAGE", "OPENAI_COST_AND_USAGE", "ANTHROPIC_COST_AND_USAGE",
@@ -391,6 +391,10 @@ def build_system_prompt(tools: list[dict], engine_label: str = None) -> str:
         "   - MULTICLOUD_FOCUS_COST_AND_USAGE: Unified AWS+Azure FOCUS standard dataset. Key columns: provider, ServiceName, Month, EffectiveCost, BilledCost, RegionId (Region identifier e.g. us-east-1, eastus).\n"
         "   - REGION & LOCATION BREAKDOWNS: When user asks to break down costs by region or location, query product_region / product_location from AWS_CUR, or RegionId from MULTICLOUD_FOCUS_COST_AND_USAGE / AZURE_FOCUS_COST_AND_USAGE / GCP_FOCUS_COST_AND_USAGE.\n"
         "   - AWS_FOCUS_COST_AND_USAGE / AZURE_FOCUS_COST_AND_USAGE: Provider-specific FOCUS cost datasets.\n"
+        "   - AZURE_COST_USAGE: Granular Azure Cost & Usage dataset (Azure Cost Management export with 95 columns). Key columns: ResourceName, ResourceId, ResourceGroup, SubscriptionName, MeterCategory, MeterSubCategory, MeterName, ConsumedService, AdditionalInfo, CostInBillingCurrency, ActualCostInUsd, Quantity, timeInterval_Month.\n"
+        "     * AZURE HYBRID BENEFIT (AHB) / HYBRID DISCOUNTS: AHB is a licensing overlay (Layer 0 rate optimization), NOT a commitment plan. When the user asks about Azure VMs using or not using Hybrid Discounts / Azure Hybrid Benefit (AHB), query AZURE_COST_USAGE (filter for MeterCategory = 'Virtual Machines' OR ConsumedService = 'Microsoft.Compute' OR ResourceId LIKE '%/virtualMachines/%').\n"
+        "     * Inspect AdditionalInfo for AHB indicators ('AHBDsc', 'IsAHBDsc', 'LicenseType', 'Windows_Server', 'RHEL_BYOS', 'SLES_BYOS', 'AHB', 'BasePrice') and check license cost ($0 for AHB-discounted VMs vs >$0 for un-discounted commercial Windows, RHEL, SLES, or SQL Server VMs).\n"
+        "     * Never route Azure Hybrid Benefit / Hybrid Discounts to MULTICLOUD_COMMITMENT_SAVINGS or Commitment_Plan!\n"
         "   - AWS_COST_ANOMALY / AZURE_COST_ANOMALY / GCP_COST_ANOMALY: Dedicated CloudHealth Anomaly Detection datasets containing identified cost anomalies, spikes, and unusual spend.\n"
         "     * Key columns: Service (or CloudProduct in GCP), CostImpact (dollar variance), CostImpactPercentage (%), CostImpactType (Increase/Decrease), Status (ACTIVE/INACTIVE/ARCHIVED), Region, AccountID (or SubscriptionID in Azure, ProjectID in GCP), Duration_Days, timeInterval_Month.\n"
         "     * When user asks about anomalies, cost spikes, unusual spend, or anomaly detection, query AWS_COST_ANOMALY / AZURE_COST_ANOMALY / GCP_COST_ANOMALY!\n"
@@ -791,8 +795,8 @@ class AIClient:
             "   - AI Execution Type: 'execution type', 'batch vs streaming', 'realtime' -> target_dimension='ExecutionType', breakdowns=['execution_type'].\n"
             "   - AI Token Type: 'token type', 'prompt vs completion tokens', 'input tokens' -> target_dimension='TokenType', breakdowns=['token_type'].\n"
             "   - AI Hardware Type: 'hardware type', 'by hardware', 'gpu vs tpu', 'accelerator' -> target_dimension='HardwareType', breakdowns=['hardware_type'].\n"
-            "   - AI Hardware Family: 'hardware family', 'gpu family', 'hopper', 'ampere' -> target_dimension='HardwareFamily', breakdowns=['hardware_family'].\n"
-            "   - Commitment Plan: 'commitment plan', 'savings plan', 'reserved instance' -> target_dimension='Commitment_Plan', breakdowns=['commitment_plan'].\n"
+            "   - Commitment Plan: 'commitment plan', 'savings plan', 'reserved instance' -> target_dimension='Commitment_Plan', breakdowns=['commitment_plan']. (NEVER classify Azure Hybrid Benefit or Hybrid Discounts as Commitment Plan! AHB is a software licensing overlay analyzed via AZURE_COST_USAGE).\n"
+            "   - Azure Hybrid Benefit / Hybrid Discounts: 'hybrid discount', 'hybrid discounts', 'azure hybrid benefit', 'ahb', 'hybrid benefit' for Azure VMs (Windows Server, Red Hat Enterprise Linux, SUSE Linux Enterprise, SQL Server) -> target_dimension='hybrid_benefit', breakdowns=['hybrid_benefit'], service='Virtual Machines', cloud='azure'. Analyzed via AZURE_COST_USAGE.\n"
             "   - Carbon & Emissions: 'emissions by country', 'carbon by country', 'by country' -> target_dimension='Country', breakdowns=['country'].\n"
             "   - Cost Anomalies: When user asks about cost anomalies, spikes, or unusual spend, set intent='anomalies' and is_new_data_fetch=true. By default anomalies must target Active status unless user explicitly requests Inactive ones.\n"
             "11. GENERAL CHAT & AGENT/MODEL IDENTITY: Set intent to 'general_chat' and is_new_data_fetch to false if the user asks conversational questions, greetings, jokes, general knowledge, or questions about the AI model, engine, or assistant identity (e.g. 'what llm we are using right now?', 'who are you', 'what can you do', 'hello', 'tell me a joke', 'what model is this?').\n"
@@ -843,6 +847,22 @@ class AIClient:
                         bdowns = [b for b in bdowns if b != "region"]
                     if not any(w in low for w in ["location", "locations", "geography", "geographic"]):
                         bdowns = [b for b in bdowns if b != "location"]
+
+                    # Sanitize: Azure Hybrid Benefit (AHB) vs Commitment Plan
+                    is_ahb_trigger = any(w in low for w in [
+                        "hybrid discount", "hybrid discounts", "hybrid benefit", "hybrid benefits",
+                        "azure hybrid benefit", "ahb", "ahb discount", "ahb discounts", "hybrid licensing", "hybrid license"
+                    ])
+                    if is_ahb_trigger:
+                        bdowns = [b for b in bdowns if b != "commitment_plan"]
+                        if "hybrid_benefit" not in bdowns:
+                            bdowns.append("hybrid_benefit")
+                        parsed["target_dimension"] = "hybrid_benefit"
+                        parsed["breakdowns"] = bdowns
+                        parsed["service"] = "Virtual Machines"
+                        parsed["cloud"] = "azure"
+                        parsed["intent"] = "fetch_data"
+                        parsed["is_new_data_fetch"] = True
 
                     # Sanitize: prevent hallucinated infrastructure services (AmazonRDS, AmazonEC2, etc.) on AI model queries or ungrounded queries
                     is_ai_topic = any(w in low for w in [
@@ -3587,6 +3607,500 @@ class AIClient:
                     f"{insights_block}\n\n"
                     f"*Source: Standard CloudHealth FlexReports datasets via CloudHealth MCP.*"
                 )
+
+            # 3-Azure-AHB. Dedicated Azure Hybrid Benefit & Hybrid Discounts Analysis via AZURE_COST_USAGE
+            is_azure_ahb = (
+                intent_info.get("target_dimension") == "hybrid_benefit" or
+                "hybrid_benefit" in (intent_info.get("breakdowns") or []) or
+                any(w in low for w in [
+                    "hybrid discount", "hybrid discounts", "hybrid benefit", "hybrid benefits",
+                    "azure hybrid benefit", "ahb discount", "ahb discounts", "hybrid licensing", "hybrid license"
+                ]) or
+                ("azure" in low and "ahb" in low) or
+                (any(w in low for w in ["vm", "vms", "virtual machine"]) and "ahb" in low)
+            ) and not any(w in low for w in ["recommendation", "anomal", "spike"])
+
+            if not is_azure_ahb and is_followup:
+                prev_is_ahb = any("azure hybrid benefit" in a.lower() or "hybrid discount" in a.lower() or "azure_cost_usage" in a.lower() for a in prior_assistant_msgs[-1:])
+                if prev_is_ahb and any(w in low for w in ["not using", "using", "vm", "vms", "discount", "hybrid", "list", "show"]):
+                    is_azure_ahb = True
+
+            if is_azure_ahb and mcp:
+                partial_notice = ""
+                if time_ctx.get("timeframe_days") or time_ctx.get("daily_range"):
+                    t_days = time_ctx.get("timeframe_days") or 1
+                    svc_scope_label = time_ctx.get("target_label", f"Last {t_days} Days Trend")
+                    if time_ctx.get("daily_range"):
+                        svc_time_range = time_ctx["daily_range"]
+                    else:
+                        svc_time_range = {"last": t_days, "qualifier": "DAY"}
+                    svc_granularity = "DAILY"
+                    partial_notice = (
+                        f"> ⚠️ **FinOps Ingestion Notice**: Current date (`{today_str}`) is excluded from closed analysis as in-flight; "
+                        f"yesterday's data (`{yesterday_str}`) is preliminary/partial across all cloud providers due to standard 24–48h billing ingestion latency.\n\n"
+                    )
+                elif is_specific:
+                    svc_time_range = {"from": target_ym, "to": target_ym}
+                    svc_scope_label = target_label
+                    svc_granularity = "MONTHLY"
+                elif req_months and req_months > 1:
+                    svc_time_range = {"last": min(req_months, 12), "qualifier": "MONTH"}
+                    svc_scope_label = f"Last {min(req_months, 12)} Months"
+                    svc_granularity = "MONTHLY"
+                else:
+                    svc_scope_label = "Last 30 Days Trend"
+                    svc_time_range = {"from": last_ym, "to": current_ym}
+                    svc_granularity = "MONTHLY"
+
+                sql = (
+                    "SELECT ResourceName AS ResourceName, "
+                    "SUM(ActualCostInBillingCurrency) AS SUM_ActualCostInBillingCurrency, "
+                    "SUM(Quantity) AS SUM_Quantity, "
+                    "MeterCategory AS MeterCategory, "
+                    "MeterSubCategory AS MeterSubCategory, "
+                    "timeInterval_Day AS Day, "
+                    "AdditionalInfo AS AdditionalInfo, "
+                    "ResourceId AS ResourceId, "
+                    "MetricType AS MetricType "
+                    "FROM AZURE_COST_USAGE "
+                    "WHERE ((MeterCategory IN ('Virtual Machines Licenses')) OR (MeterCategory LIKE '%Virtual Machine Licenses%')) "
+                    "AND (MetricType IN ('Actual')) "
+                    "GROUP BY ResourceName, MeterCategory, MeterSubCategory, timeInterval_Day, AdditionalInfo, ResourceId, MetricType"
+                )
+                q_input = {
+                    "sqlStatement": sql,
+                    "needBackLinkingForTags": True,
+                    "dataGranularity": "DAILY",
+                    "timeRange": {"last": 30},
+                    "limit": -1
+                }
+                if named_customer_crn:
+                    q_input["channelCustomerId"] = named_customer_crn
+
+                rows = []
+                try:
+                    res = mcp.call_tool("execute_datasource_query", {
+                        "queryInput": q_input,
+                        "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                    })
+                    raw_csv = json.loads(res.get("content", [{}])[0].get("text", "{}")).get("csv", "")
+                    if raw_csv:
+                        rows = list(csv.DictReader(io.StringIO(raw_csv)))
+                except Exception as e:
+                    logger.warning(f"[Azure AHB Query AZURE_COST_USAGE] {e}")
+
+                wants_not_using = any(w in low for w in [
+                    "not using", "not have", "not having", "without", "missing", "inactive",
+                    "non-using", "haven't", "don't have", "do not have", "unapplied", "no hybrid",
+                    "un-discounted", "undiscounted"
+                ])
+                wants_using = any(w in low for w in [
+                    "using", "having", "with", "active", "enabled", "applied"
+                ]) and not wants_not_using
+
+                cust_str = f" for **{named_customer}**" if named_customer else ""
+
+                if rows:
+                    vm_map = {}
+                    for r in rows:
+                        cost_val = (
+                            r.get("SUM_ActualCostInBillingCurrency") or
+                            r.get("ActualCostInBillingCurrency") or
+                            r.get("cost") or
+                            0.0
+                        )
+                        qty_val = (
+                            r.get("SUM_Quantity") or
+                            r.get("Quantity") or
+                            r.get("usage_quantity") or
+                            0.0
+                        )
+                        raw_cost = float(str(cost_val).replace("$", "").replace(",", "").strip() or 0.0)
+                        qty = float(str(qty_val).replace(",", "").strip() or 0.0)
+
+                        res_name = (r.get("ResourceName") or r.get("resource_name") or "").strip()
+                        res_id = (r.get("ResourceId") or r.get("resource_id") or "").strip()
+                        m_cat = (r.get("MeterCategory") or r.get("meter_category") or "").strip()
+                        m_sub = (r.get("MeterSubCategory") or r.get("meter_subcategory") or "").strip()
+                        info_str = str(r.get("AdditionalInfo") or r.get("additional_info") or "").strip()
+                        info_lower = info_str.lower()
+                        m_sub_low = m_sub.lower()
+
+                        # Extract subscription and resource group from resource_id if possible
+                        sub = (r.get("SubscriptionName") or r.get("subscription") or "").strip()
+                        rg = (r.get("ResourceGroup") or r.get("resource_group") or "").strip()
+                        if res_id and "/" in res_id:
+                            parts = res_id.split("/")
+                            if not sub and len(parts) > 2 and parts[1].lower() == "subscriptions":
+                                sub = parts[2]
+                            if not rg and len(parts) > 4 and parts[3].lower() == "resourcegroups":
+                                rg = parts[4]
+
+                        vm_name = res_name or (res_id.split("/")[-1] if "/" in res_id else "") or "Unknown VM"
+
+                        # Classify workload from MeterSubCategory and AdditionalInfo
+                        is_sql = any(w in m_sub_low for w in ["sql server", "sql"]) or ("sql" in info_lower)
+                        is_rhel = any(w in m_sub_low for w in ["red hat", "rhel"]) or ("rhel" in info_lower)
+                        is_sles = any(w in m_sub_low for w in ["suse", "sles"]) or ("suse" in info_lower) or ("sles" in info_lower)
+                        is_windows = ("windows" in m_sub_low) or bool(re.search(r'\bwin\b', m_sub_low)) or ("windows" in info_lower)
+                        is_third_party = any(w in m_sub_low for w in ["firewall", "palo alto", "vm-series", "fortinet", "f5", "barracuda", "checkpoint"])
+
+                        if is_sql:
+                            workload = "SQL Server (IaaS)"
+                        elif is_rhel:
+                            workload = "Red Hat (RHEL)"
+                        elif is_sles:
+                            workload = "SUSE (SLES)"
+                        elif is_windows:
+                            workload = "Windows Server"
+                        elif is_third_party:
+                            workload = "Marketplace Appliance"
+                        else:
+                            workload = m_sub or "Virtual Machine License"
+
+                        is_eligible = not is_third_party
+                        vm_key = (vm_name, res_id or vm_name, workload)
+
+                        # Check explicit AHB metadata signals:
+                        # 1. MeterSubCategory explicitly names Azure Hybrid Benefit or AHB or BYOS
+                        is_ahb_in_meter = any(w in m_sub_low for w in ["azure hybrid benefit", "hybrid benefit", "ahb", "byos", "baseprice"])
+
+                        # 2. AdditionalInfo has AHBDsc: True or LicenseType
+                        has_ahb_info_flag = False
+                        try:
+                            if info_str.startswith("{") and info_str.endswith("}"):
+                                info_obj = json.loads(info_str)
+                                for k, v in info_obj.items():
+                                    k_low = str(k).lower()
+                                    v_str = str(v).lower()
+                                    if k_low in ("ahbdsc", "isahbdsc") and v_str in ("true", "1", "yes"):
+                                        has_ahb_info_flag = True
+                                    elif k_low == "licensetype":
+                                        if any(t in v_str for t in ("windows_server", "windows_client", "rhel", "sles", "ahb", "baseprice")):
+                                            has_ahb_info_flag = True
+                        except Exception:
+                            pass
+
+                        if not has_ahb_info_flag:
+                            if re.search(r'["\']?(?:ahbdsc|isahbdsc)["\']?\s*:\s*["\']?(?:true|1)["\']?', info_lower) or \
+                               re.search(r'["\']?licensetype["\']?\s*:\s*["\']?(?:windows_server|windows_client|rhel|sles|ahb|baseprice)', info_lower):
+                                has_ahb_info_flag = True
+
+                        if vm_key not in vm_map:
+                            vm_map[vm_key] = {
+                                "name": vm_name,
+                                "resource_id": res_id,
+                                "resource_group": rg or "Default RG",
+                                "subscription": sub or "Default Subscription",
+                                "workload": workload,
+                                "is_eligible": is_eligible,
+                                "meters": set(),
+                                "total_cost": 0.0,
+                                "total_qty": 0.0,
+                                "has_explicit_ahb": False,
+                            }
+                        entry = vm_map[vm_key]
+                        entry["total_cost"] += raw_cost
+                        entry["total_qty"] += qty
+                        if m_sub: entry["meters"].add(m_sub)
+                        if is_ahb_in_meter or has_ahb_info_flag:
+                            entry["has_explicit_ahb"] = True
+
+                    all_vms = []
+                    for vm_data in vm_map.values():
+                        cost = round(vm_data["total_cost"], 2)
+                        workload = vm_data["workload"]
+                        is_eligible = vm_data["is_eligible"]
+                        sku_disp = ", ".join(list(vm_data["meters"])[:2]) if vm_data["meters"] else "License"
+
+                        # AHB evaluation:
+                        # - Explicit AHB flag in meter or AdditionalInfo
+                        # - OR license cost is $0.00 while usage quantity > 0 (exact AHB discount rule)
+                        has_ahb = vm_data["has_explicit_ahb"] or (cost == 0.0 and vm_data["total_qty"] > 0.0)
+
+                        if not is_eligible:
+                            status = f"ℹ️ Third-Party Appliance ({workload})"
+                            savings = 0.0
+                        elif has_ahb:
+                            status = f"✅ Using AHB ({workload})"
+                            savings = 0.0
+                        else:
+                            # Not using AHB: paying active commercial license fee — enabling AHB waives this exact fee
+                            status = f"⚠️ Not Using AHB ({workload} PAYG)"
+                            savings = cost
+
+                        all_vms.append({
+                            "name": vm_data["name"],
+                            "resource_group": vm_data["resource_group"],
+                            "subscription": vm_data["subscription"],
+                            "workload": workload,
+                            "sku": sku_disp,
+                            "has_ahb": has_ahb,
+                            "is_eligible": is_eligible,
+                            "status": status,
+                            "cost": cost,
+                            "savings": savings,
+                            "resource_id": vm_data["resource_id"]
+                        })
+
+                    # Filter to eligible commercial workloads (excludes marketplace appliances)
+                    eligible_vms = [v for v in all_vms if v["is_eligible"]]
+                    eligible_vms.sort(key=lambda x: (x["has_ahb"], -x["cost"]))
+
+                    if wants_not_using:
+                        display_vms = [v for v in eligible_vms if not v["has_ahb"]]
+                        title_filter = "VMs Not Using Hybrid Discounts (Paying On-Demand License Surcharge)"
+                    elif wants_using:
+                        display_vms = [v for v in eligible_vms if v["has_ahb"]]
+                        title_filter = "VMs Using Hybrid Discounts (AHB Active / $0 License Cost)"
+                    else:
+                        display_vms = eligible_vms
+                        title_filter = "VM Hybrid Benefit & License Cost Status"
+
+                    total_evaluated = len(eligible_vms)
+                    active_count = sum(1 for v in eligible_vms if v["has_ahb"])
+                    inactive_count = sum(1 for v in eligible_vms if not v["has_ahb"])
+                    tot_spend = sum(v["cost"] for v in eligible_vms)
+                    potential_monthly_savings = sum(v["savings"] for v in eligible_vms if not v["has_ahb"])
+                    potential_annual_savings = potential_monthly_savings * 12
+                    adoption_pct = ((active_count / total_evaluated) * 100) if total_evaluated else 0.0
+
+                    win_vms = [v for v in eligible_vms if v["workload"] == "Windows Server"]
+                    rhel_vms = [v for v in eligible_vms if v["workload"] == "Red Hat (RHEL)"]
+                    sles_vms = [v for v in eligible_vms if v["workload"] == "SUSE (SLES)"]
+                    sql_vms = [v for v in eligible_vms if v["workload"] == "SQL Server (IaaS)"]
+                    workload_summary_bullets = []
+                    if win_vms:
+                        win_act = sum(1 for v in win_vms if v["has_ahb"])
+                        win_inact = len(win_vms) - win_act
+                        win_sav = sum(v["savings"] for v in win_vms if not v["has_ahb"])
+                        workload_summary_bullets.append(f"  - **Windows Server**: {len(win_vms)} VMs ({win_act} active, {win_inact} un-discounted — potential savings: ${win_sav:,.2f}/mo)")
+                    if rhel_vms:
+                        rhel_act = sum(1 for v in rhel_vms if v["has_ahb"])
+                        rhel_inact = len(rhel_vms) - rhel_act
+                        rhel_sav = sum(v["savings"] for v in rhel_vms if not v["has_ahb"])
+                        workload_summary_bullets.append(f"  - **Red Hat Enterprise Linux (RHEL)**: {len(rhel_vms)} VMs ({rhel_act} active, {rhel_inact} un-discounted — potential savings: ${rhel_sav:,.2f}/mo)")
+                    if sles_vms:
+                        sles_act = sum(1 for v in sles_vms if v["has_ahb"])
+                        sles_inact = len(sles_vms) - sles_act
+                        sles_sav = sum(v["savings"] for v in sles_vms if not v["has_ahb"])
+                        workload_summary_bullets.append(f"  - **SUSE Linux Enterprise Server (SLES)**: {len(sles_vms)} VMs ({sles_act} active, {sles_inact} un-discounted — potential savings: ${sles_sav:,.2f}/mo)")
+                    if sql_vms:
+                        sql_act = sum(1 for v in sql_vms if v["has_ahb"])
+                        sql_inact = len(sql_vms) - sql_act
+                        sql_sav = sum(v["savings"] for v in sql_vms if not v["has_ahb"])
+                        workload_summary_bullets.append(f"  - **SQL Server on VMs (IaaS)**: {len(sql_vms)} VMs ({sql_act} active, {sql_inact} un-discounted — potential savings: ${sql_sav:,.2f}/mo)")
+
+                    workload_section = ""
+                    if workload_summary_bullets:
+                        workload_section = "- **Workload Breakdown**:\n" + "\n".join(workload_summary_bullets) + "\n"
+
+                    if display_vms:
+                        tbl_lines = [
+                            f"| {idx} | `{v['name']}` | `{v['resource_group']}` | `{v['subscription']}` | {v['workload']} | `{v['sku']}` | {v['status']} | ${v['cost']:,.2f} | ${v['savings']:,.2f}/mo |"
+                            for idx, v in enumerate(display_vms[:30], 1)
+                        ]
+                        table_md = (
+                            f"| # | VM Name | Resource Group | Subscription | Workload / OS | License Meter | Hybrid Discount Status | Billed License Cost | Realizable Monthly Savings |\n"
+                            f"|:---|:---|:---|:---|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(tbl_lines)}\n\n"
+                            f"| **Total** | **{len(display_vms)} VMs** | | | | | | **${sum(v['cost'] for v in display_vms):,.2f}** | **${sum(v['savings'] for v in display_vms):,.2f}/mo** |"
+                        )
+                    else:
+                        table_md = f"*(No Virtual Machines found matching '{title_filter}' in {svc_scope_label}. All evaluated VMs with commercial licenses are already using Azure Hybrid Benefit.)*\n\n"
+
+                    # Chart
+                    chart_md = ""
+                    if total_evaluated > 0:
+                        if active_count > 0 and inactive_count > 0:
+                            chart_md = _chart_block(
+                                "donut",
+                                f"Azure VMs: Hybrid Discount License Spend Split — {svc_scope_label}",
+                                ["AHB Active ($0 License Cost)", "AHB Inactive (Paying PAYG License)"],
+                                values=[
+                                    round(sum(v["cost"] for v in eligible_vms if v["has_ahb"]), 2),
+                                    round(sum(v["cost"] for v in eligible_vms if not v["has_ahb"]), 2)
+                                ]
+                            )
+                        elif display_vms:
+                            top_vms = display_vms[:10]
+                            chart_md = _chart_block(
+                                "bar",
+                                f"Top Azure VMs by License Cost ({title_filter}) — {svc_scope_label}",
+                                [v["name"] for v in top_vms],
+                                values=[v["cost"] for v in top_vms],
+                                horizontal=True
+                            )
+
+                    third_party_vms = [v for v in all_vms if not v["is_eligible"]]
+                    third_party_note = ""
+                    if third_party_vms:
+                        tp_spend = sum(v["cost"] for v in third_party_vms)
+                        third_party_note = (
+                            f"> ℹ️ **Excluded Third-Party Marketplace Appliances ({len(third_party_vms)} Instances, ${tp_spend:,.2f})**: "
+                            f"Network and security appliances (such as `VM-Series Next Generation Firewall`) are third-party ISV marketplace products, "
+                            f"not eligible for Microsoft Azure Hybrid Benefit (Software Assurance/BYOS).\n\n"
+                        )
+
+                    ahb_finops_insights_md = (
+                        f"#### 💡 Strategic FinOps Insights: TCO Economics, CapEx Licensing & Dev/Test Optimization\n\n"
+                        f"##### 1. Invoice Savings vs. Net Enterprise TCO (Do We Save the Same as Billed?)\n"
+                        f"- **Cloud Invoice (OpEx) Impact**: **100% of the software license surcharge is eliminated** immediately on your Azure billing meter (dropping the VM rate to the base Linux compute rate).\n"
+                        f"- **Net Enterprise TCO Reality**:\n"
+                        f"  $$\\text{{Net Enterprise Savings}} = \\text{{Cloud Billed Surcharge Waived}} - (\\text{{Amortized License CapEx}} + \\text{{Annual Software Assurance OpEx}})$$\n"
+                        f"  - **Surplus / Shelfware On-Premises Licenses**: If your organization already owns unassigned licenses with active Software Assurance (SA), or is decommissioning on-prem hardware during cloud migration, the marginal license cost is **$0.00**, capturing **100% pure net savings**.\n"
+                        f"  - **Purchasing Net-New Licenses**: If you must purchase licenses to qualify for AHB, perpetual licenses are capitalized (**CapEx** amortized over 3–5 years) while mandatory **Software Assurance** (~25%/year of base license price) is an annual operating expense (**OpEx**). Alternatively, 1-year or 3-year Server Subscriptions (via CSP/EA) provide an operational model with built-in SA.\n"
+                        f"  - **Breakeven Rule**: On-demand hourly licensing (PAYG) is cost-effective **only** for temporary or intermittent workloads running `< 40%–50%` of the month (~300 hours). For 24/7 steady-state production workloads, owning licenses with SA yields **40%–60% net savings over 3 years**.\n"
+                        f"  - **Minimum Core Floor**: Microsoft enforces a minimum licensing requirement of **8 core licenses per VM for Windows Server** (even on 2- or 4-vCPU VMs) and **4 core licenses per VM for SQL Server**.\n\n"
+                        f"##### 2. Azure Dev/Test Subscriptions for Non-Critical Workloads (Entitlement Preservation)\n"
+                        f"- **Automatic $0 Windows OS Surcharge**: Moving non-critical environments (Dev, Test, QA, Staging, Sandbox, POC) to **Azure Enterprise Dev/Test or PAYG Dev/Test Subscriptions** automatically bills Windows VMs at **base Linux rates**.\n"
+                        f"- **No AHB or Software Assurance Required**: Non-prod Windows VMs receive the discounted rate natively without buying licenses, allocating SA, or flipping AHB flags.\n"
+                        f"- **SQL Server Developer Edition ($0 License Cost)**: Dev/Test instances can run SQL Server Developer Edition, providing 100% of SQL Server Enterprise Edition features with **$0 licensing fees**.\n"
+                        f"- **Entitlement Preservation Strategy**: Running non-prod workloads in Dev/Test subscriptions preserves all corporate Software Assurance / AHB entitlements **exclusively for Production workloads**, eliminating the need for net-new license purchases.\n"
+                        f"- **Compliance & Operational Guardrails**:\n"
+                        f"  - Requires active Visual Studio subscriber licensing for all engineers/testers accessing the subscription; strictly zero production customer traffic allowed.\n"
+                        f"  - Pair Dev/Test subscriptions with **automated off-hours shutdown schedules** (e.g. stop after 7 PM and on weekends) to compound savings to **70%–85% overall non-prod cost reduction**.\n\n"
+                        f"##### 3. Strategic Workload Decision Tree\n"
+                        f"1. **Production Windows & SQL (24/7 Steady State)**: Apply **Azure Hybrid Benefit (Layer 0)** using corporate SA licenses, then layer 3-Year Reservations (up to 72%) on top.\n"
+                        f"2. **Non-Production Windows & SQL (Dev/Test/QA)**: Migrate to **Azure Dev/Test Subscriptions** (Free OS + $0 Dev SQL) and configure auto-shutdown policies.\n"
+                        f"3. **Base Linux (Ubuntu, Debian, CentOS)**: No AHB or Dev/Test OS discount needed (already $0 OS license). Maximize compute efficiency via Rightsizing & Compute Savings Plans.\n"
+                        f"4. **Commercial Linux (RHEL / SLES)**: Apply **Red Hat Cloud Access (RHEL_BYOS)** or **SUSE BYOS** if corporate subscriptions exist; otherwise evaluate modernizing to AlmaLinux/Rocky Linux.\n\n"
+                    )
+
+                    return (
+                        f"### 📊 Azure Virtual Machines: Azure Hybrid Benefit (AHB) Analysis{cust_str} — {svc_scope_label}\n\n"
+                        f"{partial_notice}"
+                        f"{third_party_note}"
+                        f"> ℹ️ **FinOps Scope Note (Dataset Filter)**: Evaluated through `AZURE_COST_USAGE` for `MeterCategory IN ('Virtual Machines Licenses', 'Virtual Machine Licenses')`. "
+                        f"Base Linux VMs (Ubuntu, Debian, CentOS, etc.) carry **$0 OS licensing markup** and have no license records, naturally focusing this audit purely on commercial workloads.\n\n"
+                        f"- **Total Evaluated Commercial License Instances**: **{total_evaluated}**\n"
+                        f"- **Using Hybrid Discounts (AHB Active / $0 License Fee)**: **{active_count}** ({adoption_pct:.1f}% adoption)\n"
+                        f"- **Not Using Hybrid Discounts (Paying PAYG Surcharge)**: **{inactive_count}**\n"
+                        f"{workload_section}"
+                        f"- **Total Billed License Spend**: **${tot_spend:,.2f}**\n"
+                        f"- **Potential Realizable Savings**: **${potential_monthly_savings:,.2f}/month** (**${potential_annual_savings:,.2f}/year**) by enabling AHB on un-discounted commercial VMs\n\n"
+                        f"#### 📋 {title_filter} ({len(display_vms)} Instances)\n\n"
+                        f"{table_md}\n"
+                        f"{chart_md}\n"
+                        f"#### 🚀 Actionable FinOps Remediation & CLI Commands\n\n"
+                        f"Azure Hybrid Benefit applies Software Assurance rights and Bring-Your-Own-Subscription mobility across **multiple OS & workload families** with zero downtime and no reboot required:\n\n"
+                        f"##### 1. Windows Server VMs (Eliminates ~40%–50% OS License Fee)\n"
+                        f"```bash\n"
+                        f"# Enable AHB for a single Windows VM:\n"
+                        f"az vm update --resource-group <resourceGroup> --name <vmName> --license-type Windows_Server\n\n"
+                        f"# Batch-enable across all Windows VMs in a Resource Group:\n"
+                        f"for vm in $(az vm list --resource-group <resourceGroup> --query \"[?storageProfile.osDisk.osType=='Windows'].name\" -o tsv); do\n"
+                        f"  az vm update --resource-group <resourceGroup> --name \"$vm\" --license-type Windows_Server\n"
+                        f"done\n"
+                        f"```\n\n"
+                        f"##### 2. Red Hat Enterprise Linux (RHEL) VMs (Eliminates ~25%–35% Red Hat Software Fee)\n"
+                        f"```bash\n"
+                        f"# Enable AHB for RHEL using Red Hat Cloud Access (BYOS):\n"
+                        f"az vm update --resource-group <resourceGroup> --name <vmName> --license-type RHEL_BYOS\n\n"
+                        f"##### 3. SUSE Linux Enterprise Server (SLES) VMs (Eliminates ~25%–35% SUSE Software Fee)\n"
+                        f"```bash\n"
+                        f"# Enable AHB for SLES using SUSE BYOS:\n"
+                        f"az vm update --resource-group <resourceGroup> --name <vmName> --license-type SLES_BYOS\n\n"
+                        f"##### 4. SQL Server on Azure VMs (Eliminates ~50%–55% SQL License Fee)\n"
+                        f"```bash\n"
+                        f"# Enable AHB for SQL Server via SQL IaaS Agent Extension:\n"
+                        f"az sql vm update --resource-group <resourceGroup> --name <vmName> --license-type AHB\n"
+                        f"```\n\n"
+                        f"##### 5. Azure SQL Database & Managed Instance (PaaS — BasePrice Rate)\n"
+                        f"```bash\n"
+                        f"# Enable AHB for Azure SQL Database:\n"
+                        f"az sql db update --resource-group <resourceGroup> --server <serverName> --name <dbName> --license-type BasePrice\n\n"
+                        f"# Enable AHB for Azure SQL Managed Instance:\n"
+                        f"az sql mi update --resource-group <resourceGroup> --name <miName> --license-type BasePrice\n"
+                        f"```\n\n"
+                        f"##### 6. Azure Kubernetes Service (AKS) Windows Node Pools\n"
+                        f"```bash\n"
+                        f"# Enable AHB for Windows node pool on AKS:\n"
+                        f"az aks nodepool update --resource-group <resourceGroup> --cluster-name <clusterName> --name <nodepoolName> --license-type Windows_Server\n"
+                        f"```\n\n"
+                        f"{ahb_finops_insights_md}"
+                        f"> **FinOps Foundation Practice Note (Layer 0 Rate Optimization)**:\n"
+                        f"> - **Zero Contract Lock-in**: Azure Hybrid Benefit is a licensing mobility entitlement under Software Assurance or Red Hat / SUSE Cloud Access, not a multi-year spend commitment. Rate adjustments take effect immediately on the next billing hour.\n"
+                        f"> - **Compounded Rate Layering**: Always enable AHB first (Layer 0). Once compute rates drop to base Linux rates, layer Azure Reservations (up to 72%) or Compute Savings Plans (up to 65%) on top for maximum compound savings.\n\n"
+                        f"*Source: `AZURE_COST_USAGE` via CloudHealth FlexReports.*"
+                    )
+
+                else:
+                    # 0 rows returned from AZURE_COST_USAGE
+                    ahb_finops_insights_md = (
+                        f"#### 💡 Strategic FinOps Insights: TCO Economics, CapEx Licensing & Dev/Test Optimization\n\n"
+                        f"##### 1. Invoice Savings vs. Net Enterprise TCO (Do We Save the Same as Billed?)\n"
+                        f"- **Cloud Invoice (OpEx) Impact**: **100% of the software license surcharge is eliminated** immediately on your Azure billing meter (dropping the VM rate to the base Linux compute rate).\n"
+                        f"- **Net Enterprise TCO Reality**:\n"
+                        f"  $$\\text{{Net Enterprise Savings}} = \\text{{Cloud Billed Surcharge Waived}} - (\\text{{Amortized License CapEx}} + \\text{{Annual Software Assurance OpEx}})$$\n"
+                        f"  - **Surplus / Shelfware On-Premises Licenses**: If your organization already owns unassigned licenses with active Software Assurance (SA), or is decommissioning on-prem hardware during cloud migration, the marginal license cost is **$0.00**, capturing **100% pure net savings**.\n"
+                        f"  - **Purchasing Net-New Licenses**: If you must purchase licenses to qualify for AHB, perpetual licenses are capitalized (**CapEx** amortized over 3–5 years) while mandatory **Software Assurance** (~25%/year of base license price) is an annual operating expense (**OpEx**). Alternatively, 1-year or 3-year Server Subscriptions (via CSP/EA) provide an operational model with built-in SA.\n"
+                        f"  - **Breakeven Rule**: On-demand hourly licensing (PAYG) is cost-effective **only** for temporary or intermittent workloads running `< 40%–50%` of the month (~300 hours). For 24/7 steady-state production workloads, owning licenses with SA yields **40%–60% net savings over 3 years**.\n"
+                        f"  - **Minimum Core Floor**: Microsoft enforces a minimum licensing requirement of **8 core licenses per VM for Windows Server** (even on 2- or 4-vCPU VMs) and **4 core licenses per VM for SQL Server**.\n\n"
+                        f"##### 2. Azure Dev/Test Subscriptions for Non-Critical Workloads (Entitlement Preservation)\n"
+                        f"- **Automatic $0 Windows OS Surcharge**: Moving non-critical environments (Dev, Test, QA, Staging, Sandbox, POC) to **Azure Enterprise Dev/Test or PAYG Dev/Test Subscriptions** automatically bills Windows VMs at **base Linux rates**.\n"
+                        f"- **No AHB or Software Assurance Required**: Non-prod Windows VMs receive the discounted rate natively without buying licenses, allocating SA, or flipping AHB flags.\n"
+                        f"- **SQL Server Developer Edition ($0 License Cost)**: Dev/Test instances can run SQL Server Developer Edition, providing 100% of SQL Server Enterprise Edition features with **$0 licensing fees**.\n"
+                        f"- **Entitlement Preservation Strategy**: Running non-prod workloads in Dev/Test subscriptions preserves all corporate Software Assurance / AHB entitlements **exclusively for Production workloads**, eliminating the need for net-new license purchases.\n"
+                        f"- **Compliance & Operational Guardrails**:\n"
+                        f"  - Requires active Visual Studio subscriber licensing for all engineers/testers accessing the subscription; strictly zero production customer traffic allowed.\n"
+                        f"  - Pair Dev/Test subscriptions with **automated off-hours shutdown schedules** (e.g. stop after 7 PM and on weekends) to compound savings to **70%–85% overall non-prod cost reduction**.\n\n"
+                        f"##### 3. Strategic Workload Decision Tree\n"
+                        f"1. **Production Windows & SQL (24/7 Steady State)**: Apply **Azure Hybrid Benefit (Layer 0)** using corporate SA licenses, then layer 3-Year Reservations (up to 72%) on top.\n"
+                        f"2. **Non-Production Windows & SQL (Dev/Test/QA)**: Migrate to **Azure Dev/Test Subscriptions** (Free OS + $0 Dev SQL) and configure auto-shutdown policies.\n"
+                        f"3. **Base Linux (Ubuntu, Debian, CentOS)**: No AHB or Dev/Test OS discount needed (already $0 OS license). Maximize compute efficiency via Rightsizing & Compute Savings Plans.\n"
+                        f"4. **Commercial Linux (RHEL / SLES)**: Apply **Red Hat Cloud Access (RHEL_BYOS)** or **SUSE BYOS** if corporate subscriptions exist; otherwise evaluate modernizing to AlmaLinux/Rocky Linux.\n\n"
+                    )
+
+                    return (
+                        f"### 📊 Azure Virtual Machines: Azure Hybrid Benefit (AHB) Analysis{cust_str} — {svc_scope_label}\n\n"
+                        f"{partial_notice}"
+                        f"No Azure Virtual Machine license records were returned from `AZURE_COST_USAGE` for {svc_scope_label}.\n\n"
+                        f"#### 🔍 Azure Hybrid Benefit (AHB) Multi-Workload Detection Architecture\n"
+                        f"In CloudHealth and Azure Cost Management, Azure Hybrid Benefit applies across **multiple operating systems and enterprise workloads** (Windows Server, Red Hat Enterprise Linux, SUSE Linux Enterprise Server, and SQL Server).\n\n"
+                        f"- **Dataset Filter**: `AZURE_COST_USAGE` with:\n"
+                        f"  ```sql\n"
+                        f"  WHERE ((MeterCategory IN ('Virtual Machines Licenses')) OR (MeterCategory LIKE '%Virtual Machine Licenses%'))\n"
+                        f"    AND (MetricType IN ('Actual'))\n"
+                        f"  ```\n"
+                        f"- **Base Linux Isolation**: Base Linux VMs (Ubuntu, Debian, AlmaLinux, Rocky, CentOS) carry **$0 OS licensing markup** and have no records under `Virtual Machines Licenses`. This naturally isolates audits to commercial workloads.\n"
+                        f"- **Deterministic AHB Detection Rule**:\n"
+                        f"  - **AHB Active ($0 License Cost)**: If a commercial VM has active usage (`Quantity > 0`) but `ActualCostInBillingCurrency == $0.00`, Azure Hybrid Benefit is active.\n"
+                        f"  - **AHB Inactive (Paying PAYG Surcharge)**: If `ActualCostInBillingCurrency > $0.00`, the VM is incurring on-demand software licensing fees. Enabling AHB eliminates this billed amount.\n"
+                        f"  - **`MeterSubCategory` & `AdditionalInfo`**: Provides explicit flags such as `SQL Server Azure Hybrid Benefit`, `AHBDsc: True`, or `LicenseType` (`Windows_Server`, `RHEL_BYOS`, `SLES_BYOS`, `AHB`).\n\n"
+                        f"#### 🛠️ Live Estate Audit Playbook: Azure Resource Graph (ARG) & CLI\n"
+                        f"To audit which Azure VMs are currently not using Azure Hybrid Benefit across your subscriptions:\n\n"
+                        f"```kusto\n"
+                        f"// Azure Resource Graph KQL: Find Windows, RHEL, and SLES VMs missing Azure Hybrid Benefit\n"
+                        f"Resources\n"
+                        f"| where type =~ 'microsoft.compute/virtualmachines'\n"
+                        f"| extend osType = tostring(properties.storageProfile.osDisk.osType)\n"
+                        f"| extend licenseType = tostring(properties.licenseType)\n"
+                        f"| extend imageOffer = tostring(properties.storageProfile.imageReference.offer)\n"
+                        f"| extend isWindows = osType =~ 'Windows'\n"
+                        f"| extend isRHEL = imageOffer has 'rhel' or imageOffer has 'redhat'\n"
+                        f"| extend isSLES = imageOffer has 'suse' or imageOffer has 'sles'\n"
+                        f"| where (isWindows and (isnull(licenseType) or licenseType !~ 'Windows_Server'))\n"
+                        f"     or (isRHEL and (isnull(licenseType) or licenseType !startswith 'RHEL'))\n"
+                        f"     or (isSLES and (isnull(licenseType) or licenseType !startswith 'SLES'))\n"
+                        f"| project name, resourceGroup, subscriptionId, osType, imageOffer, licenseType, vmSize = properties.hardwareProfile.vmSize\n"
+                        f"```\n\n"
+                        f"**Workload Remediation Commands (Zero Downtime)**:\n"
+                        f"```bash\n"
+                        f"# 1. Windows Server:\n"
+                        f"az vm update --resource-group <resourceGroup> --name <vmName> --license-type Windows_Server\n\n"
+                        f"# 2. Red Hat Enterprise Linux (RHEL):\n"
+                        f"az vm update --resource-group <resourceGroup> --name <vmName> --license-type RHEL_BYOS\n\n"
+                        f"# 3. SUSE Linux Enterprise Server (SLES):\n"
+                        f"az vm update --resource-group <resourceGroup> --name <vmName> --license-type SLES_BYOS\n\n"
+                        f"# 4. SQL Server on VM (IaaS):\n"
+                        f"az sql vm update --resource-group <resourceGroup> --name <vmName> --license-type AHB\n"
+                        f"```\n\n"
+                        f"{ahb_finops_insights_md}"
+                        f"> **💡 FinOps Foundation Practice Note**:\n"
+                        f"> Azure Hybrid Benefit applies Software Assurance and BYOS rights directly to cloud compute, eliminating 25%–55% in software markup across Windows Server, RHEL, SLES, and SQL Server. Unlike Reservations, AHB carries no commitment term or lock-in and should be applied as Layer 0 before sizing compute commitments.\n\n"
+                        f"*Source: `AZURE_COST_USAGE` via CloudHealth FlexReports.*"
+                    )
 
             # 3-RDS-IT. Dedicated RDS Instance Type, Engine & Spend Analysis via AWS_RDS_COST_AND_USAGE & AWS_CUR
             is_rds_instance_or_usage = (
@@ -7027,6 +7541,8 @@ class AIClient:
                 target_bdowns = intent_info.get("breakdowns") or []
 
                 for d_def in DIMENSIONAL_BREAKDOWNS:
+                    if d_def["id"] == "commitment_plan" and any(w in low for w in ["hybrid discount", "hybrid discounts", "azure hybrid benefit", "ahb", "hybrid benefit"]):
+                        continue
                     if (target_dim and target_dim.lower() in (d_def["column"].lower(), d_def["id"].lower())) or \
                        (d_def["id"] in target_bdowns) or \
                        (d_def["id"].replace("ai_", "") in target_bdowns) or \

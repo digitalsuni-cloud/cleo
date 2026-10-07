@@ -724,6 +724,132 @@ def test_is_other_category_name_and_multiservice_continuation():
     assert intent_sb["timeframe_days"] is None
 
 
+def test_azure_hybrid_benefit_understanding():
+    # 1. User's exact prompt
+    q1 = "Find the Azure VMs that are not using the Hybrid Discounts"
+    res1 = _deterministic_understand_query([{"role": "user", "content": q1}])
+    assert res1["intent"] == "fetch_data"
+    assert res1["cloud"] == "azure"
+    assert res1["service"] == "Virtual Machines"
+    assert res1["target_dimension"] == "hybrid_benefit"
+    assert "hybrid_benefit" in res1["breakdowns"]
+    assert "commitment_plan" not in res1["breakdowns"]
+
+    # 2. Variant: "Which Azure VMs are using Azure Hybrid Benefit?"
+    q2 = "Which Azure VMs are using Azure Hybrid Benefit?"
+    res2 = _deterministic_understand_query([{"role": "user", "content": q2}])
+    assert res2["intent"] == "fetch_data"
+    assert res2["cloud"] == "azure"
+    assert res2["target_dimension"] == "hybrid_benefit"
+    assert "commitment_plan" not in res2["breakdowns"]
+
+    # 3. Variant: "Find VMs not using hybrid discounts" (no cloud mentioned explicitly)
+    q3 = "Find VMs not using hybrid discounts"
+    res3 = _deterministic_understand_query([{"role": "user", "content": q3}])
+    assert res3["cloud"] == "azure"
+    assert res3["service"] == "Virtual Machines"
+    assert res3["target_dimension"] == "hybrid_benefit"
+    assert "commitment_plan" not in res3["breakdowns"]
+
+
+def test_azure_hybrid_benefit_handler_execution():
+    from cleo_agent import AIClient
+    import json
+
+    # Mock MCP client
+    class MockMCP:
+        def __init__(self, csv_data=""):
+            self.csv_data = csv_data
+            self.calls = []
+
+        def call_tool(self, name, args):
+            self.calls.append((name, args))
+            if name == "execute_datasource_query":
+                return {"content": [{"type": "text", "text": json.dumps({"csv": self.csv_data})}]}
+            return {}
+
+    # Sample CSV data matching exact AZURE_COST_USAGE FlexReport query schema and user production records:
+    # 1. SQL Server VMs with AHB active ($0.00 license cost with Quantity > 0)
+    # 2. RHEL VMs without AHB (paying PAYG license cost > $0.00)
+    # 3. Third-party marketplace firewall appliances (VM-Series)
+    # 4. Windows Server VM paying PAYG license
+    # 5. Windows Server VM with AHBDsc: True ($0.00 license cost)
+    sample_csv = (
+        '"ResourceName","SUM_ActualCostInBillingCurrency","SUM_Quantity","MeterCategory","MeterSubCategory","Day","AdditionalInfo","ResourceId","MetricType"\n'
+        '"demo-resource-moor-b89db1824aae","$0.00","24.00","Virtual Machines Licenses","SQL Server Azure Hybrid Benefit","2026-10-05","{}","/subscriptions/3014f819-2065-33d3-84f0-91832b28f210/resourceGroups/b28fb2b64752/providers/Microsoft.Compute/virtualMachines/0979fb4b8fc076411571bab68a3965c3cbe67bf68f484d35ef192e11fdeb0fac","Actual"\n'
+        '"demo-resource-peak-91344e6899c0","$0.00","23.98","Virtual Machines Licenses","SQL Server Azure Hybrid Benefit","2026-10-05","{}","/subscriptions/f6c0cd82-7ac5-3fef-941c-f4bee573b700/resourceGroups/fabed64eab7e/providers/Microsoft.Compute/virtualMachines/f33137783aed8f1e5a92ba289977b6a1414f2de6b0d9d031d00fab400a45d560","Actual"\n'
+        '"demo-resource-canyon-29e167b8cf65","$58.32","24.00","Virtual Machine Licenses","VM-Series Next Generation Firewall","2026-10-05","{}","/subscriptions/c290d621-1cc8-344f-9fb7-aa83ffd62870/resourceGroups/7eb908bcdb7c/providers/Microsoft.Compute/virtualMachines/3dbf575f871199c5c46ff67db9313b62d7acd972731b5d3a4c822c893ed9ec1c","Actual"\n'
+        '"demo-resource-lava-36288709f81b","$58.32","24.00","Virtual Machine Licenses","VM-Series Next Generation Firewall","2026-10-05","{}","/subscriptions/c290d621-1cc8-344f-9fb7-aa83ffd62870/resourceGroups/7eb908bcdb7c/providers/Microsoft.Compute/virtualMachines/dcfdd8e4876e9913e171d5c3c5b2fcbea6f0fa0ad1f66e28abb364bebf72dbaa","Actual"\n'
+        '"demo-resource-fjord-6fb8019a8e8e","$0.00","12.00","Virtual Machines Licenses","SQL Server Developer Edition","2026-10-06","{}","/subscriptions/d0d47ef3-ab41-3ba8-9472-e8cc2eff0461/resourceGroups/3b14f369014e/providers/Microsoft.Compute/virtualMachines/dc6354f4c424004609ef5be41df5b0c09617b376749d302f91a9d013aa4345f7","Actual"\n'
+        '"demo-resource-xenolith-3704766fd7d5","$0.00","23.98","Virtual Machines Licenses","SQL Server Azure Hybrid Benefit","2026-09-29","{}","/subscriptions/b46bd1c3-fbb7-3dce-9287-8a5c618981b9/resourceGroups/29710c9d1c74/providers/Microsoft.Compute/virtualMachines/beceaf711a074d8d50c1c2e9ed277406c9d09ea948f8a8aaee5c03cda9e0f039","Actual"\n'
+        '"demo-resource-cedar-5108926f1192","$3.12","24.00","Virtual Machines Licenses","Red Hat Enterprise Linux","2026-10-02","{}","/subscriptions/edf40cf7-1016-3f7c-9c4c-94020202e771/resourceGroups/eae988a7851f/providers/Microsoft.Compute/virtualMachines/a39bfc3c03d946c1f84fd185babc0b27708403b1a0a7712b9b1a23359a48bfec","Actual"\n'
+        '"demo-resource-vale-764a16dd377b","$2.21","24.00","Virtual Machines Licenses","Red Hat Enterprise Linux","2026-10-03","{}","/subscriptions/865812a6-83ba-3611-8714-a657cc87097c/resourceGroups/a84334184bb4/providers/Microsoft.Compute/virtualMachines/437947a302c3ff3c3dfeb11191d7885155355277063b67c5209a91a503304db1","Actual"\n'
+        '"demo-resource-keystone-3f18b67080f0","$0.55","24.00","Virtual Machines Licenses","Red Hat Enterprise Linux","2026-09-13","{}","/subscriptions/865812a6-83ba-3611-8714-a657cc87097c/resourceGroups/a611fa274ef0/providers/Microsoft.Compute/virtualMachines/f8a55d302bb084690c85f678a7869b346cf11d78b3d7751a3ac90a8d5ed55846","Actual"\n'
+        '"vm-prod-winpayg","$15.00","24.00","Virtual Machines Licenses","Windows Server","2026-10-05","{}","/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/virtualMachines/vm-prod-winpayg","Actual"\n'
+        '"vm-prod-winahb","$0.00","24.00","Virtual Machines Licenses","Windows Server","2026-10-05","{""AHBDsc"":""True""}","/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Compute/virtualMachines/vm-prod-winahb","Actual"\n'
+    )
+
+    mock_mcp = MockMCP(csv_data=sample_csv)
+    client = AIClient("direct", {}, [])
+
+    # 1. Ask for VMs NOT using hybrid discounts
+    messages = [{"role": "user", "content": "Find the Azure VMs that are not using the Hybrid Discounts"}]
+    res = client.generate(messages, mcp=mock_mcp)
+
+    # Verify query routed to AZURE_COST_USAGE with Virtual Machines Licenses filter
+    query_calls = [c for c in mock_mcp.calls if c[0] == "execute_datasource_query"]
+    assert len(query_calls) > 0
+    query_call = query_calls[0]
+    sql_stmt = query_call[1]["queryInput"]["sqlStatement"]
+    assert "AZURE_COST_USAGE" in sql_stmt
+    assert "Virtual Machines Licenses" in sql_stmt
+    assert "MULTICLOUD_COMMITMENT_SAVINGS" not in sql_stmt
+
+    # Verify response identifies un-discounted RHEL and Windows VMs paying active software licensing fees
+    assert "demo-resource-cedar-5108926f1192" in res
+    assert "demo-resource-vale-764a16dd377b" in res
+    assert "demo-resource-keystone-3f18b67080f0" in res
+    assert "vm-prod-winpayg" in res
+    assert "Red Hat (RHEL)" in res
+    assert "Windows Server" in res
+    assert "AZURE_COST_USAGE" in res
+    assert "MULTICLOUD_COMMITMENT_SAVINGS" not in res
+    assert "az vm update" in res
+    assert "--license-type Windows_Server" in res
+    assert "--license-type RHEL_BYOS" in res
+    assert "--license-type SLES_BYOS" in res
+    assert "az sql vm update" in res
+    assert "Workload / OS" in res
+    assert "Realizable Monthly Savings" in res or "Savings" in res
+
+    # Verify strategic FinOps insights (TCO, CapEx vs OpEx, Dev/Test subscriptions)
+    assert "Dev/Test" in res
+    assert "CapEx" in res
+    assert "Software Assurance" in res
+
+    # 2. Ask for VMs USING hybrid discounts
+    mock_mcp_using = MockMCP(csv_data=sample_csv)
+    res_using = client.generate([{"role": "user", "content": "Which Azure VMs are using Azure Hybrid Benefit?"}], mcp=mock_mcp_using)
+    assert "demo-resource-moor-b89db1824aae" in res_using
+    assert "demo-resource-peak-91344e6899c0" in res_using
+    assert "demo-resource-xenolith-3704766fd7d5" in res_using
+    assert "vm-prod-winahb" in res_using
+    assert "Dev/Test" in res_using
+
+    # 3. Test empty CSV (0 rows returned)
+    mock_mcp_empty = MockMCP(csv_data="")
+    res_empty = client.generate(messages, mcp=mock_mcp_empty)
+    assert "AZURE_COST_USAGE" in res_empty
+    assert "Virtual Machines Licenses" in res_empty
+    assert "MULTICLOUD_COMMITMENT_SAVINGS" not in res_empty
+    assert "az vm update" in res_empty
+    assert "RHEL_BYOS" in res_empty
+    assert "SLES_BYOS" in res_empty
+    assert "Dev/Test" in res_empty
+    assert "CapEx" in res_empty
+    assert "Software Assurance" in res_empty
+
+
 if __name__ == "__main__":
     # Self-run check
     test_parse_query_time_context()
@@ -754,6 +880,8 @@ if __name__ == "__main__":
         test_oauth_disconnected_handling(pathlib.Path(td), DummyMonkey())
     test_exclude_other_requested_and_chart_filtering()
     test_multi_service_and_ytd_understanding()
+    test_azure_hybrid_benefit_understanding()
+    test_azure_hybrid_benefit_handler_execution()
     print("All unit tests passed successfully!")
 
 
