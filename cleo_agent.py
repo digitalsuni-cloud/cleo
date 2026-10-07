@@ -281,6 +281,7 @@ from cleo_charts import (
     is_no_chart_requested,
     is_no_mom_requested,
     is_exclude_other_requested,
+    is_other_category_name,
     prune_mom_columns_from_markdown,
     _detect_chart_type,
     _detect_wants_variance,
@@ -3012,10 +3013,18 @@ class AIClient:
             # 3-MultiService. Dedicated Multi-Service Query Handler (e.g. "RDS and S3", "EC2 and RDS", "S3 and EBS")
             if is_multi_service_request and mcp:
                 now = datetime.date.today()
-                is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
-                is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
+                is_exclude_other = is_exclude_other_requested(low) or is_exclude_other_requested(intent_info.get("corrected_query", ""))
                 m_months = re.search(r'(?:last|past|trailing|for)\s+(\d{1,2})\s*months?\b|\b(\d{1,2})\s*(?:months?|m)\b', low)
                 m_days = re.search(r'(?:last|past|trailing|for)\s+(\d{1,3})\s*days?\b|\b(\d{1,3})\s*(?:days?|d)\b', low)
+                has_explicit_user_timeframe = bool(m_months) or bool(m_days) or any(w in low for w in ["last month", "past month", "days", "daily", "day by day", "trend", "30 days", "60 days", "90 days"])
+
+                is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low)) or cont_ctx.get("inherited_is_ytd", False)
+                is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low)) or cont_ctx.get("inherited_is_qtd", False)
+                if not (is_ytd or is_qtd) and not has_explicit_user_timeframe and is_followup and any(w in low for w in ["above", "previous", "earlier", "same", "exclude other", "remove other", "without other"]):
+                    if prior_assistant_msgs and ("year-to-date" in prior_assistant_msgs[-1].lower() or "(ytd" in prior_assistant_msgs[-1].lower()):
+                        is_ytd = True
+                    elif prior_assistant_msgs and ("quarter-to-date" in prior_assistant_msgs[-1].lower() or "(qtd" in prior_assistant_msgs[-1].lower()):
+                        is_qtd = True
 
                 if is_ytd:
                     num_months = now.month
@@ -3118,6 +3127,8 @@ class AIClient:
                             logger.warning(f"[AWS_RDS_COST_AND_USAGE Multi Query] {e}")
 
                         if rds_rows:
+                            if is_exclude_other:
+                                rds_rows = [r for r in rds_rows if not is_other_category_name(r["category"])]
                             total_rds = sum(r["cost"] for r in rds_rows)
                             service_grand_totals[svc_disp] = total_rds
                             agg_rds = {}
@@ -3131,6 +3142,8 @@ class AIClient:
                                 agg_rds[cat]["storage"] += r["storage_cost"]
 
                             sorted_rds = sorted(agg_rds.items(), key=lambda x: x[1]["cost"], reverse=True)
+                            if is_exclude_other:
+                                sorted_rds = [(it, d) for it, d in sorted_rds if not is_other_category_name(it)]
                             tbl_lines = []
                             graviton_cands = []
                             months_present = sorted(list({r["time_val"] for r in rds_rows}))
@@ -3147,28 +3160,31 @@ class AIClient:
                                     graviton_cands.append((it, c))
 
                             rem_rds = sorted_rds[12:]
-                            if rem_rds:
+                            if rem_rds and not is_exclude_other:
                                 rem_c = sum(d["cost"] for _, d in rem_rds)
                                 rem_pct = (rem_c / total_rds * 100) if total_rds else 0.0
                                 tbl_lines.append(f"| - | *Other ({len(rem_rds)} instance types)* | **${rem_c:,.2f}** | {rem_pct:.1f}% | — | — | — |")
 
+                            rds_table_total_desc = "All Active Instance Types" if is_exclude_other else "All Instance Types"
                             tbl_block = (
                                 f"| # | Instance Type | Billed Spend | % of Spend | Avg Instances | Compute Spend | Storage Spend |\n"
                                 f"|:---|:---|:---|:---|:---|:---|:---|\n"
                                 f"{chr(10).join(tbl_lines)}\n"
-                                f"| **Total** | **All Instance Types** | **${total_rds:,.2f}** | **100.0%** | | | |\n\n"
+                                f"| **Total** | **{rds_table_total_desc}** | **${total_rds:,.2f}** | **100.0%** | | | |\n\n"
                             ) if wants_table else ""
 
+                            rds_chart_items = [it for it, _ in sorted_rds if not is_other_category_name(it)][:8] if is_exclude_other else [it for it, _ in sorted_rds[:8]]
                             if chart_type in ["doughnut", "pie"]:
-                                chart_rds_md = _chart_block(chart_type, f"Amazon RDS Spend by Instance Type ({period_str}) — {cust_label}", [it for it, _ in sorted_rds[:8]], values=[round(d["cost"], 2) for _, d in sorted_rds[:8]], value_label="Cost ($)")
+                                chart_rds_md = _chart_block(chart_type, f"Amazon RDS Spend by Instance Type ({period_str}) — {cust_label}", rds_chart_items, values=[round(agg_rds[it]["cost"], 2) for it in rds_chart_items], value_label="Cost ($)")
                             elif chart_type == "horizontal-bar":
-                                chart_rds_md = _chart_block("horizontal-bar", f"Amazon RDS Spend by Instance Type ({period_str}) — {cust_label}", [it for it, _ in sorted_rds[:8]], values=[round(d["cost"], 2) for _, d in sorted_rds[:8]], value_label="Cost ($)", horizontal=True)
+                                chart_rds_md = _chart_block("horizontal-bar", f"Amazon RDS Spend by Instance Type ({period_str}) — {cust_label}", rds_chart_items, values=[round(agg_rds[it]["cost"], 2) for it in rds_chart_items], value_label="Cost ($)", horizontal=True)
                             else:
-                                chart_rds_md = _build_time_category_stacked_chart(f"Amazon RDS Spend by Instance Type ({period_str}) — {cust_label}", rds_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8)
+                                chart_rds_md = _build_time_category_stacked_chart(f"Amazon RDS Spend by Instance Type ({period_str}) — {cust_label}", rds_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8, exclude_other=is_exclude_other)
 
+                            rds_total_lbl = "Total RDS Spend (Excl. Other)" if is_exclude_other else "Total RDS Spend"
                             service_sections.append(
                                 f"#### 🗄️ {s_idx+1}. {svc_disp} Spend & Usage Breakdown\n\n"
-                                f"- **Total RDS Spend**: **${total_rds:,.2f}** across **{len(sorted_rds)}** active database instance types\n\n"
+                                f"- **{rds_total_lbl}**: **${total_rds:,.2f}** across **{len(sorted_rds)}** active database instance types\n\n"
                                 f"{tbl_block}"
                                 f"{chart_rds_md}"
                             )
@@ -3243,6 +3259,8 @@ class AIClient:
                             logger.warning(f"[AWS_CUR AmazonS3 Multi Query] {e}")
 
                         if s3_rows:
+                            if is_exclude_other:
+                                s3_rows = [r for r in s3_rows if not is_other_category_name(r["category"])]
                             total_s3 = sum(r["cost"] for r in s3_rows)
                             service_grand_totals[svc_disp] = total_s3
                             agg_s3 = {}
@@ -3256,6 +3274,8 @@ class AIClient:
                                     agg_s3[cat]["op"] = r["operation"]
 
                             sorted_s3 = sorted(agg_s3.items(), key=lambda x: x[1]["cost"], reverse=True)
+                            if is_exclude_other:
+                                sorted_s3 = [(c, d) for c, d in sorted_s3 if not is_other_category_name(c)]
                             tbl_lines = []
                             for idx, (cat, d) in enumerate(sorted_s3[:12]):
                                 c = d["cost"]
@@ -3265,28 +3285,31 @@ class AIClient:
                                 tbl_lines.append(f"| {idx+1} | **{cat}** | **${c:,.2f}** | {pct:.1f}% | {q_str}{op_str} |")
 
                             rem_s3 = sorted_s3[12:]
-                            if rem_s3:
+                            if rem_s3 and not is_exclude_other:
                                 rem_c = sum(d["cost"] for _, d in rem_s3)
                                 rem_pct = (rem_c / total_s3 * 100) if total_s3 else 0.0
                                 tbl_lines.append(f"| - | *Other ({len(rem_s3)} categories)* | **${rem_c:,.2f}** | {rem_pct:.1f}% | — |")
 
+                            s3_table_total_desc = "All Active S3 Categories" if is_exclude_other else "All S3 Categories"
                             tbl_block = (
                                 f"| # | Storage Tier / Meter Category | Billed Spend | % of Spend | Usage Volume / Operations |\n"
                                 f"|:---|:---|:---|:---|:---|\n"
                                 f"{chr(10).join(tbl_lines)}\n"
-                                f"| **Total** | **All S3 Categories** | **${total_s3:,.2f}** | **100.0%** | |\n\n"
+                                f"| **Total** | **{s3_table_total_desc}** | **${total_s3:,.2f}** | **100.0%** | |\n\n"
                             ) if wants_table else ""
 
+                            s3_chart_items = [c for c, _ in sorted_s3 if not is_other_category_name(c)][:8] if is_exclude_other else [c for c, _ in sorted_s3[:8]]
                             if chart_type in ["doughnut", "pie"]:
-                                chart_s3_md = _chart_block(chart_type, f"Amazon S3 Spend by Category ({period_str}) — {cust_label}", [c for c, _ in sorted_s3[:8]], values=[round(d["cost"], 2) for _, d in sorted_s3[:8]], value_label="Cost ($)")
+                                chart_s3_md = _chart_block(chart_type, f"Amazon S3 Spend by Category ({period_str}) — {cust_label}", s3_chart_items, values=[round(agg_s3[c]["cost"], 2) for c in s3_chart_items], value_label="Cost ($)")
                             elif chart_type == "horizontal-bar":
-                                chart_s3_md = _chart_block("horizontal-bar", f"Amazon S3 Spend by Category ({period_str}) — {cust_label}", [c for c, _ in sorted_s3[:8]], values=[round(d["cost"], 2) for _, d in sorted_s3[:8]], value_label="Cost ($)", horizontal=True)
+                                chart_s3_md = _chart_block("horizontal-bar", f"Amazon S3 Spend by Category ({period_str}) — {cust_label}", s3_chart_items, values=[round(agg_s3[c]["cost"], 2) for c in s3_chart_items], value_label="Cost ($)", horizontal=True)
                             else:
-                                chart_s3_md = _build_time_category_stacked_chart(f"Amazon S3 Spend Breakdown ({period_str}) — {cust_label}", s3_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8)
+                                chart_s3_md = _build_time_category_stacked_chart(f"Amazon S3 Spend Breakdown ({period_str}) — {cust_label}", s3_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8, exclude_other=is_exclude_other)
 
+                            s3_total_lbl = "Total S3 Spend (Excl. Other)" if is_exclude_other else "Total S3 Spend"
                             service_sections.append(
                                 f"#### 🪣 {s_idx+1}. {svc_disp} Spend & Usage Breakdown\n\n"
-                                f"- **Total S3 Spend**: **${total_s3:,.2f}** across **{len(sorted_s3)}** active storage and operational categories\n\n"
+                                f"- **{s3_total_lbl}**: **${total_s3:,.2f}** across **{len(sorted_s3)}** active storage and operational categories\n\n"
                                 f"{tbl_block}"
                                 f"{chart_s3_md}"
                             )
@@ -3357,6 +3380,8 @@ class AIClient:
                             logger.warning(f"[AWS_EC2_COST_AND_USAGE Multi Query] {e}")
 
                         if ec2_rows:
+                            if is_exclude_other:
+                                ec2_rows = [r for r in ec2_rows if not is_other_category_name(r["category"])]
                             total_ec2 = sum(r["cost"] for r in ec2_rows)
                             service_grand_totals[svc_disp] = total_ec2
                             agg_ec2 = {}
@@ -3369,6 +3394,8 @@ class AIClient:
                                 agg_ec2[cat]["instances"] += r["instances"]
 
                             sorted_ec2 = sorted(agg_ec2.items(), key=lambda x: x[1]["cost"], reverse=True)
+                            if is_exclude_other:
+                                sorted_ec2 = [(it, d) for it, d in sorted_ec2 if not is_other_category_name(it)]
                             tbl_lines = []
                             grav_cands = []
                             for idx, (it, d) in enumerate(sorted_ec2[:12]):
@@ -3379,28 +3406,31 @@ class AIClient:
                                     grav_cands.append((it, c))
 
                             rem_ec2 = sorted_ec2[12:]
-                            if rem_ec2:
+                            if rem_ec2 and not is_exclude_other:
                                 rem_c = sum(d["cost"] for _, d in rem_ec2)
                                 rem_pct = (rem_c / total_ec2 * 100) if total_ec2 else 0.0
                                 tbl_lines.append(f"| - | *Other ({len(rem_ec2)} instance types)* | **${rem_c:,.2f}** | {rem_pct:.1f}% | — |")
 
+                            ec2_table_total_desc = "All Active Instance Types" if is_exclude_other else "All Instance Types"
                             tbl_block = (
                                 f"| # | Instance Type | Billed Spend | % of Spend | Runtime Hours |\n"
                                 f"|:---|:---|:---|:---|:---|\n"
                                 f"{chr(10).join(tbl_lines)}\n"
-                                f"| **Total** | **All Instance Types** | **${total_ec2:,.2f}** | **100.0%** | |\n\n"
+                                f"| **Total** | **{ec2_table_total_desc}** | **${total_ec2:,.2f}** | **100.0%** | |\n\n"
                             ) if wants_table else ""
 
+                            ec2_chart_items = [it for it, _ in sorted_ec2 if not is_other_category_name(it)][:8] if is_exclude_other else [it for it, _ in sorted_ec2[:8]]
                             if chart_type in ["doughnut", "pie"]:
-                                chart_ec2_md = _chart_block(chart_type, f"Amazon EC2 Spend by Instance Type ({period_str}) — {cust_label}", [it for it, _ in sorted_ec2[:8]], values=[round(d["cost"], 2) for _, d in sorted_ec2[:8]], value_label="Cost ($)")
+                                chart_ec2_md = _chart_block(chart_type, f"Amazon EC2 Spend by Instance Type ({period_str}) — {cust_label}", ec2_chart_items, values=[round(agg_ec2[it]["cost"], 2) for it in ec2_chart_items], value_label="Cost ($)")
                             elif chart_type == "horizontal-bar":
-                                chart_ec2_md = _chart_block("horizontal-bar", f"Amazon EC2 Spend by Instance Type ({period_str}) — {cust_label}", [it for it, _ in sorted_ec2[:8]], values=[round(d["cost"], 2) for _, d in sorted_ec2[:8]], value_label="Cost ($)", horizontal=True)
+                                chart_ec2_md = _chart_block("horizontal-bar", f"Amazon EC2 Spend by Instance Type ({period_str}) — {cust_label}", ec2_chart_items, values=[round(agg_ec2[it]["cost"], 2) for it in ec2_chart_items], value_label="Cost ($)", horizontal=True)
                             else:
-                                chart_ec2_md = _build_time_category_stacked_chart(f"Amazon EC2 Spend Breakdown ({period_str}) — {cust_label}", ec2_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8)
+                                chart_ec2_md = _build_time_category_stacked_chart(f"Amazon EC2 Spend Breakdown ({period_str}) — {cust_label}", ec2_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8, exclude_other=is_exclude_other)
 
+                            ec2_total_lbl = "Total EC2 Spend (Excl. Other)" if is_exclude_other else "Total EC2 Spend"
                             service_sections.append(
                                 f"#### 🖥️ {s_idx+1}. {svc_disp} Spend & Usage Breakdown\n\n"
-                                f"- **Total EC2 Spend**: **${total_ec2:,.2f}** across **{len(sorted_ec2)}** active instance types\n\n"
+                                f"- **{ec2_total_lbl}**: **${total_ec2:,.2f}** across **{len(sorted_ec2)}** active instance types\n\n"
                                 f"{tbl_block}"
                                 f"{chart_ec2_md}"
                             )
@@ -3427,7 +3457,14 @@ class AIClient:
                         other_gran = "DAILY" if num_days > 0 else "MONTHLY"
 
                         if svc_prov == "aws":
-                            where_cl = f"WHERE lineItem_ProductCode = '{svc_pcode}'"
+                            if svc_pcode in ("AmazonEC2_EBS", "EBS"):
+                                where_cl = (
+                                    "WHERE lineItem_ProductCode = 'AmazonEC2' AND ("
+                                    "lineItem_UsageType LIKE '%Volume%' OR lineItem_UsageType LIKE '%Snapshot%' OR "
+                                    "lineItem_UsageType LIKE '%EBS%' OR lineItem_UsageType LIKE '%gp2%' OR lineItem_UsageType LIKE '%gp3%')"
+                                )
+                            else:
+                                where_cl = f"WHERE lineItem_ProductCode = '{svc_pcode}'"
                             other_sql = (
                                 f"SELECT {time_col} AS time_val, lineItem_UsageType AS usage_type, lineItem_Operation AS operation, "
                                 f"SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_qty "
@@ -3481,6 +3518,8 @@ class AIClient:
                             logger.warning(f"[{svc_disp} Multi Query] {e}")
 
                         if other_rows:
+                            if is_exclude_other:
+                                other_rows = [r for r in other_rows if not is_other_category_name(r["category"])]
                             total_oth = sum(r["cost"] for r in other_rows)
                             service_grand_totals[svc_disp] = total_oth
                             agg_oth = {}
@@ -3489,19 +3528,23 @@ class AIClient:
                                 agg_oth[cat] = agg_oth.get(cat, 0.0) + r["cost"]
 
                             sorted_oth = sorted(agg_oth.items(), key=lambda x: x[1], reverse=True)
+                            if is_exclude_other:
+                                sorted_oth = [(cat, c) for cat, c in sorted_oth if not is_other_category_name(cat)]
                             tbl_lines = [f"| {idx+1} | **{cat}** | **${c:,.2f}** | {(c/total_oth*100):.1f}% |" for idx, (cat, c) in enumerate(sorted_oth[:10])]
+                            oth_table_total_desc = "All Active Categories" if is_exclude_other else "All Categories"
                             tbl_block = (
                                 f"| # | Service Category | Spend | % of Spend |\n"
                                 f"|:---|:---|:---|:---|\n"
                                 f"{chr(10).join(tbl_lines)}\n"
-                                f"| **Total** | **All Categories** | **${total_oth:,.2f}** | **100.0%** |\n\n"
+                                f"| **Total** | **{oth_table_total_desc}** | **${total_oth:,.2f}** | **100.0%** |\n\n"
                             ) if wants_table else ""
 
-                            chart_oth_md = _build_time_category_stacked_chart(f"{svc_disp} Spend Breakdown ({period_str}) — {cust_label}", other_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8)
+                            chart_oth_md = _build_time_category_stacked_chart(f"{svc_disp} Spend Breakdown ({period_str}) — {cust_label}", other_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8, exclude_other=is_exclude_other)
 
+                            oth_total_lbl = f"Total {svc_disp} Spend (Excl. Other)" if is_exclude_other else f"Total {svc_disp} Spend"
                             service_sections.append(
                                 f"#### ☁️ {s_idx+1}. {svc_disp} Spend & Usage Breakdown\n\n"
-                                f"- **Total {svc_disp} Spend**: **${total_oth:,.2f}**\n\n"
+                                f"- **{oth_total_lbl}**: **${total_oth:,.2f}**\n\n"
                                 f"{tbl_block}"
                                 f"{chart_oth_md}"
                             )
@@ -3563,6 +3606,14 @@ class AIClient:
             if is_rds_instance_or_usage and mcp:
                 is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
                 is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
+                if not is_ytd and not is_qtd and is_followup:
+                    hist_text = " ".join(prior_cost_low.split() + [a.lower() for a in prior_assistant_msgs[-2:]])
+                    if any(w in hist_text for w in ["ytd", "year to date", "this year"]):
+                        is_ytd = True
+                    elif any(w in hist_text for w in ["qtd", "quarter to date", "this quarter"]):
+                        is_qtd = True
+
+                is_exclude_other = is_exclude_other_requested(low) or is_exclude_other_requested(intent_info.get("corrected_query", ""))
                 m_months = re.search(r'\b(\d+)\s*(?:months?|m)\b', low)
                 m_days = re.search(r'\b(\d+)\s*(?:days?|d)\b', low)
                 has_explicit_months = is_ytd or is_qtd or bool(m_months) or bool(intent_info.get("timeframe_months")) or any(w in low for w in ["12months", "12 months", "year", "annual", "months", "month by month", "monthly"])
@@ -3618,7 +3669,13 @@ class AIClient:
                     )
                     rds_tr = {"last": num_months, "qualifier": "MONTH"}
                     rds_gran = "MONTHLY"
-                    period_label = f"Last {num_months} Months"
+                    if is_ytd:
+                        period_label = f"Year-to-Date (YTD {datetime.date.today().year})"
+                    elif is_qtd:
+                        curr_q = ((datetime.date.today().month - 1) // 3) + 1
+                        period_label = f"Quarter-to-Date (QTD Q{curr_q} {datetime.date.today().year})"
+                    else:
+                        period_label = f"Last {num_months} Months"
 
                 rds_q_params = {
                     "queryInput": {
@@ -3662,9 +3719,16 @@ class AIClient:
                     if num_days > 0:
                         # Exclude today (in-flight) as per FinOps doctrine
                         rds_rows = [r for r in rds_rows if r["month"] != today_str]
+                    if is_exclude_other:
+                        rds_rows = [r for r in rds_rows if not is_other_category_name(r["instance_type"])]
                     months_present = sorted(list({r["month"] for r in rds_rows}))
                     if num_days > 0:
                         period_str = f"Last {num_days} Days Trend ({months_present[0]} to {months_present[-1]})" if months_present else f"Last {num_days} Days Trend"
+                    elif is_ytd:
+                        period_str = f"Year-to-Date ({months_present[0]} to {months_present[-1]})" if months_present else f"Year-to-Date (YTD {datetime.date.today().year})"
+                    elif is_qtd:
+                        curr_q = ((datetime.date.today().month - 1) // 3) + 1
+                        period_str = f"Quarter-to-Date ({months_present[0]} to {months_present[-1]})" if months_present else f"Quarter-to-Date (QTD Q{curr_q})"
                     else:
                         period_str = f"Last {len(months_present)} Months ({months_present[0]} to {months_present[-1]})" if months_present else f"Last {num_months} Months"
                     total_rds_cost = sum(r["cost"] for r in rds_rows)
@@ -3680,6 +3744,8 @@ class AIClient:
                         agg_types[it]["storage"] += r["storage_cost"]
 
                     sorted_types = sorted(agg_types.items(), key=lambda x: x[1]["cost"], reverse=True)
+                    if is_exclude_other:
+                        sorted_types = [(it, d) for it, d in sorted_types if not is_other_category_name(it)]
 
                     it_table_lines = []
                     graviton_candidates = []
@@ -3697,7 +3763,7 @@ class AIClient:
                             graviton_candidates.append({"instance_type": it, "cost": c})
 
                     remaining_types = sorted_types[15:]
-                    if remaining_types:
+                    if remaining_types and not is_exclude_other:
                         rem_cost = sum(d["cost"] for _, d in remaining_types)
                         rem_pct = (rem_cost / total_rds_cost * 100) if total_rds_cost else 0.0
                         rem_count = len(remaining_types)
@@ -3764,7 +3830,8 @@ class AIClient:
                             cat_col="instance_type",
                             cost_col="cost",
                             time_format=t_fmt,
-                            max_cats=10
+                            max_cats=10,
+                            exclude_other=is_exclude_other
                         )
 
                     it_table_block = (
@@ -3824,6 +3891,8 @@ class AIClient:
                             logger.warning(f"[AWS_CUR Engine Query] {e}")
 
                         if engine_rows:
+                            if is_exclude_other:
+                                engine_rows = [r for r in engine_rows if not is_other_category_name(r["engine"])]
                             engine_total = sum(r["cost"] for r in engine_rows)
                             eng_table_lines = []
                             eng_labels = []
@@ -3934,6 +4003,14 @@ class AIClient:
             if is_ec2_instance_query and mcp:
                 is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
                 is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
+                if not is_ytd and not is_qtd and is_followup:
+                    hist_text = " ".join(prior_cost_low.split() + [a.lower() for a in prior_assistant_msgs[-2:]])
+                    if any(w in hist_text for w in ["ytd", "year to date", "this year"]):
+                        is_ytd = True
+                    elif any(w in hist_text for w in ["qtd", "quarter to date", "this quarter"]):
+                        is_qtd = True
+
+                is_exclude_other = is_exclude_other_requested(low) or is_exclude_other_requested(intent_info.get("corrected_query", ""))
                 m_days = re.search(r'\b(\d+)\s*(?:days?|d)\b', low)
                 m_months = re.search(r'\b(\d+)\s*(?:months?|m)\b', low)
                 has_explicit_months = is_ytd or is_qtd or bool(m_months) or bool(intent_info.get("timeframe_months")) or is_specific or bool(intent_info.get("target_ym")) or any(w in low for w in ["month by month", "monthly", "12 months", "year", "months", "last month", "past month", "previous month", "prior month"])
@@ -3988,6 +4065,12 @@ class AIClient:
                     )
                     if is_specific and target_ym:
                         query_time_ranges = [{"from": target_ym, "to": target_ym}]
+                    elif is_ytd:
+                        curr_m = datetime.date.today().month
+                        query_time_ranges = [{"last": curr_m, "qualifier": "MONTH"}]
+                    elif is_qtd:
+                        curr_m = ((datetime.date.today().month - 1) % 3) + 1
+                        query_time_ranges = [{"last": curr_m, "qualifier": "MONTH"}]
                     else:
                         query_time_ranges = [{"last": 8, "qualifier": "MONTH"}]
 
@@ -4048,6 +4131,8 @@ class AIClient:
                     )
 
                 if ec2_rows:
+                    if is_exclude_other:
+                        ec2_rows = [r for r in ec2_rows if not is_other_category_name(r["instance_type"])]
                     chart_type = _detect_chart_type(low)
                     wants_table = _detect_wants_table(low)
                     t_format = "quarter" if "quarter" in low else "month"
@@ -4079,6 +4164,8 @@ class AIClient:
                             sorted_types = sorted(agg_types.items(), key=lambda x: x[1].get(sort_key, 0.0), reverse=True)
                         else:
                             sorted_types = sorted(agg_types.items(), key=lambda x: x[1]["cost"], reverse=True)
+                        if is_exclude_other:
+                            sorted_types = [(it, d) for it, d in sorted_types if not is_other_category_name(it)]
 
                         total_period_cost = sum(d["cost"] for _, d in sorted_types) or 1.0
                         total_period_hours = sum(d["hours"] for _, d in sorted_types)
@@ -4110,7 +4197,7 @@ class AIClient:
                                 prev_gen_candidates.append(cand)
 
                         remaining_types = sorted_types[15:]
-                        if remaining_types:
+                        if remaining_types and not is_exclude_other:
                             rem_cost = sum(d["cost"] for _, d in remaining_types)
                             rem_hours = sum(d["hours"] for _, d in remaining_types)
                             rem_inst = sum(d.get("instances", 0.0) for _, d in remaining_types)
@@ -4173,7 +4260,8 @@ class AIClient:
                                 cat_col="instance_type",
                                 cost_col="cost",
                                 time_format="day",
-                                max_cats=12
+                                max_cats=12,
+                                exclude_other=is_exclude_other
                             )
 
                         insights = []
@@ -4247,6 +4335,8 @@ class AIClient:
 
                         # Group latest/target month instance types for the table
                         target_m_rows = [r for r in ec2_rows if r["time_val"] == target_month]
+                        if is_exclude_other:
+                            target_m_rows = [r for r in target_m_rows if not is_other_category_name(r["instance_type"])]
                         month_total = sum(r["cost"] for r in target_m_rows) or 1.0
                         total_instances = sum(r.get("instances", 0.0) for r in target_m_rows)
                         total_hours = sum(r.get("hours", 0.0) for r in target_m_rows)
@@ -4284,7 +4374,7 @@ class AIClient:
                                 prev_gen_candidates.append(r)
 
                         remaining_m_rows = target_m_rows[15:]
-                        if remaining_m_rows:
+                        if remaining_m_rows and not is_exclude_other:
                             rem_cost = sum(r["cost"] for r in remaining_m_rows)
                             rem_hours = sum(r["hours"] for r in remaining_m_rows)
                             rem_inst = sum(r.get("instances", 0.0) for r in remaining_m_rows)
@@ -4344,7 +4434,8 @@ class AIClient:
                                 cat_col="instance_type",
                                 cost_col="cost",
                                 time_format=t_format,
-                                max_cats=12
+                                max_cats=12,
+                                exclude_other=is_exclude_other
                             )
 
                         insights = []
@@ -4477,6 +4568,14 @@ class AIClient:
                 # Resolve timeframe: daily trend vs monthly
                 is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
                 is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
+                if not is_ytd and not is_qtd and is_followup:
+                    hist_text = " ".join(prior_cost_low.split() + [a.lower() for a in prior_assistant_msgs[-2:]])
+                    if any(w in hist_text for w in ["ytd", "year to date", "this year"]):
+                        is_ytd = True
+                    elif any(w in hist_text for w in ["qtd", "quarter to date", "this quarter"]):
+                        is_qtd = True
+
+                is_exclude_other = is_exclude_other_requested(low) or is_exclude_other_requested(intent_info.get("corrected_query", ""))
                 is_trend_query = any(w in low for w in ["trend", "daily", "day", "days", "last 15", "last 30", "trailing", "over time"])
                 m_days = re.search(r'(?:last|past|trailing|for)\s+(\d{1,3})\s*days?\b|\b(\d{1,3})\s*(?:days?|d)\b', low)
                 num_days = 0 if (is_ytd or is_qtd) else (intent_info.get("timeframe_days") or (int(m_days.group(1) or m_days.group(2)) if m_days else (30 if is_trend_query else 0)))
@@ -4674,6 +4773,10 @@ class AIClient:
                     time_totals[t_val] = time_totals.get(t_val, 0.0) + cost
                     if cat not in cat_ops and r.get("operation"):
                         cat_ops[cat] = r["operation"]
+
+                if is_exclude_other:
+                    cat_totals = {k: v for k, v in cat_totals.items() if not is_other_category_name(k)}
+                    cat_qtys = {k: v for k, v in cat_qtys.items() if not is_other_category_name(k)}
 
                 # Fetch real total
                 if major_svc_prov == "aws":

@@ -51,6 +51,22 @@ def is_exclude_other_requested(text: str) -> bool:
     ])
 
 
+def is_other_category_name(name: str) -> bool:
+    """
+    Check if a category, instance type, or service dimension represents 'Other',
+    'Unallocated', or an aggregated remainder bucket (e.g. 'RDS Other', 'Compute Other',
+    '*Other (18 instance types)*', 'Other categories', etc.).
+    """
+    if not name:
+        return False
+    c = str(name).strip().lower().strip("*").strip()
+    if c in ("other", "unallocated", "(unallocated / other)", "un-allocated", "others", "other (combined)", "other categories", "other services", "other models"):
+        return True
+    if c.startswith("other ") or c.endswith(" other") or "other (" in c or "(other" in c:
+        return True
+    return bool(re.search(r'\b(?:other|unallocated)\b', c))
+
+
 def prune_mom_columns_from_markdown(text: str) -> str:
     """Prunes Month-over-Month (MoM) or Day-over-Day (DoD) variance columns from markdown tables."""
     lines = text.split("\n")
@@ -319,8 +335,7 @@ def _build_time_category_stacked_chart(
     if exclude_other:
         sorted_cats = [
             (c, v) for c, v in sorted_cats
-            if c.lower() not in ("other", "(unallocated / other)", "unallocated", "other services", "other (combined)", "other categories", "other models")
-            and not c.lower().startswith("other ")
+            if not is_other_category_name(c)
         ]
     top_cats = [c for c, _ in sorted_cats[:max_cats]]
     other_cats = [c for c, _ in sorted_cats[max_cats:]]
