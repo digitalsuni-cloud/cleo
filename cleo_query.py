@@ -823,9 +823,19 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     # Cloud detection
     cloud = cont_ctx.get("new_cloud") or extract_requested_cloud(last_msg)
 
+    # Azure Hybrid Benefit (AHB) signal detection
+    is_ahb = any(w in low for w in [
+        "hybrid discount", "hybrid discounts", "azure hybrid benefit", "hybrid benefit", "hybrid benefits",
+        "ahb", "ahb discount", "ahb discounts", "hybrid licensing", "hybrid license"
+    ])
+    if is_ahb and not cloud:
+        cloud = "azure"
+
     # Service detection
     all_svcs = extract_all_requested_services(last_msg)
     service = cont_ctx.get("new_service")
+    if not service and is_ahb:
+        service = "Virtual Machines"
     if not service:
         if all_svcs:
             service = all_svcs[0][0]
@@ -964,7 +974,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     has_fetch_verb = any(w in low for w in [
         "get me", "fetch", "query", "find me", "show me", "show our", "show us", "show", "list", "display",
         "usage for", "spend for", "break it down", "break down", "top services", "top service", "cloud services", "cloud service"
-    ])
+    ]) or bool(re.search(r'\b(?:find|list|query|fetch)\b', low))
     has_explicit_data_subject = bool(service) or bool(customer) or bool(m_months) or bool(m_days)
 
     is_pure_reformat = (
@@ -1125,6 +1135,9 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     elif any(w in low for w in ["by hardware family", "hardware family breakdown"]):
         breakdowns.append("hardware_family")
         target_dimension = "HardwareFamily"
+    elif is_ahb:
+        breakdowns.append("hybrid_benefit")
+        target_dimension = "hybrid_benefit"
     elif any(w in low for w in ["by commitment plan", "by commitment", "savings plan breakdown", "by savings plan"]):
         breakdowns.append("commitment_plan")
         target_dimension = "Commitment_Plan"

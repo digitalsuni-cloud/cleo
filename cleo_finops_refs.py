@@ -114,7 +114,7 @@ ROUTING: list[tuple[str, list[str]]] = [
     ("finops-aws",                  ["aws billing", "aws cur", "cost explorer", "ec2 rightsiz", "s3 lifecycle", "cloudfront", "billing conductor", "cost categories", "aws governance"]),
 
     # ── Azure Core References ─────────────────────────────────────────────────
-    ("finops-azure-commitments",    ["azure reservation", "azure savings plan", "azure hybrid benefit", "ahb", "azure spot", "macc", "ri exchange", "2027 exchange", "azure commitment"]),
+    ("finops-azure-commitments",    ["azure reservation", "azure savings plan", "azure hybrid benefit", "ahb", "azure spot", "macc", "ri exchange", "2027 exchange", "azure commitment", "hybrid discount", "hybrid discounts", "azure hybrid discount", "azure hybrid discounts", "hybrid benefit", "capex license cost", "capex vs opex ahb", "dev/test subscription", "azure dev/test", "dev test subscription"]),
     ("finops-azure-patterns",       ["azure pattern", "azure optimis", "azure rightsiz", "aks cost", "azure storage tier", "hot to cool", "archive tier"]),
     ("finops-azure",                ["azure cost", "azure billing", "cost management export", "azure advisor", "azure policy", "ea-to-mca", "mca transition", "p95", "rehydration", "early deletion", "archive storage", "aks node pool", "azure kubernetes service", "aks system", "aks user"]),
 
