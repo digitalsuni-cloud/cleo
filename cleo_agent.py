@@ -194,6 +194,113 @@ def crawl_and_cache_all_datasource_metadata(mcp, force: bool = False) -> dict:
 
     return results
 
+CURATED_DATASET_SPECS = {
+    "AWS_CUR": {
+        "priority_measures": ["lineItem_UnblendedCost", "lineItem_BlendedCost", "lineItem_NetUnblendedCost", "pricing_publicOnDemandCost", "discount_TotalDiscount", "savingsPlan_TotalCommitmentToDate"],
+        "priority_dimensions": ["lineItem_ProductCode", "product_instanceType", "product_region", "lineItem_ResourceId", "lineItem_UsageType", "lineItem_Operation", "bill_PayerAccountId", "lineItem_UsageAccountId", "timeInterval_Month"]
+    },
+    "AZURE_COST_USAGE": {
+        "priority_measures": ["ActualCostInBillingCurrency", "ActualCostInUsd", "CostInBillingCurrency", "Quantity", "AmortizedCostInUsd"],
+        "priority_dimensions": ["ResourceName", "ResourceId", "ResourceGroup", "SubscriptionName", "SubscriptionId", "MeterCategory", "MeterSubCategory", "MeterName", "AdditionalInfo", "MetricType", "ConsumedService", "timeInterval_Month"]
+    },
+    "MULTICLOUD_FOCUS_COST_AND_USAGE": {
+        "priority_measures": ["EffectiveCost", "BilledCost", "PricingQuantity"],
+        "priority_dimensions": ["provider", "ServiceName", "ServiceCategory", "ServiceSubcategory", "RegionId", "SubaccountId", "BillingAccountId", "Month"]
+    },
+    "AWS_FOCUS_COST_AND_USAGE": {
+        "priority_measures": ["EffectiveCost", "BilledCost", "AmortizedCost", "ListCost", "PricingQuantity"],
+        "priority_dimensions": ["Provider", "ServiceName", "ServiceCategory", "ServiceSubcategory", "SubaccountId", "BillingAccountId", "Month"]
+    },
+    "AZURE_FOCUS_COST_AND_USAGE": {
+        "priority_measures": ["EffectiveCost", "BilledCost", "AmortizedCost", "PricingQuantity"],
+        "priority_dimensions": ["Provider", "ServiceName", "ServiceCategory", "ServiceSubcategory", "RegionId", "SubaccountId", "BillingAccountId", "Month"]
+    },
+    "GCP_FOCUS_COST_AND_USAGE": {
+        "priority_measures": ["EffectiveCost", "BilledCost", "PricingQuantity"],
+        "priority_dimensions": ["Provider", "ServiceName", "ServiceCategory", "ServiceSubcategory", "RegionId", "SubaccountId", "BillingAccountId", "Month"]
+    },
+    "MULTICLOUD_COMMITMENT_SAVINGS": {
+        "priority_measures": ["Commitment_Savings", "Commitment_Covered_On_Demand_Cost", "Commitment_Used_Cost", "Commitment_Purchase_Cost", "On_Demand_Equivalent_Cost", "Negotiated_Discount"],
+        "priority_dimensions": ["Provider", "Commitment_Plan", "Service", "Month", "Billing_Account_Name", "Billing_Account_Id"]
+    },
+    "MULTICLOUD_OPERATIONAL_EMISSIONS": {
+        "priority_measures": ["Carbon", "Power", "PhonesCharged", "KmsDriven", "TreeSeedlings", "UsageMinutes", "vCPUHours", "AverageCPU"],
+        "priority_dimensions": ["ProviderName", "ServiceName", "ResourceName", "ResourceId", "InstanceType", "Region", "Country", "SubAccountId", "timeInterval_Month"]
+    },
+    "UNIFIED_AI_TOKENOMICS": {
+        "priority_measures": ["EffectiveCost", "UsageQuantity", "EffectiveCostPerMillTokens", "CacheEfficiencyRatio", "ListCost"],
+        "priority_dimensions": ["ProviderName", "ModelName", "ModelTier", "TokenType", "ProcessingMode", "QuantityUnit", "ProjectName", "OrganizationName", "Month"]
+    },
+    "MULTICLOUD_AI_COST_AND_USAGE": {
+        "priority_measures": ["EffectiveCost", "BilledCost", "PricingQuantity", "UnitCost"],
+        "priority_dimensions": ["provider", "ServiceName", "Model", "ModelProvider", "TokenType", "RegionId", "Month"]
+    },
+    "AWS_AI_COST_AND_USAGE": {
+        "priority_measures": ["EffectiveCost", "BilledCost", "PricingQuantity", "ListCost", "UnitCost"],
+        "priority_dimensions": ["Provider", "ServiceName", "Model", "ModelProvider", "TokenType", "RegionId", "Month"]
+    },
+    "OPENAI_COST_AND_USAGE": {
+        "priority_measures": ["Cost_Value", "Input_Tokens", "Output_Tokens", "Cached_Input_Tokens", "Num_Requests", "Effective_Cost_Per_1k_Output_Tokens"],
+        "priority_dimensions": ["Model", "Model_Tier", "Usage_Month"]
+    },
+    "ANTHROPIC_COST_AND_USAGE": {
+        "priority_measures": ["Cost", "Token_Quantity", "Request_Count", "List_Amount"],
+        "priority_dimensions": ["Model", "Token_Type", "Usage_Month"]
+    },
+    "AWS_COST_ANOMALY": {
+        "priority_measures": ["CostImpact", "Cost"],
+        "priority_dimensions": ["Service", "Region", "AccountID", "Status", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
+    },
+    "AZURE_COST_ANOMALY": {
+        "priority_measures": ["CostImpact", "Cost"],
+        "priority_dimensions": ["Service", "Region", "Status", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
+    },
+    "GCP_COST_ANOMALY": {
+        "priority_measures": ["CostImpact", "Cost"],
+        "priority_dimensions": ["Region", "Status", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
+    },
+    "AWS_EC2_COST_AND_USAGE": {
+        "priority_measures": ["Billed_Cost", "Effective_Cost", "Amortized_Cost", "Instance_Cost", "Compute_Cost", "Instance_Hours", "Instances", "VCPUs"],
+        "priority_dimensions": ["product_InstanceType", "product_InstanceTypeFamily", "AWS-Regions", "AWS-Account", "Month"]
+    },
+    "AWS_RDS_COST_AND_USAGE": {
+        "priority_measures": ["BilledCost", "EffectiveCost", "RDSTotalCost", "ComputeCost", "StorageCost", "GP2StorageCost", "GP3StorageCost", "Instances"],
+        "priority_dimensions": ["InstanceType", "Region", "MultiAZ", "SubAccount", "BillingAccount", "Month"]
+    },
+    "AWS_DATABRICKS_USAGE": {
+        "priority_measures": ["total_price", "usage_quantity"],
+        "priority_dimensions": ["workspace_id", "sku_name", "usage_type", "cloud", "account_id", "usage_month"]
+    },
+    "AZURE_DATABRICKS_COST_AND_USAGE": {
+        "priority_measures": ["AmortizedCostInBillingCurrency", "Quantity"],
+        "priority_dimensions": ["ProductName", "MeterCategory", "MeterSubCategory", "ResourceGroup", "ResourceId", "SubscriptionName", "timeInterval_Month"]
+    },
+    "AWS_K8S_COST": {
+        "priority_measures": ["ApportionedCostUsed", "ApportionedCostRequested", "ApportionedAmortizedCostUsed"],
+        "priority_dimensions": ["ClusterName", "NamespaceName", "WorkloadName", "WorkloadType", "ContainerName", "CloudAccountName", "timeInterval_Month"]
+    },
+    "AZURE_K8S_COST": {
+        "priority_measures": ["ApportionedCostUsed", "ApportionedCostRequested", "ApportionedEffectiveCostUsed"],
+        "priority_dimensions": ["ClusterName", "NamespaceName", "WorkloadName", "WorkloadType", "ContainerName", "CloudAccountName", "timeInterval_Month"]
+    },
+    "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS": {
+        "priority_measures": ["Potential_Savings", "Current_Cost", "Potential_Cost"],
+        "priority_dimensions": ["Provider", "Service", "Region", "Billing_Account", "SubAccount_Name"]
+    },
+    "CLOUDHEALTH_CONSUMPTION_BREAKDOWN": {
+        "priority_measures": ["ChannelBillableUsage", "Usage", "ConfiguredUsageAtPartner"],
+        "priority_dimensions": ["CustomerName", "CustomerType", "ServiceProviderId", "timeInterval_Month"]
+    },
+    "AWS_DATA_TRANSFER_COST_AND_USAGE": {
+        "priority_measures": ["BilledCost", "EffectiveCost", "ConsumedQuantity"],
+        "priority_dimensions": ["FromLocation", "ToLocation", "SubAccount", "Month"]
+    },
+    "WASTE_OPPORTUNITY": {
+        "priority_measures": ["ProjectedMonthlyCost"],
+        "priority_dimensions": ["Provider", "Region", "CloudAccountId"]
+    }
+}
+
 def build_llm_schema_context() -> str:
     """
     Builds a concise, high-density catalog of CloudHealth datasets and key columns
@@ -204,36 +311,35 @@ def build_llm_schema_context() -> str:
         return ""
 
     lines = ["CLOUDHEALTH DATASOURCE SCHEMAS & KEY COLUMNS (AUTO-GENERATED FROM MCP METADATA):"]
-    priority_keys = [
-        "AWS_CUR", "MULTICLOUD_FOCUS_COST_AND_USAGE", "AWS_FOCUS_COST_AND_USAGE",
-        "AZURE_FOCUS_COST_AND_USAGE", "AZURE_COST_USAGE", "GCP_FOCUS_COST_AND_USAGE", "CLOUDHEALTH_CONSUMPTION_BREAKDOWN",
-        "AWS_COST_ANOMALY", "AZURE_COST_ANOMALY", "GCP_COST_ANOMALY",
-        "AWS_EC2_COST_AND_USAGE", "AWS_RDS_COST_AND_USAGE",
-        "AWS_AI_COST_AND_USAGE", "MULTICLOUD_AI_COST_AND_USAGE", "OPENAI_COST_AND_USAGE", "ANTHROPIC_COST_AND_USAGE",
-        "AWS_DATA_TRANSFER_COST_AND_USAGE", "MULTICLOUD_COMMITMENT_SAVINGS",
-        "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS", "WASTE_OPPORTUNITY"
-    ]
 
-    for key in priority_keys:
+    for key, spec in CURATED_DATASET_SPECS.items():
         ds_info = cache.get(key)
         if not ds_info or "columns" not in ds_info:
             continue
         disp = ds_info.get("displayName") or key
         cols = ds_info["columns"]
-        measures = [c["name"] for c in cols if c.get("type") == "MEASURE"]
-        dimensions = [c["name"] for c in cols if c.get("type") != "MEASURE"]
-        key_dims = [
-            d for d in dimensions
-            if any(k in d.lower() for k in [
-                "region", "location", "service", "customer", "month", "time",
-                "instance", "engine", "account", "provider", "model", "token"
-            ])
-        ]
+        actual_measures = {c["name"] for c in cols if c.get("type") == "MEASURE"}
+        actual_dims = {c["name"] for c in cols if c.get("type") != "MEASURE"}
+
+        measures = [m for m in spec.get("priority_measures", []) if m in actual_measures]
+        dims = [d for d in spec.get("priority_dimensions", []) if d in actual_dims]
+
+        # Fallback to dynamic extraction if spec didn't match anything
+        if not measures:
+            measures = [c["name"] for c in cols if c.get("type") == "MEASURE"][:6]
+        if not dims:
+            dims = [
+                c["name"] for c in cols
+                if c.get("type") != "MEASURE" and any(k in c["name"].lower() for k in [
+                    "region", "service", "customer", "month", "time", "instance", "account", "provider", "meter", "resource"
+                ])
+            ][:12]
+
         lines.append(f"- `{key}` ({disp}):")
         if measures:
-            lines.append(f"  * Measures (Metrics): {', '.join(measures[:6])}")
-        if key_dims:
-            lines.append(f"  * Key Dimensions: {', '.join(key_dims[:12])}")
+            lines.append(f"  * Measures (Metrics): {', '.join(measures)}")
+        if dims:
+            lines.append(f"  * Key Dimensions: {', '.join(dims)}")
 
     return "\n".join(lines)
 
@@ -3349,20 +3455,20 @@ class AIClient:
                     elif svc_pcode == "AmazonEC2":
                         if num_days > 0:
                             ec2_sql = (
-                                "SELECT TimeInterval_Day AS time_val, InstanceType AS category, "
-                                "SUM(BilledCost) AS cost, SUM(InstanceHours) AS hours, SUM(Instances) AS instances "
+                                "SELECT TimeInterval_Day AS time_val, product_InstanceType AS category, "
+                                "SUM(Billed_Cost) AS cost, SUM(Instance_Hours) AS hours, SUM(Instances) AS instances "
                                 "FROM AWS_EC2_COST_AND_USAGE "
-                                "GROUP BY TimeInterval_Day, InstanceType "
+                                "GROUP BY TimeInterval_Day, product_InstanceType "
                                 "ORDER BY time_val ASC, cost DESC"
                             )
                             ec2_tr = {"last": num_days, "qualifier": "DAY"}
                             ec2_gran = "DAILY"
                         else:
                             ec2_sql = (
-                                "SELECT Month AS time_val, InstanceType AS category, "
-                                "SUM(BilledCost) AS cost, SUM(InstanceHours) AS hours, SUM(Instances) AS instances "
+                                "SELECT Month AS time_val, product_InstanceType AS category, "
+                                "SUM(Billed_Cost) AS cost, SUM(Instance_Hours) AS hours, SUM(Instances) AS instances "
                                 "FROM AWS_EC2_COST_AND_USAGE "
-                                "GROUP BY Month, InstanceType "
+                                "GROUP BY Month, product_InstanceType "
                                 "ORDER BY time_val ASC, cost DESC"
                             )
                             ec2_tr = {"last": min(num_months, 12), "qualifier": "MONTH"}
@@ -3387,10 +3493,10 @@ class AIClient:
                             raw_csv = json.loads(txt_ec2).get("csv", "")
                             for row in csv.DictReader(io.StringIO(raw_csv)):
                                 try:
-                                    c = float(row.get("cost") or row.get("BilledCost") or 0.0)
-                                    it = (row.get("category") or row.get("InstanceType") or "").strip()
+                                    c = float(row.get("cost") or row.get("Billed_Cost") or row.get("BilledCost") or 0.0)
+                                    it = (row.get("category") or row.get("product_InstanceType") or row.get("InstanceType") or "").strip()
                                     tv = (row.get("time_val") or row.get("TimeInterval_Day") or row.get("Month") or "").strip()
-                                    h = float(row.get("hours") or row.get("InstanceHours") or 0.0)
+                                    h = float(row.get("hours") or row.get("Instance_Hours") or row.get("InstanceHours") or 0.0)
                                     inst = float(row.get("instances") or row.get("Instances") or 0.0)
                                     if it and tv and c > 0 and (num_days == 0 or tv != today_str):
                                         ec2_rows.append({"time_val": tv, "category": it, "cost": c, "hours": h, "instances": inst})

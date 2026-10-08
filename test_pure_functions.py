@@ -850,6 +850,36 @@ def test_azure_hybrid_benefit_handler_execution():
     assert "Software Assurance" in res_empty
 
 
+def test_build_llm_schema_context_validity():
+    import cleo_agent
+    schema_ctx = cleo_agent.build_llm_schema_context()
+    assert schema_ctx, "Schema context should not be empty when cache exists"
+    assert "CLOUDHEALTH DATASOURCE SCHEMAS & KEY COLUMNS" in schema_ctx
+
+    # Check key datasets are present
+    assert "`AZURE_COST_USAGE`" in schema_ctx
+    assert "`AWS_CUR`" in schema_ctx
+    assert "`MULTICLOUD_FOCUS_COST_AND_USAGE`" in schema_ctx
+    assert "`MULTICLOUD_OPERATIONAL_EMISSIONS`" in schema_ctx
+    assert "`UNIFIED_AI_TOKENOMICS`" in schema_ctx
+    assert "`AWS_K8S_COST`" in schema_ctx
+    assert "`AWS_DATABRICKS_USAGE`" in schema_ctx
+    assert "`MULTICLOUD_COMMITMENT_SAVINGS`" in schema_ctx
+
+    # Check that critical columns exist and are not filtered out
+    assert "MeterCategory" in schema_ctx
+    assert "MeterSubCategory" in schema_ctx
+    assert "ResourceName" in schema_ctx
+    assert "ResourceId" in schema_ctx
+    assert "ActualCostInBillingCurrency" in schema_ctx
+    assert "lineItem_UnblendedCost" in schema_ctx
+    assert "product_instanceType" in schema_ctx
+    assert "Carbon" in schema_ctx
+    assert "Country" in schema_ctx
+    assert "Commitment_Plan" in schema_ctx
+    assert "Status" in schema_ctx
+
+
 if __name__ == "__main__":
     # Self-run check
     test_parse_query_time_context()
@@ -882,6 +912,7 @@ if __name__ == "__main__":
     test_multi_service_and_ytd_understanding()
     test_azure_hybrid_benefit_understanding()
     test_azure_hybrid_benefit_handler_execution()
+    test_build_llm_schema_context_validity()
     print("All unit tests passed successfully!")
 
 
