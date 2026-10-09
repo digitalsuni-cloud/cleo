@@ -1738,6 +1738,18 @@ def test_mtd_forecast_generation():
         assert "MTD Cost" in res_aws
         assert "Run-Rate Projection Notice" in res_aws
 
+    # 7. Test continuation query with non-data LLM intent doesn't crash on unbound cont_ctx
+    class UnboundCheckLLM(AIClient):
+        def _understand_query(self, msgs, mcp=None):
+            return {"intent": "other", "is_new_data_fetch": False}
+
+    check_client = UnboundCheckLLM("direct", {}, [])
+    res_cont = check_client._generate_impl([
+        {"role": "assistant", "content": "prior table"},
+        {"role": "user", "content": "give me the above data for last 3 months"}
+    ], mcp=MockMCP())
+    assert res_cont is not None
+
 
 if __name__ == "__main__":
     test_mtd_forecast_generation()
