@@ -2232,7 +2232,7 @@ def _check_rate_limit(client_ip: str) -> bool:
         return True
 
 
-def prune_messages_to_context_budget(messages: list[dict], max_tokens: int = 12000) -> list[dict]:
+def prune_messages_to_context_budget(messages: list[dict], max_tokens: int = 28000, min_recent_turns: int = 4) -> list[dict]:
     """Ensures conversation history fits safely within LLM context window while preserving system prompt and latest turns."""
     if not messages:
         return messages
@@ -2245,9 +2245,18 @@ def prune_messages_to_context_budget(messages: list[dict], max_tokens: int = 120
 
     kept = []
     current_tokens = sum(estimate_token_count(m.get("content", "")) for m in sys_msg)
+    # If system prompt alone consumes most/all of max_tokens, ensure chat history
+    # has an effective budget rather than starving it down to 1 message.
+    effective_max = (
+        max(max_tokens, current_tokens + 4000)
+        if max_tokens >= 4000 and current_tokens >= max_tokens - 2000
+        else max_tokens
+    )
+
     for m in reversed(chat_msgs):
         m_tokens = estimate_token_count(m.get("content", ""))
-        if kept and (current_tokens + m_tokens > max_tokens):
+        can_break = len(kept) >= min_recent_turns if max_tokens >= 4000 else bool(kept)
+        if can_break and (current_tokens + m_tokens > effective_max):
             break
         kept.append(m)
         current_tokens += m_tokens

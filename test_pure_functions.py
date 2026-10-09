@@ -222,6 +222,30 @@ def test_prune_messages_to_context_budget():
     assert pruned[-1]["content"] == "Query 2 recent"
     assert len(pruned) < len(messages)
 
+    # Realistic production scenario: system prompt is ~13k tokens, followed by multi-turn chat
+    realistic_msgs = [
+        {"role": "system", "content": "FinOps assistant doctrine and rules " * 1500},  # ~12-14k tokens
+        {"role": "user", "content": "Show our top cloud services across AWS, Azure, and GCP this month"},
+        {"role": "assistant", "content": "### 📊 CloudHealth Multi-Cloud Spend Analysis\n\n| AWS | EC2 | $500 |"},
+        {"role": "user", "content": "give me the above data for last 3 months"},
+    ]
+    # With default 28k budget, ALL dialogue turns must be preserved
+    preserved = prune_messages_to_context_budget(realistic_msgs)
+    assert len(preserved) == 4
+    assert preserved[1]["role"] == "user"
+    assert preserved[2]["role"] == "assistant"
+    assert preserved[3]["content"] == "give me the above data for last 3 months"
+
+    # Excessively long conversation exceeding budget preserves min_recent_turns
+    long_msgs = [{"role": "system", "content": "Cleo System Prompt " * 1500}]
+    for i in range(20):
+        long_msgs.append({"role": "user", "content": f"Turn {i} user " * 200})
+        long_msgs.append({"role": "assistant", "content": f"Turn {i} assistant " * 200})
+    pruned_long = prune_messages_to_context_budget(long_msgs, max_tokens=20000)
+    assert pruned_long[0]["role"] == "system"
+    assert len(pruned_long) >= 5  # system + at least 4 chat messages
+    assert pruned_long[-1]["content"].startswith("Turn 19 assistant")
+
 
 def test_multi_month_service_breakdown_parsing():
     q = "give me the last 12 month AWS cost by Service Category breakdown"
