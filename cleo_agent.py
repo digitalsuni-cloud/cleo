@@ -725,6 +725,7 @@ from cleo_query import (
     extract_requested_cloud,
     parse_query_time_context,
     detect_anomaly_status_filter,
+    extract_cost_threshold,
     _detect_contextual_continuation,
     _deterministic_understand_query,
 )
@@ -975,6 +976,10 @@ class AIClient:
             '  "target_ym": "YYYY-MM" or null,\n'
             '  "timeframe_months": integer or null,\n'
             '  "timeframe_days": integer or null,\n'
+            '  "min_cost": number or null,\n'
+            '  "max_cost": number or null,\n'
+            '  "min_impact": number or null,\n'
+            '  "max_impact": number or null,\n'
             '  "breakdowns": ["instance_type", "engine_type", "storage_class", "volume_type", "service_subcategory", "service_category", "pricing_category", "lease_type", "account", "billing_account", "region", "location", "service", "customer", "resource", "model", "model_provider", "modality", "execution_type", "token_type", "hardware_type", "hardware_family", "commitment_plan", "country"],\n'
             '  "chart_types": ["bar", "horizontal-bar", "pie", "donut", "line"],\n'
             '  "include_chart": boolean,\n'
@@ -1029,6 +1034,7 @@ class AIClient:
             "   - Carbon & Emissions: 'emissions by country', 'carbon by country', 'by country', 'emissions by geography' -> target_dimension='Country', breakdowns=['country'].\n"
             "   - Cost Anomalies & Spikes: When user asks about cost anomalies, spikes, unusual spend, or 'why is X high', 'explain this spike', 'what drove the increase in Y', set intent='anomalies' and is_new_data_fetch=true. By default anomalies must target Active status unless user explicitly requests Inactive ones.\n"
             "11. GENERAL CHAT & AGENT/MODEL IDENTITY: Set intent to 'general_chat' and is_new_data_fetch to false if the user asks conversational questions, greetings, jokes, general knowledge, or questions about the AI model, engine, or assistant identity (e.g. 'what llm we are using right now?', 'who are you', 'what can you do', 'hello', 'tell me a joke', 'what model is this?').\n"
+            "12. NUMERIC FILTERS & DRILL-DOWNS ('more than $50', 'impact cost > 100', 'over $500', 'under $20', 'between 50 and 200'): When the user specifies a cost, spend, or impact threshold, extract 'min_cost', 'max_cost', 'min_impact', and/or 'max_impact' as numeric values. If the user says 'impact cost more than 50$' or 'cost impact over $100', set min_impact=50.0 (or 100.0) and intent='anomalies'. If this query is a follow-up refinement on a prior table (e.g., following an anomaly report with 'show me the impact cost more than 50$'), inherit the prior query type (intent='anomalies', is_new_data_fetch=true), inherit the cloud (e.g. 'all', 'aws', 'gcp', 'azure'), and set 'min_impact'=50.0.\n"
         )
 
         cust_list_snippet = f"Known Channel Customers: {', '.join(list(cust_map.keys())[:25])}\n\n" if cust_map else ""
@@ -1147,6 +1153,20 @@ class AIClient:
                         if not parsed.get("corrected_query") or any(w in parsed["corrected_query"].lower() for w in ["similar", "simillar", "same"]):
                             parsed["corrected_query"] = cont_ctx["expanded_query"]
 
+                    if cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "anomalies":
+                        if not parsed.get("cloud") and cont_ctx.get("new_cloud"):
+                            parsed["cloud"] = cont_ctx["new_cloud"]
+                        parsed["intent"] = "anomalies"
+                        parsed["is_new_data_fetch"] = True
+                        if not parsed.get("corrected_query") or any(w in parsed["corrected_query"].lower() for w in ["similar", "simillar", "same", "than 50", "more than", "impact cost"]):
+                            parsed["corrected_query"] = cont_ctx["expanded_query"]
+
+                    thresh_from_msg = extract_cost_threshold(last_msg)
+                    min_cost_val = parsed.get("min_cost") if parsed.get("min_cost") is not None else (det_info.get("min_cost") or thresh_from_msg.get("min"))
+                    max_cost_val = parsed.get("max_cost") if parsed.get("max_cost") is not None else (det_info.get("max_cost") or thresh_from_msg.get("max"))
+                    min_impact_val = parsed.get("min_impact") if parsed.get("min_impact") is not None else (det_info.get("min_impact") or (thresh_from_msg.get("min") if (parsed.get("intent") == "anomalies" or "impact" in low) else None))
+                    max_impact_val = parsed.get("max_impact") if parsed.get("max_impact") is not None else (det_info.get("max_impact") or (thresh_from_msg.get("max") if (parsed.get("intent") == "anomalies" or "impact" in low) else None))
+
                     return {
                         "intent": parsed.get("intent", det_info["intent"]),
                         "cloud": parsed.get("cloud") or det_info.get("cloud"),
@@ -1163,6 +1183,10 @@ class AIClient:
                         "include_chart": inc_chart,
                         "include_mom": inc_mom,
                         "is_new_data_fetch": bool(parsed.get("is_new_data_fetch", det_info["is_new_data_fetch"])),
+                        "min_cost": min_cost_val,
+                        "max_cost": max_cost_val,
+                        "min_impact": min_impact_val,
+                        "max_impact": max_impact_val,
                         "corrected_query": parsed.get("corrected_query") or cont_ctx.get("expanded_query") or last_msg
                     }
         except Exception as ex:
@@ -2725,7 +2749,8 @@ class AIClient:
                 "anomal", "cost spike", "spend spike", "spike in cost",
                 "spikes", "unusual spend", "abnormal spend", "abnormal cost", "unusual cost",
                 "why is", "why was", "why did", "explain the spike", "explain this spike",
-                "what drove", "what caused", "root cause", "driver of", "drivers of"
+                "what drove", "what caused", "root cause", "driver of", "drivers of",
+                "impact cost", "cost impact", "impact more than", "impact >"
             ]) or (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "anomalies") or (
                 any(p in low for p in ["inactive ones", "the inactive ones", "active ones", "the active ones"])
             ) or intent_info.get("intent") in ("anomalies", "explain_spike")
@@ -2770,6 +2795,20 @@ class AIClient:
                 # Detect requested anomaly status: default to ACTIVE unless user explicitly asks for INACTIVE
                 status_filter = detect_anomaly_status_filter(low)
 
+                # Extract numeric impact thresholds
+                thresh_anomaly = extract_cost_threshold(low)
+                min_impact = intent_info.get("min_impact")
+                if min_impact is None:
+                    min_impact = cont_ctx.get("min_impact")
+                if min_impact is None:
+                    min_impact = thresh_anomaly.get("min")
+
+                max_impact = intent_info.get("max_impact")
+                if max_impact is None:
+                    max_impact = cont_ctx.get("max_impact")
+                if max_impact is None:
+                    max_impact = thresh_anomaly.get("max")
+
                 all_rows_by_cloud = {}
                 clouds_with_fallback = set()
                 fallback_used_month = None
@@ -2787,6 +2826,10 @@ class AIClient:
                         where_clauses.append(f"timeInterval_Month = '{filter_ym}'")
                     if status_filter:
                         where_clauses.append(f"Status = '{status_filter}'")
+                    if min_impact is not None:
+                        where_clauses.append(f"CostImpact >= {min_impact}")
+                    if max_impact is not None:
+                        where_clauses.append(f"CostImpact <= {max_impact}")
                     if requested_service:
                         where_clauses.append(f"({svc_col} = '{requested_service}' OR {svc_col} LIKE '%{requested_service_disp}%')")
 
@@ -2827,6 +2870,10 @@ class AIClient:
                             fb_where = [f"timeInterval_Month = '{fb_month}'"]
                             if status_filter:
                                 fb_where.append(f"Status = '{status_filter}'")
+                            if min_impact is not None:
+                                fb_where.append(f"CostImpact >= {min_impact}")
+                            if max_impact is not None:
+                                fb_where.append(f"CostImpact <= {max_impact}")
                             if requested_service:
                                 fb_where.append(f"({svc_col} = '{requested_service}' OR {svc_col} LIKE '%{requested_service_disp}%')")
                             fb_sql = (
@@ -2862,6 +2909,10 @@ class AIClient:
                             fb2_where = []
                             if status_filter:
                                 fb2_where.append(f"Status = '{status_filter}'")
+                            if min_impact is not None:
+                                fb2_where.append(f"CostImpact >= {min_impact}")
+                            if max_impact is not None:
+                                fb2_where.append(f"CostImpact <= {max_impact}")
                             if requested_service:
                                 fb2_where.append(f"({svc_col} = '{requested_service}' OR {svc_col} LIKE '%{requested_service_disp}%')")
                             fb2_where_sql = f"WHERE {' AND '.join(fb2_where)} " if fb2_where else ""
@@ -2889,6 +2940,11 @@ class AIClient:
                             except Exception as e:
                                 logger.warning(f"[Anomaly Fallback Recent - {ds}] {e}")
 
+                    if min_impact is not None:
+                        c_rows = [r for r in c_rows if float(r.get("cost_impact") or 0) >= min_impact]
+                    if max_impact is not None:
+                        c_rows = [r for r in c_rows if float(r.get("cost_impact") or 0) <= max_impact]
+
                     for r in c_rows:
                         r["cloud"] = c
                         r["badge"] = cfg["badge"]
@@ -2914,11 +2970,12 @@ class AIClient:
                         scope_str = f" for **{current_ym}** (or latest closed cycle **{last_ym}**)"
                     ds_list = ", ".join(f"`{cfg['ds']}`" for cfg in target_configs)
                     status_desc = f"{status_filter.lower()} " if status_filter else ""
-                    tip_msg = "ask 'Show inactive anomalies' or 'Show anomalies from the last 6 months'." if status_filter == "ACTIVE" else "ask 'Show active anomalies' or 'Show anomalies from the last 6 months'."
+                    thresh_clause = f" with Cost Impact > ${min_impact:,.2f}" if min_impact else (f" with Cost Impact < ${max_impact:,.2f}" if max_impact else "")
+                    tip_msg = "ask 'Show inactive anomalies' or 'Show anomalies without cost threshold'." if min_impact else "ask 'Show active anomalies' or 'Show anomalies from the last 6 months'."
                     return (
                         f"{dataset_prefix}"
                         f"### 🛡️ CloudHealth Cost Anomaly Detection ({cloud_label})\n\n"
-                        f"No {status_desc}cost anomalies were detected in {ds_list}{scope_str}.\n\n"
+                        f"No {status_desc}cost anomalies{thresh_clause} were detected in {ds_list}{scope_str}.\n\n"
                         f"- **Evaluated Datasets**: {ds_list}\n"
                         f"- **Time Scope**: Evaluated {filter_ym or 'current period'}\n"
                         f"- **Status**: Cloud spend is tracking within normal baseline variance limits without triggered alerts.\n\n"
@@ -2939,10 +2996,17 @@ class AIClient:
                 # In multi-cloud mode, present top items from each cloud so AWS outliers do not bury GCP/Azure
                 table_rows = []
                 if is_multi:
-                    per_cloud_quota = max(2, min(anomaly_limit, 4))
-                    for cfg in target_configs:
-                        c_rows = all_rows_by_cloud.get(cfg["cloud"], [])
-                        table_rows.extend(c_rows[:per_cloud_quota])
+                    if min_impact is not None or max_impact is not None:
+                        combined = []
+                        for cfg in target_configs:
+                            combined.extend(all_rows_by_cloud.get(cfg["cloud"], []))
+                        combined.sort(key=lambda r: float(r.get("cost_impact") or 0), reverse=True)
+                        table_rows = combined[:max(anomaly_limit, 10)]
+                    else:
+                        per_cloud_quota = max(2, min(anomaly_limit, 4))
+                        for cfg in target_configs:
+                            c_rows = all_rows_by_cloud.get(cfg["cloud"], [])
+                            table_rows.extend(c_rows[:per_cloud_quota])
                 else:
                     cfg = target_configs[0]
                     table_rows = all_rows_by_cloud.get(cfg["cloud"], [])[:anomaly_limit]
@@ -3017,7 +3081,12 @@ class AIClient:
                     for cfg in target_configs:
                         c_rows = all_rows_by_cloud.get(cfg["cloud"], [])
                         c_impact = sum(float(r.get("cost_impact") or 0) for r in c_rows)
-                        summary_parts.append(f"- **{cfg['badge']} {status_title_adj}Anomaly Impact**: **+${c_impact:,.2f}** ({len(c_rows)} anomalies identified)")
+                        count_desc = f"{len(c_rows)} anomalies identified"
+                        if min_impact is not None:
+                            count_desc = f"{len(c_rows)} anomalies > ${min_impact:,.2f}"
+                        elif max_impact is not None:
+                            count_desc = f"{len(c_rows)} anomalies < ${max_impact:,.2f}"
+                        summary_parts.append(f"- **{cfg['badge']} {status_title_adj}Anomaly Impact**: **+${c_impact:,.2f}** ({count_desc})")
                     summary_breakdown = "\n" + "\n".join(summary_parts) + "\n"
 
                 insights_block = ""
@@ -3040,12 +3109,15 @@ class AIClient:
                     else f"- **Active Ongoing Anomalies**: **{active_count}** requiring immediate review\n"
                 )
 
+                thresh_title = f" with Cost Impact > ${min_impact:,.2f}" if min_impact else (f" with Cost Impact < ${max_impact:,.2f}" if max_impact else "")
+                total_anom_label = f" across **{len(table_lines)}** anomalies meeting threshold" if (min_impact is not None or max_impact is not None) else f" across **{len(table_lines)}** anomalies"
+
                 return (
                     f"{dataset_prefix}"
-                    f"### 🚨 CloudHealth Cost Anomaly Detection: Top {len(table_lines)} {status_title_adj}Anomalies {period_label}\n\n"
+                    f"### 🚨 CloudHealth Cost Anomaly Detection: Top {len(table_lines)} {status_title_adj}Anomalies{thresh_title} {period_label}\n\n"
                     f"{period_notice}"
                     f"Queried live anomaly telemetry directly from {evaluated_sources}:\n\n"
-                    f"- **Total Identified Anomaly Impact**: **+${total_impact:,.2f}** across **{len(table_lines)}** anomalies\n"
+                    f"- **Total Identified Anomaly Impact**: **+${total_impact:,.2f}**{total_anom_label}\n"
                     f"{status_summary_line}"
                     f"{summary_breakdown}\n"
                     f"{table_header}"
