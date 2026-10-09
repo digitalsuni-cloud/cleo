@@ -340,10 +340,16 @@ CLOUD_SERVICES_MAP = {
     "elastic block store": ("AmazonEC2_EBS", "Amazon EBS", "aws"),
     "rds": ("AmazonRDS", "RDS", "aws"),
     "amazonrds": ("AmazonRDS", "RDS", "aws"),
+    "relational database service": ("AmazonRDS", "RDS", "aws"),
+    "amazon relational database service": ("AmazonRDS", "RDS", "aws"),
     "ec2": ("AmazonEC2", "EC2", "aws"),
     "amazonec2": ("AmazonEC2", "EC2", "aws"),
+    "elastic compute cloud": ("AmazonEC2", "EC2", "aws"),
+    "amazon elastic compute cloud": ("AmazonEC2", "EC2", "aws"),
     "s3": ("AmazonS3", "S3", "aws"),
     "amazons3": ("AmazonS3", "S3", "aws"),
+    "simple storage service": ("AmazonS3", "S3", "aws"),
+    "amazon simple storage service": ("AmazonS3", "S3", "aws"),
     "lambda": ("AWSLambda", "Lambda", "aws"),
     "awslambda": ("AWSLambda", "Lambda", "aws"),
     "vpc": ("AmazonVPC", "VPC", "aws"),
@@ -583,7 +589,7 @@ def extract_all_requested_services(query_text: str) -> list[ServiceMatch]:
         for m in re.finditer(r'\b' + re.escape(alias) + r'\b', q_low):
             prefix = q_low[:m.start()].strip()
             is_negated = bool(re.search(
-                r'\b(?:not\s+(?:just\s+)?(?:for\s+)?(?:the\s+)?|no\s+|except\s+|excluding\s+|without\s+|other\s+than\s+|stuck\s+at\s+|stuck\s+on\s+|why\s+(?:you\'?re\s+)?(?:still\s+)?(?:stuck\s+at\s+)?)$',
+                r'\b(?:not\s+(?:just\s+)?(?:for\s+)?(?:the\s+)?|no\s+|except\s+|exclude\s+|excluding\s+|without\s+|remove\s+|drop\s+|skip\s+|omit\s+|filter\s+out\s+|other\s+than\s+|stuck\s+at\s+|stuck\s+on\s+|why\s+(?:you\'?re\s+)?(?:still\s+)?(?:stuck\s+at\s+)?)$',
                 prefix
             ))
             if not is_negated and pcode not in seen_pcodes:
@@ -691,10 +697,212 @@ def extract_cost_threshold(query_text: str) -> dict:
     if m_max:
         res["max"] = float(m_max.group(1))
         res["operator"] = "<=" if ("<=" in m_max.group(0) or "at most" in m_max.group(0) or "max" in m_max.group(0)) else "<"
+    # 4. Percentage Thresholds: e.g. 'variance > 100%', 'spike over 50%', 'more than 200%', '50%+'
+    m_pct_min = re.search(
+        r'(?:\b(?:more\s+than|greater\s+than|above|over|exceeding|higher\s+than|at\s+least|min(?:imum)?)\b|>=|>)\s*([0-9]+(?:\.[0-9]+)?)\s*%',
+        low
+    )
+    if m_pct_min:
+        res["min_pct"] = float(m_pct_min.group(1))
+    else:
+        m_pct_suff = re.search(r'([0-9]+(?:\.[0-9]+)?)\s*%\s*(?:\+|(?:or\s+more|or\s+higher|and\s+above)\b)', low)
+        if m_pct_suff:
+            res["min_pct"] = float(m_pct_suff.group(1))
+
+    m_pct_max = re.search(
+        r'(?:\b(?:less\s+than|under|below|smaller\s+than|at\s+most|max(?:imum)?|lower\s+than)\b|<=|<)\s*([0-9]+(?:\.[0-9]+)?)\s*%',
+        low
+    )
+    if m_pct_max:
+        res["max_pct"] = float(m_pct_max.group(1))
 
     return res
 
-def parse_query_time_context(query: str) -> dict:
+def extract_negative_exclusions(query_text: str) -> dict:
+    """
+    Extracts named entities explicitly requested to be excluded, removed, or filtered out, e.g.:
+    'exclude ec2', 'without pinpoint', 'remove NetApp', 'except aws', 'skip rds', 'filter out other'.
+    Returns dict: {'services': list[str], 'clouds': list[str], 'raw_terms': list[str], 'has_exclusion': bool}
+    """
+    if not query_text:
+        return {"services": [], "clouds": [], "raw_terms": [], "has_exclusion": False}
+    low = query_text.lower()
+    res = {"services": [], "clouds": [], "raw_terms": [], "has_exclusion": False}
+
+    matches = re.findall(
+        r'\b(?:exclude|excluding|without|except|remove|filter\s+out|drop|omit|skip)\s+([a-zA-Z0-9_\-\s]+?)(?:\s+from|\s+in|\s+and|\s*$|[,\.;])',
+        low
+    )
+    for m in matches:
+        candidate = m.strip().strip('"').strip("'")
+        if not candidate or candidate in ("chart", "mom", "variance", "it", "this", "that"):
+            continue
+        res["has_exclusion"] = True
+        res["raw_terms"].append(candidate)
+        if candidate in ("aws", "amazon"):
+            res["clouds"].append("aws")
+        elif candidate in ("azure", "microsoft"):
+            res["clouds"].append("azure")
+        elif candidate in ("gcp", "google", "google cloud"):
+            res["clouds"].append("gcp")
+        else:
+            matched_svc, _ = extract_requested_service(candidate)
+            if matched_svc:
+                res["services"].append(matched_svc)
+            else:
+                res["services"].append(candidate)
+
+    return res
+
+def resolve_ordinal_reference_from_history(messages: list[dict], query_text: str) -> Optional[dict]:
+    """
+    Resolves ordinal table references ('#1', 'item 1', 'row 1', 'the first one', 'top one',
+    '#2', 'second one', 'item 3', etc.) against the most recent assistant markdown table.
+    Returns parsed dict of that row's fields (e.g. {'service': '...', 'cloud': '...', 'region': '...', ...})
+    or None if no match.
+    """
+    if isinstance(messages, str) and isinstance(query_text, list):
+        messages, query_text = query_text, messages
+    if not messages or not query_text:
+        return None
+    low = query_text.lower()
+
+    target_idx = None
+    m_num = re.search(r'(?:item|row|entry|anomaly|service|number|#)\s*#?\s*(\d{1,2})\b', low)
+    if m_num:
+        target_idx = int(m_num.group(1))
+    elif any(w in low for w in ["the first one", "first one", "top one", "first anomaly", "number one", "#1"]):
+        target_idx = 1
+    elif any(w in low for w in ["the second one", "second one", "second anomaly", "number two", "#2"]):
+        target_idx = 2
+    elif any(w in low for w in ["the third one", "third one", "third anomaly", "number three", "#3"]):
+        target_idx = 3
+    elif any(w in low for w in ["the fourth one", "fourth one", "fourth anomaly", "#4"]):
+        target_idx = 4
+    elif any(w in low for w in ["the fifth one", "fifth one", "fifth anomaly", "#5"]):
+        target_idx = 5
+
+    if not target_idx or target_idx < 1:
+        return None
+
+    for m in reversed(messages):
+        if m.get("role") != "assistant":
+            continue
+        content = m.get("content", "")
+        if "|" not in content:
+            continue
+
+        lines = [line.strip() for line in content.split("\n") if line.strip().startswith("|") and line.strip().endswith("|")]
+        if len(lines) < 3:
+            continue
+
+        header_line = lines[0]
+        data_lines = [l for l in lines[1:] if not re.match(r'^\|[\s:\-]+(?:\|[\s:\-]+)+\|$', l)]
+        if not data_lines:
+            continue
+
+        headers = [h.strip().lower() for h in header_line.split("|")[1:-1]]
+
+        chosen_line = None
+        for dl in data_lines:
+            cells = [c.strip() for c in dl.split("|")[1:-1]]
+            if not cells:
+                continue
+            first_cell = re.sub(r'[^0-9]', '', cells[0])
+            if first_cell and int(first_cell) == target_idx:
+                chosen_line = cells
+                break
+
+        if not chosen_line and target_idx <= len(data_lines):
+            chosen_line = [c.strip() for c in data_lines[target_idx - 1].split("|")[1:-1]]
+
+        if chosen_line:
+            row_dict = {"ordinal_index": target_idx}
+            for idx, h in enumerate(headers):
+                if idx < len(chosen_line):
+                    clean_val = chosen_line[idx].replace("**", "").replace("`", "").strip()
+                    row_dict[h] = clean_val
+                    if any(k in h for k in ["service", "asset"]):
+                        row_dict["service"] = clean_val.split("(")[0].strip()
+                    elif "cloud" in h:
+                        row_dict["cloud"] = "aws" if "aws" in clean_val.lower() else ("azure" if "azure" in clean_val.lower() else ("gcp" if "gcp" in clean_val.lower() else clean_val))
+                    elif any(k in h for k in ["region", "location"]):
+                        row_dict["region"] = clean_val
+                    elif any(k in h for k in ["account", "sub", "project"]):
+                        row_dict["account"] = clean_val
+                    elif any(k in h for k in ["cost impact", "impact"]):
+                        m_val = re.search(r'[\$]?([0-9]+(?:\.[0-9]+)?)', clean_val)
+                        if m_val: row_dict["cost_impact"] = float(m_val.group(1))
+                    elif "variance" in h or "%" in h:
+                        m_pct = re.search(r'([0-9]+(?:\.[0-9]+)?)\s*%', clean_val)
+                        if m_pct: row_dict["variance_pct"] = float(m_pct.group(1))
+            return row_dict
+
+    return None
+
+def extract_sort_refinement(query_text: str) -> Optional[dict]:
+    """
+    Extracts sorting preferences from conversational query, e.g.:
+    'sort by variance', 'lowest first', 'sort ascending', 'highest cost first', 'longest duration'.
+    Returns dict: {'field': 'variance'|'cost'|'duration'|'service'|'cloud'|'date', 'direction': 'asc'|'desc'}
+    or None.
+    """
+    if not query_text:
+        return None
+    low = query_text.lower()
+
+    is_asc = any(w in low for w in ["lowest first", "least first", "cheapest first", "smallest first", "shortest first", "ascending", "asc", "bottom first", "shortest"])
+    is_desc = any(w in low for w in ["highest first", "most first", "largest first", "biggest first", "longest first", "descending", "desc", "top first", "longest"])
+
+    m_sort = re.search(r'\b(?:sort|order)(?:\s+by)?\s+([a-z\s_%]+)', low)
+    has_sort_keyword = bool(m_sort) or is_asc or is_desc or any(w in low for w in ["sort", "re-sort", "order by", "ranked by", "rank by", "longest", "shortest", "highest", "lowest"])
+
+    if not has_sort_keyword:
+        return None
+
+    sort_text = m_sort.group(1).strip() if m_sort else low
+
+    field = "cost"
+    if any(w in sort_text for w in ["variance", "pct", "percent", "percentage", "%", "spike"]):
+        field = "variance"
+    elif any(w in sort_text for w in ["cost", "spend", "dollar", "impact", "amount", "value"]):
+        field = "cost"
+    elif any(w in sort_text for w in ["duration", "days", "length", "time"]):
+        field = "duration"
+    elif any(w in sort_text for w in ["service", "name", "asset"]):
+        field = "service"
+    elif any(w in sort_text for w in ["cloud", "provider"]):
+        field = "cloud"
+    elif any(w in sort_text for w in ["date", "day"]):
+        field = "date"
+
+    direction = "asc" if is_asc else ("desc" if is_desc else ("asc" if any(w in sort_text for w in ["asc", "ascending"]) else "desc"))
+    return {"field": field, "direction": direction}
+
+def extract_limit_adjustment(query_text: str) -> Optional[int]:
+    """
+    Extracts explicit limit adjustments from conversational turns, e.g.:
+    'show top 10 instead', 'expand to 20', 'make it 15', 'top 20', 'show 5 instead',
+    'increase limit to 25', 'give me 20'.
+    Returns int limit, or None.
+    """
+    if not query_text:
+        return None
+    low = query_text.lower()
+
+    m = re.search(
+        r'\b(?:(?:show|display|expand|increase|make\s+it|give\s+me)\s+(?:to\s+)?(?:top\s+)?(\d{1,3})|top\s+(\d{1,3})\s+(?:instead|results?|rows?|entries|items)?|(\d{1,3})\s+instead|limit\s+(?:to\s+)?(\d{1,3}))\b',
+        low
+    )
+    if m:
+        for g in m.groups():
+            if g and g.isdigit():
+                val = int(g)
+                if 1 <= val <= 100:
+                    return val
+    return None
+
+def parse_query_time_context(query: str, context_ym: str = None) -> dict:
     """
     Extracts time context, target month, limit, and sort direction from user prompt.
     Handles explicit months (e.g. 'July 2026', '2026-07', 'June'), relative terms
@@ -832,11 +1040,26 @@ def parse_query_time_context(query: str) -> dict:
             target_ym = current_ym
             target_label = f"MTD ({FULL_NAMES[now.month]} {now.year})"
             is_specific = True
-        elif any(w in low for w in ["last month", "previous month"]):
-            target_ym = last_ym
-            prev_m = (now.month - 1) if now.month > 1 else 12
-            prev_yr = now.year if now.month > 1 else (now.year - 1)
-            target_label = f"Last Month ({FULL_NAMES[prev_m]} {prev_yr})"
+        elif any(w in low for w in [
+            "last month", "previous month", "prior month", "the month before",
+            "the month before that", "month prior"
+        ]):
+            if context_ym and re.match(r'^\d{4}-(?:0[1-9]|1[0-2])$', context_ym):
+                c_yr, c_mo = int(context_ym.split("-")[0]), int(context_ym.split("-")[1])
+                prev_m = (c_mo - 1) if c_mo > 1 else 12
+                prev_yr = c_yr if c_mo > 1 else (c_yr - 1)
+                target_ym = f"{prev_yr}-{prev_m:02d}"
+                target_label = f"Previous Month ({FULL_NAMES[prev_m]} {prev_yr})"
+            else:
+                target_ym = last_ym
+                prev_m = (now.month - 1) if now.month > 1 else 12
+                prev_yr = now.year if now.month > 1 else (now.year - 1)
+                target_label = f"Last Month ({FULL_NAMES[prev_m]} {prev_yr})"
+            is_specific = True
+        elif any(w in low for w in ["that month", "same month"]) and context_ym and re.match(r'^\d{4}-(?:0[1-9]|1[0-2])$', context_ym):
+            target_ym = context_ym
+            c_yr, c_mo = int(context_ym.split("-")[0]), int(context_ym.split("-")[1])
+            target_label = f"{FULL_NAMES[c_mo]} {c_yr}"
             is_specific = True
 
     # Default fallback if no month specified
@@ -948,24 +1171,44 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
 
     words = low.split()
     is_short_pivot = False
-    if len(words) <= 6:
+    new_svc_cand, new_svc_disp_cand = extract_requested_service(last_msg)
+    has_region_code = bool(re.search(r'\b(?:us|eu|ap|sa|ca|me|af)-[a-z]+-\d+\b|\b(?:eastus|westus|centralus|northeurope|westeurope|eastasia|southeastasia)\b', low))
+    if len(words) <= 7:
         has_cloud_or_svc = (
-            any(c in low for c in ["azure", "aws", "gcp", "google cloud"]) or
-            any(s in low for s in ["ec2", "rds", "s3", "lambda", "dynamo", "bedrock"])
+            any(c in low for c in ["azure", "aws", "gcp", "google cloud", "google", "amazon", "microsoft"]) or
+            bool(new_svc_cand) or
+            has_region_code
         )
         has_status_pivot = any(p in low for p in ["inactive", "the inactive ones", "inactive ones", "active ones", "active"])
         if (has_cloud_or_svc or has_status_pivot) and (
             any(p in low for p in ["what about", "how about", "and for", "now for", "for ", "instead", "too", "also", "as well", "simillar", "similar", "same", "show "]) or
-            len(words) <= 4
+            len(words) <= 5
         ):
             is_short_pivot = True
 
     thresh = extract_cost_threshold(low)
-    has_threshold_refinement = bool(thresh) and (
-        any(w in low for w in ["impact", "cost", "spend", "variance", "more", "less", "over", "under", "above", "below", "show", "filter", "only", "where", "with", "than", "$", "dollar"])
+    has_threshold_refinement = bool(thresh.get("min") is not None or thresh.get("max") is not None or thresh.get("min_pct") is not None or thresh.get("max_pct") is not None) and (
+        any(w in low for w in ["impact", "cost", "spend", "variance", "more", "less", "over", "under", "above", "below", "show", "filter", "only", "where", "with", "than", "$", "dollar", "%", "percent", "spike"])
     )
 
-    if not (has_similar_term or is_short_pivot or has_threshold_refinement):
+    lim_adj = extract_limit_adjustment(low)
+    has_limit_refinement = lim_adj is not None
+
+    sort_ref = extract_sort_refinement(low)
+    has_sort_refinement = sort_ref is not None
+
+    exclusions = extract_negative_exclusions(low)
+    has_exclusion_refinement = exclusions.get("has_exclusion", False)
+
+    ordinal_entity = resolve_ordinal_reference_from_history(messages, low)
+    has_ordinal_refinement = ordinal_entity is not None
+
+    has_relative_date_refinement = any(w in low for w in [
+        "previous month", "last month", "the month before", "the month before that",
+        "prior month", "that month", "same month"
+    ])
+
+    if not (has_similar_term or is_short_pivot or has_threshold_refinement or has_limit_refinement or has_sort_refinement or has_exclusion_refinement or has_ordinal_refinement or has_relative_date_refinement):
         return {"is_continuation": False}
 
     prior_user_msgs = [m.get("content", "") for m in messages[:-1] if m.get("role") == "user"]
@@ -983,6 +1226,16 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
     # Detect newly requested entity in current prompt
     new_cloud = extract_requested_cloud(last_msg)
     new_svc, new_svc_disp = extract_requested_service(last_msg)
+    if ordinal_entity:
+        if ordinal_entity.get("service") and not new_svc:
+            new_svc = ordinal_entity.get("service")
+            new_svc_disp = ordinal_entity.get("service")
+        if ordinal_entity.get("cloud") and not new_cloud:
+            new_cloud = ordinal_entity.get("cloud")
+
+    m_reg = re.search(r'\b(?:us|eu|ap|sa|ca|me|af)-[a-z]+-\d+\b|\b(?:eastus|westus|centralus|northeurope|westeurope|eastasia|southeastasia)\b', low)
+    new_region = m_reg.group(0) if m_reg else None
+
     new_customer = None
     if cust_map:
         for cname in cust_map.keys():
@@ -1012,6 +1265,15 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
     inherited_period_title = None
     inherited_timeframe_months = None
     inherited_target_ym = None
+    for prev_u in reversed(prior_user_msgs):
+        u_tctx = parse_query_time_context(prev_u)
+        if u_tctx.get("target_ym") and u_tctx.get("is_specific"):
+            inherited_target_ym = u_tctx.get("target_ym")
+            break
+    if not inherited_target_ym and last_asst:
+        m_asst_ym = re.search(r'\b(202[0-9])-(0[1-9]|1[0-2])\b', last_asst)
+        if m_asst_ym:
+            inherited_target_ym = m_asst_ym.group(0)
 
     # Check for Forecast:
     is_prior_forecast = (
@@ -1113,7 +1375,11 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         "top azure services" in last_asst_head or
         "top gcp services" in last_asst_head or
         "top services by spend" in last_asst_head or
-        "top services" in last_user_low
+        "top services" in last_user_low or
+        "top spend" in last_user_low or
+        ("top spend" in last_asst_head and "multi-service" not in last_asst_head) or
+        ("spend analysis" in last_asst_head and "multi-service" not in last_asst_head) or
+        ("top spend" in last_asst_body and "multi-service" not in last_asst_head)
     ):
         prior_type = "top_services"
 
@@ -1148,6 +1414,12 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
             if m_d:
                 inherited_timeframe_days = int(m_d.group(1))
 
+    if not prior_type and ordinal_entity:
+        if any(w in (last_asst_head + " " + last_asst_body) for w in ["anomal", "cost impact", "variance"]):
+            prior_type = "anomalies"
+        else:
+            prior_type = "top_services"
+
     if not prior_type:
         return {"is_continuation": False}
 
@@ -1165,7 +1437,13 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
             thresh_phrase = f" with cost impact > ${thresh['min']:,.2f}"
         elif thresh.get("max") is not None:
             thresh_phrase = f" with cost impact < ${thresh['max']:,.2f}"
-        expanded_query = f"show top {status_word}cost anomalies detected for {prov_disp}{thresh_phrase}".strip()
+        elif thresh.get("min_pct") is not None:
+            thresh_phrase = f" with variance > {thresh['min_pct']:.0f}%"
+        if ordinal_entity and any(w in low for w in ["why", "spike", "drill", "explain", "detail"]):
+            reg_phrase = f" in {ordinal_entity.get('region')}" if ordinal_entity.get('region') else ""
+            expanded_query = f"explain why {new_svc_disp or 'item'} had a cost anomaly{reg_phrase}"
+        else:
+            expanded_query = f"show top {status_word}cost anomalies detected for {prov_disp}{thresh_phrase}".strip()
     elif prior_type == "region_breakdown":
         expanded_query = f"show {prov_disp} spend breakdown by region"
     elif prior_type == "service_breakdown":
@@ -1192,14 +1470,21 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         "inherited_target_ym": inherited_target_ym,
         "inherited_is_ytd": inherited_is_ytd if 'inherited_is_ytd' in locals() else False,
         "inherited_is_qtd": inherited_is_qtd if 'inherited_is_qtd' in locals() else False,
+        "inherited_limit": lim_adj,
+        "sort_refinement": sort_ref,
+        "exclusions": exclusions,
+        "ordinal_entity": ordinal_entity,
         "new_cloud": new_cloud,
         "new_service": new_svc,
         "new_service_disp": new_svc_disp,
+        "new_region": new_region,
         "new_customer": new_customer,
         "min_cost": thresh.get("min"),
         "max_cost": thresh.get("max"),
         "min_impact": thresh.get("min") if (prior_type == "anomalies" or "impact" in low) else None,
         "max_impact": thresh.get("max") if (prior_type == "anomalies" or "impact" in low) else None,
+        "min_pct": thresh.get("min_pct"),
+        "max_pct": thresh.get("max_pct"),
         "operator": thresh.get("operator"),
         "expanded_query": expanded_query
     }
@@ -1238,9 +1523,18 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     if is_ahb and not cloud:
         cloud = "azure"
 
+    exclusions = cont_ctx.get("exclusions") or extract_negative_exclusions(last_msg)
+    ex_svcs = set(exclusions.get("services", []))
+    ex_terms = [t.lower() for t in exclusions.get("raw_terms", [])]
+
     # Service detection
-    all_svcs = extract_all_requested_services(last_msg)
+    all_svcs = [
+        s for s in extract_all_requested_services(last_msg)
+        if getattr(s, "pcode", s[0]) not in ex_svcs and not any(t in getattr(s, "pcode", s[0]).lower() or t in getattr(s, "display_name", s[1]).lower() for t in ex_terms)
+    ]
     service = cont_ctx.get("new_service")
+    if service and (service in ex_svcs or any(t in service.lower() for t in ex_terms)):
+        service = None
     if not service and is_ahb:
         service = "Virtual Machines"
     if not service:
@@ -1251,36 +1545,36 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
 
     if not service:
         if cloud == "azure":
-            if any(w in low for w in ["vm", "vms", "virtual machine"]): service = "Virtual Machines"
-            elif any(w in low for w in ["blob", "storage account", "storage"]): service = "Blob Storage"
-            elif any(w in low for w in ["disk", "disks", "managed disk"]): service = "Managed Disks"
-            elif any(w in low for w in ["sql", "database"]): service = "Azure SQL Database"
+            if any(w in low for w in ["vm", "vms", "virtual machine"]) and "Virtual Machines" not in ex_svcs: service = "Virtual Machines"
+            elif any(w in low for w in ["blob", "storage account", "storage"]) and "Blob Storage" not in ex_svcs: service = "Blob Storage"
+            elif any(w in low for w in ["disk", "disks", "managed disk"]) and "Managed Disks" not in ex_svcs: service = "Managed Disks"
+            elif any(w in low for w in ["sql", "database"]) and "Azure SQL Database" not in ex_svcs: service = "Azure SQL Database"
             else: service = None
         elif cloud == "gcp":
-            if any(w in low for w in ["compute", "gce", "instance"]): service = "Compute Engine"
-            elif any(w in low for w in ["storage", "gcs", "bucket"]): service = "Cloud Storage"
-            elif any(w in low for w in ["disk", "persistent disk"]): service = "Persistent Disk"
-            elif any(w in low for w in ["bigquery", "query"]): service = "BigQuery"
-            elif any(w in low for w in ["sql", "database"]): service = "Cloud SQL"
+            if any(w in low for w in ["compute", "gce", "instance"]) and "Compute Engine" not in ex_svcs: service = "Compute Engine"
+            elif any(w in low for w in ["storage", "gcs", "bucket"]) and "Cloud Storage" not in ex_svcs: service = "Cloud Storage"
+            elif any(w in low for w in ["disk", "persistent disk"]) and "Persistent Disk" not in ex_svcs: service = "Persistent Disk"
+            elif any(w in low for w in ["bigquery", "query"]) and "BigQuery" not in ex_svcs: service = "BigQuery"
+            elif any(w in low for w in ["sql", "database"]) and "Cloud SQL" not in ex_svcs: service = "Cloud SQL"
             else: service = None
         else:
-            if any(w in low for w in ["rds", "aurora", "relational database"]) or ("database" in low and not any(w in low for w in ["ec2", "s3", "dynamo"])):
+            if (any(w in low for w in ["rds", "aurora", "relational database"]) or ("database" in low and not any(w in low for w in ["ec2", "s3", "dynamo"]))) and "AmazonRDS" not in ex_svcs and not any(t in "amazonrds" for t in ex_terms):
                 service = "AmazonRDS"
-            elif any(w in low for w in ["ec2", "compute instance", "virtual machine"]) or ("instance type" in low and "rds" not in low and "database" not in low):
+            elif (any(w in low for w in ["ec2", "compute instance", "virtual machine"]) or ("instance type" in low and "rds" not in low and "database" not in low)) and "AmazonEC2" not in ex_svcs and not any(t in "amazonec2" for t in ex_terms):
                 service = "AmazonEC2"
-            elif any(w in low for w in ["s3", "bucket", "object storage"]):
+            elif any(w in low for w in ["s3", "bucket", "object storage"]) and "AmazonS3" not in ex_svcs:
                 service = "AmazonS3"
-            elif any(w in low for w in ["ebs", "ebs volume", "block storage", "gp2", "gp3"]):
+            elif any(w in low for w in ["ebs", "ebs volume", "block storage", "gp2", "gp3"]) and "AmazonEC2_EBS" not in ex_svcs:
                 service = "AmazonEC2_EBS"
-            elif any(w in low for w in ["lambda", "serverless"]):
+            elif any(w in low for w in ["lambda", "serverless"]) and "AWSLambda" not in ex_svcs:
                 service = "AWSLambda"
-            elif any(w in low for w in ["dynamo", "dynamodb", "nosql"]):
+            elif any(w in low for w in ["dynamo", "dynamodb", "nosql"]) and "AmazonDynamoDB" not in ex_svcs:
                 service = "AmazonDynamoDB"
-            elif any(w in low for w in ["bedrock", "claude 3", "titan"]):
+            elif any(w in low for w in ["bedrock", "claude 3", "titan"]) and "AmazonBedrock" not in ex_svcs:
                 service = "AmazonBedrock"
-            elif any(w in low for w in ["cloudfront", "cdn"]):
+            elif any(w in low for w in ["cloudfront", "cdn"]) and "AmazonCloudFront" not in ex_svcs:
                 service = "AmazonCloudFront"
-            elif any(w in low for w in ["vpc", "nat gateway"]):
+            elif any(w in low for w in ["vpc", "nat gateway"]) and "AmazonVPC" not in ex_svcs:
                 service = "AmazonVPC"
             elif not cloud and any(w in low for w in ["azure", "aks"]):
                 service = None
@@ -1288,6 +1582,9 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
             elif not cloud and any(w in low for w in ["gcp", "google cloud"]):
                 service = None
                 cloud = "gcp"
+
+    if service and (service in ex_svcs or any(t in service.lower() for t in ex_terms)):
+        service = None
 
     # Timeframe detection
     is_mtd = bool(re.search(r'\b(?:mtd|month\s*to\s*date|this\s*month|current\s*month)\b', low))
@@ -1435,7 +1732,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     ]) and not (customer or has_fetch_verb or any(w in low for w in ["our spend", "my spend", "our cost", "my cost", "show me our", "show me my", "simulate roi for our", "simulate roi for my"]))
 
     # Date parsing
-    t_ctx = parse_query_time_context(last_msg)
+    t_ctx = parse_query_time_context(last_msg, context_ym=cont_ctx.get("inherited_target_ym"))
     target_ym = t_ctx.get("target_ym") if t_ctx.get("is_specific") else None
 
     # Math calculation or general non-finops question
@@ -1677,6 +1974,12 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "max_cost": det_max_cost,
         "min_impact": det_min_impact,
         "max_impact": det_max_impact,
+        "min_pct": thresh_det.get("min_pct") or cont_ctx.get("min_pct"),
+        "max_pct": thresh_det.get("max_pct") or cont_ctx.get("max_pct"),
+        "exclusions": cont_ctx.get("exclusions") or extract_negative_exclusions(last_msg),
+        "ordinal_entity": cont_ctx.get("ordinal_entity"),
+        "sort_refinement": cont_ctx.get("sort_refinement"),
+        "limit": cont_ctx.get("inherited_limit"),
         "anomaly_status": detect_anomaly_status_filter(last_msg) if is_anomaly else None,
         "corrected_query": cont_ctx.get("expanded_query") or last_msg
     }
