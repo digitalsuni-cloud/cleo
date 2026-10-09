@@ -726,6 +726,10 @@ from cleo_query import (
     parse_query_time_context,
     detect_anomaly_status_filter,
     extract_cost_threshold,
+    extract_negative_exclusions,
+    resolve_ordinal_reference_from_history,
+    extract_sort_refinement,
+    extract_limit_adjustment,
     _detect_contextual_continuation,
     _deterministic_understand_query,
 )
@@ -980,6 +984,9 @@ class AIClient:
             '  "max_cost": number or null,\n'
             '  "min_impact": number or null,\n'
             '  "max_impact": number or null,\n'
+            '  "min_pct": number or null,\n'
+            '  "max_pct": number or null,\n'
+            '  "limit": integer or null,\n'
             '  "breakdowns": ["instance_type", "engine_type", "storage_class", "volume_type", "service_subcategory", "service_category", "pricing_category", "lease_type", "account", "billing_account", "region", "location", "service", "customer", "resource", "model", "model_provider", "modality", "execution_type", "token_type", "hardware_type", "hardware_family", "commitment_plan", "country"],\n'
             '  "chart_types": ["bar", "horizontal-bar", "pie", "donut", "line"],\n'
             '  "include_chart": boolean,\n'
@@ -1187,6 +1194,12 @@ class AIClient:
                         "max_cost": max_cost_val,
                         "min_impact": min_impact_val,
                         "max_impact": max_impact_val,
+                        "min_pct": parsed.get("min_pct") if parsed.get("min_pct") is not None else (det_info.get("min_pct") or thresh_from_msg.get("min_pct")),
+                        "max_pct": parsed.get("max_pct") if parsed.get("max_pct") is not None else (det_info.get("max_pct") or thresh_from_msg.get("max_pct")),
+                        "exclusions": det_info.get("exclusions") or extract_negative_exclusions(last_msg),
+                        "ordinal_entity": det_info.get("ordinal_entity"),
+                        "sort_refinement": det_info.get("sort_refinement") or extract_sort_refinement(last_msg),
+                        "limit": parsed.get("limit") or det_info.get("limit") or extract_limit_adjustment(last_msg),
                         "corrected_query": parsed.get("corrected_query") or cont_ctx.get("expanded_query") or last_msg
                     }
         except Exception as ex:
@@ -2313,6 +2326,14 @@ class AIClient:
                 requested_service = intent_info["service"]
                 requested_service_disp = PCODE_TO_DISPLAY.get(requested_service, requested_service)
 
+            svc_exclusions = intent_info.get("exclusions") or cont_ctx.get("exclusions") or extract_negative_exclusions(low)
+            if requested_service and (
+                requested_service in svc_exclusions.get("services", [])
+                or any(t in str(requested_service).lower() or t in str(requested_service_disp).lower() for t in svc_exclusions.get("raw_terms", []))
+            ):
+                requested_service = None
+                requested_service_disp = None
+
             # Only reset requested_service if explicitly asking for all services or negating, AND no specific service was named
             is_explicit_all_svcs = any(w in low for w in [
                 "all service", "all the service", "all the services", "all services",
@@ -2331,7 +2352,7 @@ class AIClient:
             elif not requested_service and is_followup:
                 for u_msg in reversed(prior_user_msgs):
                     pcode, disp = extract_requested_service(u_msg)
-                    if pcode:
+                    if pcode and pcode not in svc_exclusions.get("services", []) and not any(t in str(pcode).lower() or t in str(disp).lower() for t in svc_exclusions.get("raw_terms", [])):
                         requested_service, requested_service_disp = pcode, disp
                         break
 
@@ -2755,6 +2776,15 @@ class AIClient:
                 any(p in low for p in ["inactive ones", "the inactive ones", "active ones", "the active ones"])
             ) or intent_info.get("intent") in ("anomalies", "explain_spike")
             if is_anomaly_query:
+                # 0. Ordinal Row Resolution (e.g. 'why did #1 spike?', 'drill into the second anomaly')
+                ordinal_ref = intent_info.get("ordinal_entity") or cont_ctx.get("ordinal_entity") or resolve_ordinal_reference_from_history(messages, low)
+                if ordinal_ref:
+                    if ordinal_ref.get("service") and not requested_service:
+                        requested_service = ordinal_ref.get("service")
+                        requested_service_disp = requested_service
+                    if ordinal_ref.get("cloud"):
+                        active_cloud = ordinal_ref.get("cloud")
+
                 is_multi = (active_cloud == "all") or any(w in low for w in [
                     "all cloud", "all clouds", "across all clouds", "multi-cloud", "multicloud", "cross-cloud", "every cloud"
                 ])
@@ -2784,10 +2814,17 @@ class AIClient:
                     ]
                     cloud_label = "AWS"
 
-                # Parse requested limit (e.g. "top 3 anomalies" -> 3)
+                # Negative Exclusions (e.g. 'without AWS', 'exclude EC2')
+                exclusions = intent_info.get("exclusions") or cont_ctx.get("exclusions") or extract_negative_exclusions(low)
+                ex_clouds = [c.lower() for c in exclusions.get("clouds", [])]
+                if ex_clouds:
+                    target_configs = [cfg for cfg in target_configs if cfg["cloud"].lower() not in ex_clouds]
+
+                # Parse requested limit (e.g. "top 3 anomalies" -> 3, "expand to 20")
+                lim_adj = intent_info.get("limit") or cont_ctx.get("inherited_limit") or extract_limit_adjustment(low)
                 m_lim = re.search(r'(?:top|limit)\s*(\d{1,2})', low)
-                anomaly_limit = int(m_lim.group(1)) if m_lim else (limit if limit != 10 else 5)
-                anomaly_limit = max(1, min(anomaly_limit, 20))
+                anomaly_limit = lim_adj if lim_adj else (int(m_lim.group(1)) if m_lim else (limit if limit != 10 else 5))
+                anomaly_limit = max(1, min(anomaly_limit, 50))
 
                 # Month filter
                 filter_ym = target_ym if is_specific or any(w in low for w in ["this month", "current month", "month", "september", "august", "july", "2026"]) else current_ym
@@ -2795,7 +2832,7 @@ class AIClient:
                 # Detect requested anomaly status: default to ACTIVE unless user explicitly asks for INACTIVE
                 status_filter = detect_anomaly_status_filter(low)
 
-                # Extract numeric impact thresholds
+                # Extract numeric impact thresholds & variance percentage thresholds
                 thresh_anomaly = extract_cost_threshold(low)
                 min_impact = intent_info.get("min_impact")
                 if min_impact is None:
@@ -2808,6 +2845,9 @@ class AIClient:
                     max_impact = cont_ctx.get("max_impact")
                 if max_impact is None:
                     max_impact = thresh_anomaly.get("max")
+
+                min_pct = intent_info.get("min_pct") or cont_ctx.get("min_pct") or thresh_anomaly.get("min_pct")
+                max_pct = intent_info.get("max_pct") or cont_ctx.get("max_pct") or thresh_anomaly.get("max_pct")
 
                 all_rows_by_cloud = {}
                 clouds_with_fallback = set()
@@ -2830,6 +2870,10 @@ class AIClient:
                         where_clauses.append(f"CostImpact >= {min_impact}")
                     if max_impact is not None:
                         where_clauses.append(f"CostImpact <= {max_impact}")
+                    if min_pct is not None:
+                        where_clauses.append(f"CostImpactPercentage >= {min_pct}")
+                    if max_pct is not None:
+                        where_clauses.append(f"CostImpactPercentage <= {max_pct}")
                     if requested_service:
                         where_clauses.append(f"({svc_col} = '{requested_service}' OR {svc_col} LIKE '%{requested_service_disp}%')")
 
@@ -2874,6 +2918,10 @@ class AIClient:
                                 fb_where.append(f"CostImpact >= {min_impact}")
                             if max_impact is not None:
                                 fb_where.append(f"CostImpact <= {max_impact}")
+                            if min_pct is not None:
+                                fb_where.append(f"CostImpactPercentage >= {min_pct}")
+                            if max_pct is not None:
+                                fb_where.append(f"CostImpactPercentage <= {max_pct}")
                             if requested_service:
                                 fb_where.append(f"({svc_col} = '{requested_service}' OR {svc_col} LIKE '%{requested_service_disp}%')")
                             fb_sql = (
@@ -2913,6 +2961,10 @@ class AIClient:
                                 fb2_where.append(f"CostImpact >= {min_impact}")
                             if max_impact is not None:
                                 fb2_where.append(f"CostImpact <= {max_impact}")
+                            if min_pct is not None:
+                                fb2_where.append(f"CostImpactPercentage >= {min_pct}")
+                            if max_pct is not None:
+                                fb2_where.append(f"CostImpactPercentage <= {max_pct}")
                             if requested_service:
                                 fb2_where.append(f"({svc_col} = '{requested_service}' OR {svc_col} LIKE '%{requested_service_disp}%')")
                             fb2_where_sql = f"WHERE {' AND '.join(fb2_where)} " if fb2_where else ""
@@ -2944,6 +2996,13 @@ class AIClient:
                         c_rows = [r for r in c_rows if float(r.get("cost_impact") or 0) >= min_impact]
                     if max_impact is not None:
                         c_rows = [r for r in c_rows if float(r.get("cost_impact") or 0) <= max_impact]
+                    if min_pct is not None:
+                        c_rows = [r for r in c_rows if float(r.get("impact_pct") or 0) >= min_pct]
+                    if max_pct is not None:
+                        c_rows = [r for r in c_rows if float(r.get("impact_pct") or 0) <= max_pct]
+                    ex_svcs = [s.lower() for s in exclusions.get("services", []) + exclusions.get("raw_terms", [])]
+                    if ex_svcs:
+                        c_rows = [r for r in c_rows if not any(es in (r.get("service") or "").lower() for es in ex_svcs)]
 
                     for r in c_rows:
                         r["cloud"] = c
@@ -3010,6 +3069,22 @@ class AIClient:
                 else:
                     cfg = target_configs[0]
                     table_rows = all_rows_by_cloud.get(cfg["cloud"], [])[:anomaly_limit]
+
+                # In-Table Sorting Refinement (e.g. 'sort by variance', 'lowest first', 'longest duration')
+                sort_ref = intent_info.get("sort_refinement") or cont_ctx.get("sort_refinement") or extract_sort_refinement(low)
+                if sort_ref:
+                    sort_field = sort_ref.get("field", "cost")
+                    rev = sort_ref.get("direction", "desc") == "desc"
+                    if sort_field == "variance":
+                        table_rows.sort(key=lambda r: float(r.get("impact_pct") or 0), reverse=rev)
+                    elif sort_field == "duration":
+                        table_rows.sort(key=lambda r: float(r.get("duration_days") or 0), reverse=rev)
+                    elif sort_field == "service":
+                        table_rows.sort(key=lambda r: (r.get("service") or "").lower(), reverse=rev)
+                    elif sort_field == "date":
+                        table_rows.sort(key=lambda r: r.get("day") or r.get("month") or "", reverse=rev)
+                    else:
+                        table_rows.sort(key=lambda r: float(r.get("cost_impact") or 0), reverse=rev)
 
                 table_lines = []
                 insights = []
@@ -3310,6 +3385,31 @@ class AIClient:
                     except Exception as e:
                         logger.warning(f"[MultiCloud Region Query] {e}")
 
+                # Filtering, Exclusions, Limit & Sorting for Region Spend
+                reg_min_cost = intent_info.get("min_cost") if intent_info.get("min_cost") is not None else cont_ctx.get("min_cost")
+                reg_max_cost = intent_info.get("max_cost") if intent_info.get("max_cost") is not None else cont_ctx.get("max_cost")
+                reg_thresh = extract_cost_threshold(low)
+                if reg_min_cost is None: reg_min_cost = reg_thresh.get("min")
+                if reg_max_cost is None: reg_max_cost = reg_thresh.get("max")
+                reg_exclusions = intent_info.get("exclusions") or cont_ctx.get("exclusions") or extract_negative_exclusions(low)
+                reg_sort_ref = intent_info.get("sort_refinement") or cont_ctx.get("sort_refinement") or extract_sort_refinement(low)
+                reg_lim_adj = intent_info.get("limit") or cont_ctx.get("inherited_limit") or extract_limit_adjustment(low)
+                if reg_lim_adj: limit = reg_lim_adj
+
+                if reg_min_cost is not None:
+                    reg_rows = [r for r in reg_rows if r[1] >= reg_min_cost]
+                if reg_max_cost is not None:
+                    reg_rows = [r for r in reg_rows if r[1] <= reg_max_cost]
+                ex_terms = [s.lower() for s in reg_exclusions.get("services", []) + reg_exclusions.get("raw_terms", []) + reg_exclusions.get("clouds", [])]
+                if ex_terms:
+                    reg_rows = [r for r in reg_rows if not any(t in r[0].lower() for t in ex_terms)]
+                if reg_sort_ref:
+                    rev = reg_sort_ref.get("direction", "desc") == "desc"
+                    if reg_sort_ref.get("field") in ("service", "name", "region", "location"):
+                        reg_rows.sort(key=lambda x: x[0].lower(), reverse=rev)
+                    else:
+                        reg_rows.sort(key=lambda x: x[1], reverse=rev)
+
                 if not reg_rows:
                     return (
                         f"### 🌐 CloudHealth Spend Analysis: {dim_label} Breakdown ({prov_title}{cust_suffix})\n\n"
@@ -3424,6 +3524,24 @@ class AIClient:
                 service_sections = []
                 all_service_insights = []
                 service_grand_totals = {}
+
+                service_exclusions = intent_info.get("exclusions") or cont_ctx.get("exclusions") or extract_negative_exclusions(low)
+                ex_svcs = [s.lower() for s in service_exclusions.get("services", []) + service_exclusions.get("raw_terms", [])]
+                if ex_svcs:
+                    all_requested_services = [
+                        s for s in all_requested_services
+                        if not any(
+                            es in (getattr(s, "pcode", None) or s[0] or "").lower() or
+                            es in (getattr(s, "display_name", None) or getattr(s, "disp", None) or "").lower()
+                            for es in ex_svcs
+                        )
+                    ]
+                if not all_requested_services:
+                    return (
+                        f"### 🗂️ Multi-Service Analysis\n\n"
+                        f"All requested services were excluded ({', '.join(ex_svcs)}) for **{period_str}**.\n\n"
+                        f"*Source: AWS_CUR & MULTICLOUD_FOCUS_COST_AND_USAGE via CloudHealth FlexReports.*"
+                    )
 
                 for s_idx, s_match in enumerate(all_requested_services):
                     svc_pcode = getattr(s_match, "pcode", None) or s_match[0]
@@ -7634,8 +7752,34 @@ class AIClient:
                         if res:
                             customer_rows.append(res)
 
+                # Filtering, Exclusions, Limit & Sorting for Channel Customers
+                cust_min_cost = intent_info.get("min_cost") if intent_info.get("min_cost") is not None else cont_ctx.get("min_cost")
+                cust_max_cost = intent_info.get("max_cost") if intent_info.get("max_cost") is not None else cont_ctx.get("max_cost")
+                cust_thresh = extract_cost_threshold(low)
+                if cust_min_cost is None: cust_min_cost = cust_thresh.get("min")
+                if cust_max_cost is None: cust_max_cost = cust_thresh.get("max")
+                cust_exclusions = intent_info.get("exclusions") or cont_ctx.get("exclusions") or extract_negative_exclusions(low)
+                cust_sort_ref = intent_info.get("sort_refinement") or cont_ctx.get("sort_refinement") or extract_sort_refinement(low)
+                cust_lim_adj = intent_info.get("limit") or cont_ctx.get("inherited_limit") or extract_limit_adjustment(low)
+                if cust_lim_adj: limit = cust_lim_adj
+
+                if cust_min_cost is not None:
+                    customer_rows = [r for r in customer_rows if r[1] >= cust_min_cost or r[2] >= cust_min_cost or r[3] >= cust_min_cost]
+                if cust_max_cost is not None:
+                    customer_rows = [r for r in customer_rows if r[1] <= cust_max_cost or r[2] <= cust_max_cost or r[3] <= cust_max_cost]
+                ex_custs = [s.lower() for s in cust_exclusions.get("services", []) + cust_exclusions.get("raw_terms", [])]
+                if ex_custs:
+                    customer_rows = [r for r in customer_rows if not any(ec in r[0].lower() for ec in ex_custs)]
+
                 # Sort by target month spend in requested direction (DESC or ASC)
-                customer_rows.sort(key=lambda x: x[1], reverse=sort_desc)
+                if cust_sort_ref:
+                    is_rev = cust_sort_ref.get("direction", "desc") == "desc"
+                    if cust_sort_ref.get("field") in ("customer", "name"):
+                        customer_rows.sort(key=lambda x: str(x[0]).lower(), reverse=is_rev)
+                    else:
+                        customer_rows.sort(key=lambda x: x[1], reverse=is_rev)
+                else:
+                    customer_rows.sort(key=lambda x: x[1], reverse=sort_desc)
                 top_rows = customer_rows[:limit]
 
                 if not top_rows:
@@ -7904,6 +8048,55 @@ class AIClient:
                 multi_rows = []
                 table = ""
                 svc_hdr = ""
+
+                # Numerical Cost Filters, Exclusions, Limit & Sorting
+                min_cost = intent_info.get("min_cost") if intent_info.get("min_cost") is not None else cont_ctx.get("min_cost")
+                max_cost = intent_info.get("max_cost") if intent_info.get("max_cost") is not None else cont_ctx.get("max_cost")
+                thresh_general = extract_cost_threshold(low)
+                if min_cost is None: min_cost = thresh_general.get("min")
+                if max_cost is None: max_cost = thresh_general.get("max")
+                exclusions = intent_info.get("exclusions") or cont_ctx.get("exclusions") or extract_negative_exclusions(low)
+                sort_ref = intent_info.get("sort_refinement") or cont_ctx.get("sort_refinement") or extract_sort_refinement(low)
+                lim_adj = intent_info.get("limit") or cont_ctx.get("inherited_limit") or extract_limit_adjustment(low)
+                if lim_adj: limit = lim_adj
+
+                def _apply_row_filters(rows_list: list[tuple]) -> list[tuple]:
+                    filtered = rows_list
+                    def _get_cost(row):
+                        try:
+                            return float(row[2] if len(row) > 2 else row[1])
+                        except (ValueError, TypeError, IndexError):
+                            return 0.0
+                    def _get_name(row):
+                        return str(row[1] if len(row) > 2 else row[0])
+                    def _get_prov(row):
+                        return str(row[0]).lower()
+
+                    if min_cost is not None:
+                        filtered = [r for r in filtered if _get_cost(r) >= min_cost]
+                    if max_cost is not None:
+                        filtered = [r for r in filtered if _get_cost(r) <= max_cost]
+                    ex_svcs = [s.lower() for s in exclusions.get("services", []) + exclusions.get("raw_terms", [])]
+                    ex_clouds = [c.lower() for c in exclusions.get("clouds", [])]
+                    if ex_svcs or ex_clouds:
+                        def _is_excluded(row):
+                            if _get_prov(row) in ex_clouds:
+                                return True
+                            n_low = _get_name(row).lower()
+                            if any(es in n_low for es in ex_svcs):
+                                return True
+                            pcode, _ = extract_requested_service(_get_name(row))
+                            if pcode and (pcode.lower() in ex_svcs or pcode in exclusions.get("services", [])):
+                                return True
+                            return False
+                        filtered = [r for r in filtered if not _is_excluded(r)]
+                    if sort_ref:
+                        is_rev = sort_ref.get("direction", "desc") == "desc"
+                        if sort_ref.get("field") in ("service", "name", "dimension", "cloud", "provider"):
+                            filtered.sort(key=lambda x: _get_name(x).lower(), reverse=is_rev)
+                        else:
+                            filtered.sort(key=lambda x: _get_cost(x), reverse=is_rev)
+                    return filtered
 
                 def _true_total_cost(sql: str, time_range_override: Optional[dict] = None) -> float:
                     return _fetch_total_cost(mcp, sql, svc_granularity, time_range_override or svc_time_range)
@@ -8339,9 +8532,9 @@ class AIClient:
 
                         # 2. Overall Top Dimensions Table
                         sorted_dims = sorted(dim_totals.items(), key=lambda x: x[1], reverse=True)
+                        dim_tuples = _apply_row_filters([(dim_prov.get(d, scope_disp), d, v) for d, v in sorted_dims])
                         top_dims_table_rows = []
-                        for d, v in sorted_dims[:limit]:
-                            p = dim_prov.get(d, scope_disp)
+                        for p, d, v in dim_tuples[:limit]:
                             pct = (v / grand_total * 100) if grand_total else 0.0
                             top_dims_table_rows.append(
                                 f"| {p} | `{d}` | {val_fmt(v)} | {pct:.1f}% |"
@@ -8382,7 +8575,7 @@ class AIClient:
 
                     elif clean_rows:
                         # Single-month or flat dimensional breakdown
-                        dim_rows = [(r["provider"], r["dimension"], r["val"]) for r in clean_rows]
+                        dim_rows = _apply_row_filters([(r["provider"], r["dimension"], r["val"]) for r in clean_rows])
                         total_val = sum(r[2] for r in dim_rows)
                         scope_disp = cloud_target.upper() if cloud_target != "all" else "Multi-Cloud"
                         unit_str = matched_dim.get("unit", "$")
@@ -8746,6 +8939,7 @@ class AIClient:
                         except Exception as e:
                             logger.warning(f"[Azure Service Fallback Query] {e}")
 
+                    azure_rows = _apply_row_filters(azure_rows)
                     if not azure_rows:
                         return (
                             f"### ☁️ CloudHealth Spend Analysis: Azure\n\n"
@@ -8760,7 +8954,7 @@ class AIClient:
                     ) or sum(r[2] for r in azure_rows)
                     tbl_lines = [
                         f"| {p} | {s} | ${c:,.2f} | {((c/total_az)*100 if total_az else 0):.1f}% |"
-                        for p, s, c in azure_rows
+                        for p, s, c in azure_rows[:limit]
                     ]
                     fallback_note = (
                         f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
@@ -8821,6 +9015,7 @@ class AIClient:
                         except Exception as e:
                             logger.warning(f"[GCP Service Fallback Query] {e}")
 
+                    gcp_rows = _apply_row_filters(gcp_rows)
                     if not gcp_rows:
                         return (
                             f"### ☁️ CloudHealth Spend Analysis: GCP\n\n"
@@ -8835,7 +9030,7 @@ class AIClient:
                     ) or sum(r[2] for r in gcp_rows)
                     tbl_lines = [
                         f"| {p} | {s} | ${c:,.2f} | {((c/total_gcp)*100 if total_gcp else 0):.1f}% |"
-                        for p, s, c in gcp_rows
+                        for p, s, c in gcp_rows[:limit]
                     ]
                     fallback_note = (
                         f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
@@ -8937,6 +9132,7 @@ class AIClient:
                         except Exception as e:
                             logger.warning(f"[AWS Service Fallback Query] {e}")
 
+                    aws_rows = _apply_row_filters(aws_rows)
                     if not aws_rows:
                         return (
                             f"### ☁️ CloudHealth Spend Analysis: AWS\n\n"
@@ -8995,6 +9191,7 @@ class AIClient:
                         except Exception as e:
                             logger.warning(f"[MultiCloud Provider Query] {e}")
 
+                        provider_rows = _apply_row_filters(provider_rows)
                         if not provider_rows:
                             return (
                                 f"### ☁️ CloudHealth Multi-Cloud Spend Analysis\n\n"
@@ -9004,12 +9201,11 @@ class AIClient:
                                 f"*Source: MULTICLOUD_FOCUS_COST_AND_USAGE via CloudHealth FlexReports.*"
                             )
 
-                        provider_rows.sort(key=lambda x: x[1], reverse=True)
                         total_multi = sum(r[1] for r in provider_rows)  # GROUP BY provider alone has no per-row limit to undercount
 
                         tbl_lines = [
                             f"| {p} | ${c:,.2f} | {((c/total_multi)*100 if total_multi else 0):.1f}% |"
-                            for p, c in provider_rows
+                            for p, c in provider_rows[:limit]
                         ]
                         table = (
                             f"| Cloud Provider | Cost | % of Total |\n"
@@ -9078,6 +9274,7 @@ class AIClient:
                             except Exception as e:
                                 logger.warning(f"[MultiCloud Fallback Query] {e}")
 
+                        multi_rows = _apply_row_filters(multi_rows)
                         if not multi_rows:
                             return (
                                 f"### ☁️ CloudHealth Multi-Cloud Spend Analysis\n\n"

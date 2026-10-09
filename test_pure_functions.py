@@ -1213,6 +1213,183 @@ def test_anomaly_threshold_execution_and_presentation():
     assert "$719.15" in res
 
 
+def test_percentage_and_variance_thresholds():
+    from cleo_query import extract_cost_threshold
+
+    # "variance > 100%"
+    res1 = extract_cost_threshold("show anomalies with variance > 100%")
+    assert res1["min_pct"] == 100.0
+
+    # "spike over 50%"
+    res2 = extract_cost_threshold("spikes over 50%")
+    assert res2["min_pct"] == 50.0
+
+    # "variance under 20%"
+    res3 = extract_cost_threshold("variance under 20%")
+    assert res3["max_pct"] == 20.0
+
+    # "50%+"
+    res4 = extract_cost_threshold("anomalies 50%+")
+    assert res4["min_pct"] == 50.0
+
+
+def test_negative_exclusions():
+    from cleo_query import extract_negative_exclusions
+
+    # "exclude EC2 and without Azure"
+    ex1 = extract_negative_exclusions("show top spend exclude EC2 and without Azure")
+    assert "AmazonEC2" in ex1["services"]
+    assert "azure" in ex1["clouds"]
+
+    # "remove netapp volumes and except Pinpoint"
+    ex2 = extract_negative_exclusions("remove netapp volumes and except Pinpoint")
+    assert any("netapp" in s.lower() for s in ex2["services"] + ex2["raw_terms"])
+    assert any("pinpoint" in s.lower() for s in ex2["services"] + ex2["raw_terms"])
+
+    # "without gcp"
+    ex3 = extract_negative_exclusions("top services without gcp")
+    assert "gcp" in ex3["clouds"]
+
+
+def test_ordinal_resolution():
+    from cleo_query import resolve_ordinal_reference_from_history
+
+    sample_table = (
+        "### 🚨 CloudHealth Cost Anomaly Detection: Top 12 Active Anomalies (2026-10)\n\n"
+        "- Total Identified Anomaly Impact: +$2,834.57 across 12 anomalies\n"
+        "| # | Cloud | Service / Asset | Status | Cost Impact |\n"
+        "|:---|:---|:---|:---|:---|\n"
+        "| 1 | 🟠 AWS | `AmazonPinpoint` | 🔴 **ACTIVE** | **+$21.36** (702.6% spike) |\n"
+        "| 2 | 🔵 GCP | `NetApp Volumes` | 🔴 **ACTIVE** | **+$746.03** (125.4% spike) |\n"
+        "| 3 | 🔷 Azure | `Data Factory` | 🔴 **ACTIVE** | **+$22.13** (45.0% spike) |\n"
+    )
+
+    history = [
+        {"role": "user", "content": "show anomalies"},
+        {"role": "assistant", "content": sample_table},
+    ]
+
+    # "#2"
+    r2 = resolve_ordinal_reference_from_history("tell me more about #2", history)
+    assert r2 is not None
+    assert "netapp" in r2["service"].lower()
+    assert r2["cloud"] == "gcp"
+
+    # "the first one"
+    r1 = resolve_ordinal_reference_from_history("what happened to the first one?", history)
+    assert r1 is not None
+    assert "pinpoint" in r1["service"].lower()
+    assert r1["cloud"] == "aws"
+
+    # "item 3"
+    r3 = resolve_ordinal_reference_from_history("drill down into item 3", history)
+    assert r3 is not None
+    assert "data factory" in r3["service"].lower()
+    assert r3["cloud"] == "azure"
+
+
+def test_contextual_relative_dates():
+    from cleo_query import parse_query_time_context
+
+    # With context_ym="2026-06", "previous month" should resolve to 2026-05
+    ctx_prev = parse_query_time_context("show spend for previous month", context_ym="2026-06")
+    assert ctx_prev["target_ym"] == "2026-05"
+
+    # "the month before that" with context_ym="2026-06" -> 2026-05
+    ctx_before = parse_query_time_context("what about the month before that?", context_ym="2026-06")
+    assert ctx_before["target_ym"] == "2026-05"
+
+    # "that month" with context_ym="2026-06" -> 2026-06
+    ctx_that = parse_query_time_context("breakdown for that month", context_ym="2026-06")
+    assert ctx_that["target_ym"] == "2026-06"
+
+
+def test_sort_and_limit_adjustments():
+    from cleo_query import extract_sort_refinement, extract_limit_adjustment
+
+    # Sorting
+    s1 = extract_sort_refinement("sort by variance")
+    assert s1["field"] == "variance"
+    assert s1["direction"] == "desc"
+
+    s2 = extract_sort_refinement("lowest first")
+    assert s2["field"] == "cost"
+    assert s2["direction"] == "asc"
+
+    s3 = extract_sort_refinement("longest duration")
+    assert s3["field"] == "duration"
+    assert s3["direction"] == "desc"
+
+    # Limit adjustments
+    assert extract_limit_adjustment("show top 10 instead") == 10
+    assert extract_limit_adjustment("expand to 20") == 20
+    assert extract_limit_adjustment("make it 5") == 5
+
+
+def test_multi_cloud_continuation_pivots():
+    from cleo_query import _detect_contextual_continuation
+
+    # Prior anomalies query, user follows up with a GCP service
+    history_gcp = [
+        {"role": "user", "content": "Show all anomalies"},
+        {"role": "assistant", "content": "| 1 | GCP | NetApp Volumes | ACTIVE | $746.03 |"},
+        {"role": "user", "content": "NetApp Volumes"},
+    ]
+    cont = _detect_contextual_continuation(history_gcp)
+    assert cont["is_continuation"] is True
+    assert cont["new_service"] is not None
+    assert "netapp" in cont["new_service"].lower()
+
+    # User follows up with a region code
+    history_reg = [
+        {"role": "user", "content": "Show my top spend"},
+        {"role": "assistant", "content": "| AWS | EC2 | $1,200 |"},
+        {"role": "user", "content": "sa-east-1"},
+    ]
+    cont_reg = _detect_contextual_continuation(history_reg)
+    assert cont_reg["is_continuation"] is True
+    assert cont_reg["new_region"] == "sa-east-1"
+
+
+def test_general_spend_filtering_and_exclusions_end_to_end():
+    import json
+    from cleo_agent import AIClient
+
+    class MockMCPSpend:
+        def __init__(self):
+            self.calls = []
+
+        def call_tool(self, name, args):
+            self.calls.append((name, args))
+            csv_data = (
+                '"provider","service","cost"\n'
+                '"AWS","Amazon Elastic Compute Cloud - Compute","1500.00"\n'
+                '"AWS","Amazon Relational Database Service","800.00"\n'
+                '"AWS","Amazon Simple Storage Service","200.00"\n'
+                '"Azure","Virtual Machines","600.00"\n'
+                '"GCP","Google Cloud Storage","150.00"\n'
+            )
+            return {"content": [{"type": "text", "text": json.dumps({"csv": csv_data})}]}
+
+    mock_mcp = MockMCPSpend()
+    client = AIClient("direct", {}, [])
+
+    # Conversation: user asks for top services, then asks to exclude EC2 and filter > $250
+    history = [
+        {"role": "user", "content": "Show top services across all clouds"},
+        {"role": "assistant", "content": "| AWS | EC2 | $1,500.00 |\n| AWS | RDS | $800.00 |\n| Azure | Virtual Machines | $600.00 |\n| AWS | S3 | $200.00 |\n| GCP | Storage | $150.00 |"},
+        {"role": "user", "content": "exclude EC2 and only show cost > 250"},
+    ]
+
+    res = client.generate(history, mcp=mock_mcp)
+    assert "Amazon Elastic Compute Cloud" not in res
+    assert "Relational Database Service" in res
+    assert "Virtual Machines" in res
+    # S3 ($200) and GCP Storage ($150) should be excluded because < $250
+    assert "Simple Storage Service" not in res
+    assert "Google Cloud Storage" not in res
+
+
 if __name__ == "__main__":
     test_parse_query_time_context()
     test_extract_requested_service()
