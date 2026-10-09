@@ -17,7 +17,7 @@ except ImportError:
     logger = logging.getLogger("cleo.query")
     logger.setLevel(logging.INFO)
 
-from cleo_charts import is_no_chart_requested, is_no_mom_requested, is_exclude_other_requested, is_other_category_name
+from cleo_charts import is_no_chart_requested, is_no_mom_requested, is_exclude_other_requested, is_other_category_name, is_no_insights_requested
 
 # ── Canonical Multi-Cloud & FOCUS 1.2 Column Synonyms & Metadata ────────
 COLUMN_SYNONYMS: Dict[str, Dict[str, Any]] = {
@@ -1130,6 +1130,14 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
 
     if len(messages) < 2:
         # Cross-session fallback: check if user asks to repeat or continue prior session query
+        last_m = messages[-1].get("content", "").lower() if messages else ""
+        has_cross_continuation_intent = any(w in last_m for w in [
+            "previous query", "last query", "prior query", "last time", "from last session", "previous session",
+            "same for", "similar for", "simillar for", "repeat that", "repeat this", "repeat the query", "run it again"
+        ])
+        if not has_cross_continuation_intent:
+            return {"is_continuation": False}
+
         try:
             from cleo_memory import load_last_query
             saved = load_last_query()
@@ -1944,6 +1952,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
 
     include_chart = not is_no_chart_requested(low)
     include_mom = not is_no_mom_requested(low)
+    include_insights = not is_no_insights_requested(low)
 
     if cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "forecast":
         target_ym = f"{cont_ctx['inherited_target_year']}-01"
@@ -1969,6 +1978,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "chart_types": chart_types,
         "include_chart": include_chart,
         "include_mom": include_mom,
+        "include_insights": include_insights,
         "is_new_data_fetch": is_new_data_fetch,
         "min_cost": det_min_cost,
         "max_cost": det_max_cost,

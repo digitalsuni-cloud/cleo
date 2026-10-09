@@ -489,6 +489,8 @@ from cleo_mcp import (
 from cleo_charts import (
     is_no_chart_requested,
     is_no_mom_requested,
+    is_no_insights_requested,
+    strip_finops_insights,
     is_exclude_other_requested,
     is_other_category_name,
     prune_mom_columns_from_markdown,
@@ -1139,6 +1141,7 @@ class AIClient:
 
                     inc_chart = bool(parsed.get("include_chart", det_info["include_chart"])) and not is_no_chart_requested(low)
                     inc_mom = bool(parsed.get("include_mom", det_info["include_mom"])) and not is_no_mom_requested(low)
+                    inc_insights = bool(parsed.get("include_insights", det_info.get("include_insights", True))) and not is_no_insights_requested(low)
 
                     # Intent Guard: Queries asking for costs, spend, service comparison, run-rate,
                     # or naming a known customer must NEVER be misrouted to general advisory.
@@ -1189,6 +1192,7 @@ class AIClient:
                         "chart_types": parsed.get("chart_types") or det_info["chart_types"],
                         "include_chart": inc_chart,
                         "include_mom": inc_mom,
+                        "include_insights": inc_insights,
                         "is_new_data_fetch": bool(parsed.get("is_new_data_fetch", det_info["is_new_data_fetch"])),
                         "min_cost": min_cost_val,
                         "max_cost": max_cost_val,
@@ -1219,6 +1223,7 @@ class AIClient:
         low_query = (user_query or "").lower()
         no_chart = is_no_chart_requested(low_query)
         no_mom = is_no_mom_requested(low_query)
+        no_insights = is_no_insights_requested(low_query)
 
         processed = raw_response
         if no_chart:
@@ -1227,6 +1232,8 @@ class AIClient:
             processed = re.sub(r'\n{3,}', '\n\n', processed)
         if no_mom:
             processed = prune_mom_columns_from_markdown(processed)
+        if no_insights:
+            processed = strip_finops_insights(processed)
 
         return processed.strip()
 
@@ -1262,13 +1269,13 @@ class AIClient:
                 streamed_chars = len(resp)
             
             # Universal LLM Insight Pass for any data response lacking insights
-            if "💡 FinOps Insights:" not in resp and "###" in resp and self.engine != "direct":
+            last_msg = messages[-1]["content"] if messages else ""
+            if "💡 FinOps Insights:" not in resp and "###" in resp and self.engine != "direct" and not is_no_insights_requested(last_msg):
                 # Ensure it's a data response by checking for tables or lists, ignoring simple text errors
                 if "|" in resp or "-" in resp:
                     try:
                         if on_status:
                             on_status("Generating FinOps insights...")
-                        last_msg = messages[-1]["content"] if messages else ""
                         sys_msg = {
                             "role": "system",
                             "content": (
@@ -2718,35 +2725,36 @@ class AIClient:
                 hist_end_lbl = _format_time_label(hist_rows[-1][0], "month")
 
                 insight_md = ""
-                if self.engine != "direct":
-                    try:
-                        sys_msg = {
-                            "role": "system",
-                            "content": (
-                                "You are Cleo, an expert FinOps AI. Analyze the forward-looking cloud cost forecast table.\n"
-                                "Provide 2-3 concise, actionable FinOps bullet insights highlighting:\n"
-                                "1. Baseline growth trajectory and seasonal variance.\n"
-                                "2. Commitment strategy (Savings Plans / RIs keel depth).\n"
-                                "3. Operational variance governance.\n"
-                                "Follow strict bullet titling rules (bold short title before colon)."
-                            )
-                        }
-                        user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{table_md}"}
-                        llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
-                        if llm_ans:
-                            insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
-                    except Exception as e:
-                        logger.debug(f"[LLM Commentary] {e}")
+                if not is_no_insights_requested(low):
+                    if self.engine != "direct":
+                        try:
+                            sys_msg = {
+                                "role": "system",
+                                "content": (
+                                    "You are Cleo, an expert FinOps AI. Analyze the forward-looking cloud cost forecast table.\n"
+                                    "Provide 2-3 concise, actionable FinOps bullet insights highlighting:\n"
+                                    "1. Baseline growth trajectory and seasonal variance.\n"
+                                    "2. Commitment strategy (Savings Plans / RIs keel depth).\n"
+                                    "3. Operational variance governance.\n"
+                                    "Follow strict bullet titling rules (bold short title before colon)."
+                                )
+                            }
+                            user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{table_md}"}
+                            llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
+                            if llm_ans:
+                                insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
+                        except Exception as e:
+                            logger.debug(f"[LLM Commentary] {e}")
 
-                if not insight_md:
-                    avg_mo_val = total_projected / len(forecast_results) if forecast_results else 0.0
-                    insight_md = (
-                        f"\n\n**💡 FinOps Strategic Advisory & Insights:**\n"
-                        f"- **Growth Trajectory & Run-Rate (Inform)**: Spend is projected to reach **${total_projected:,.2f}** in {target_period_title} (averaging **${avg_mo_val:,.2f}/month**), representing an organic growth slope of **{slope_sign}${abs(slope):,.2f}/month** over the {baseline_months_count}-month trailing baseline ({hist_start_lbl} to {hist_end_lbl}). Spending culminates in December with calendar year-end peak volume (+14% seasonality factor).\n"
-                        f"{outlier_section}\n"
-                        f"- **Commitment Keel Sizing (Optimize)**: With projected steady-state baseline spend hovering around **${forecast_results[0]['cost']:,.2f} – ${forecast_results[3]['cost']:,.2f}/mo** in early {target_period_title}, commit to no more than **60–70% of the baseline keel depth** via 1-year or 3-year Compute Savings Plans or Flexible RIs. Defer aggressive top-tier commitments until Q2 {target_period_title} to preserve flexibility for architecture changes.\n"
-                        f"- **Operational Variance Governance (Operate)**: Implement automated budget anomaly alerts at 50%, 80%, and 100% of the monthly forecast targets in AWS Cost Anomaly Detection / CloudHealth. Conduct a 60–90 day re-forecasting review at the end of Q1 to true up actual trajectory against statistical assumptions."
-                    )
+                    if not insight_md:
+                        avg_mo_val = total_projected / len(forecast_results) if forecast_results else 0.0
+                        insight_md = (
+                            f"\n\n**💡 FinOps Strategic Advisory & Insights:**\n"
+                            f"- **Growth Trajectory & Run-Rate (Inform)**: Spend is projected to reach **${total_projected:,.2f}** in {target_period_title} (averaging **${avg_mo_val:,.2f}/month**), representing an organic growth slope of **{slope_sign}${abs(slope):,.2f}/month** over the {baseline_months_count}-month trailing baseline ({hist_start_lbl} to {hist_end_lbl}). Spending culminates in December with calendar year-end peak volume (+14% seasonality factor).\n"
+                            f"{outlier_section}\n"
+                            f"- **Commitment Keel Sizing (Optimize)**: With projected steady-state baseline spend hovering around **${forecast_results[0]['cost']:,.2f} – ${forecast_results[3]['cost']:,.2f}/mo** in early {target_period_title}, commit to no more than **60–70% of the baseline keel depth** via 1-year or 3-year Compute Savings Plans or Flexible RIs. Defer aggressive top-tier commitments until Q2 {target_period_title} to preserve flexibility for architecture changes.\n"
+                            f"- **Operational Variance Governance (Operate)**: Implement automated budget anomaly alerts at 50%, 80%, and 100% of the monthly forecast targets in AWS Cost Anomaly Detection / CloudHealth. Conduct a 60–90 day re-forecasting review at the end of Q1 to true up actual trajectory against statistical assumptions."
+                        )
 
                 cust_suffix = f" for {named_customer}" if named_customer else ""
                 svc_suffix = f" ({requested_service_disp or requested_service})" if requested_service else ""
@@ -3165,7 +3173,7 @@ class AIClient:
                     summary_breakdown = "\n" + "\n".join(summary_parts) + "\n"
 
                 insights_block = ""
-                if insights:
+                if insights and not is_no_insights_requested(low):
                     insights_block = "\n#### 💡 FinOps Root Cause & Investigation Insights\n\n" + "\n".join(insights) + "\n"
 
                 table_header = (
@@ -3439,33 +3447,34 @@ class AIClient:
 
                 # LLM Insight Pass or FinOps Doctrine Fallback
                 insight_md = ""
-                if self.engine != "direct":
-                    try:
-                        sys_msg = {
-                            "role": "system",
-                            "content": (
-                                "You are Cleo, an expert FinOps AI. Analyze the regional/location cloud spend table returned to the user.\n"
-                                "Provide 2 concise, actionable FinOps bullet insights highlighting:\n"
-                                "1. Primary regional concentration (name top region and % of spend).\n"
-                                "2. Cross-region network egress risk ($0.02/GB) or multi-region commitment alignment (Savings Plans / RIs).\n"
-                                "Follow strict bullet titling rules (bold short title before colon)."
-                            )
-                        }
-                        user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{table}"}
-                        llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
-                        if llm_ans:
-                            insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
-                    except Exception as e:
-                        logger.debug(f"[LLM Commentary] {e}")
+                if not is_no_insights_requested(low):
+                    if self.engine != "direct":
+                        try:
+                            sys_msg = {
+                                "role": "system",
+                                "content": (
+                                    "You are Cleo, an expert FinOps AI. Analyze the regional/location cloud spend table returned to the user.\n"
+                                    "Provide 2 concise, actionable FinOps bullet insights highlighting:\n"
+                                    "1. Primary regional concentration (name top region and % of spend).\n"
+                                    "2. Cross-region network egress risk ($0.02/GB) or multi-region commitment alignment (Savings Plans / RIs).\n"
+                                    "Follow strict bullet titling rules (bold short title before colon)."
+                                )
+                            }
+                            user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{table}"}
+                            llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
+                            if llm_ans:
+                                insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
+                        except Exception as e:
+                            logger.debug(f"[LLM Commentary] {e}")
 
-                if not insight_md:
-                    top_reg_name, top_reg_cost = reg_rows[0]
-                    top_pct = (top_reg_cost / total_reg_spend * 100) if total_reg_spend else 0
-                    insight_md = (
-                        f"\n\n**💡 FinOps Insights:**\n"
-                        f"- **Primary Regional Concentration**: Spend is heavily anchored in **{top_reg_name}** representing **${top_reg_cost:,.2f} ({top_pct:.1f}%)** of total analyzed spend. Ensure Compute Savings Plans and regional reservations match this deployment hub.\n"
-                        f"- **Multi-Region & Egress Governance**: Multi-region footprints incur inter-region data transfer fees ($0.02/GB) and replicated storage overhead. Verify whether secondary regions require active-active compute or can be consolidated to minimize cross-region egress."
-                    )
+                    if not insight_md:
+                        top_reg_name, top_reg_cost = reg_rows[0]
+                        top_pct = (top_reg_cost / total_reg_spend * 100) if total_reg_spend else 0
+                        insight_md = (
+                            f"\n\n**💡 FinOps Insights:**\n"
+                            f"- **Primary Regional Concentration**: Spend is heavily anchored in **{top_reg_name}** representing **${top_reg_cost:,.2f} ({top_pct:.1f}%)** of total analyzed spend. Ensure Compute Savings Plans and regional reservations match this deployment hub.\n"
+                            f"- **Multi-Region & Egress Governance**: Multi-region footprints incur inter-region data transfer fees ($0.02/GB) and replicated storage overhead. Verify whether secondary regions require active-active compute or can be consolidated to minimize cross-region egress."
+                        )
 
                 wants_table = _detect_wants_table(low)
                 tbl_md = f"{table}\n\n" if wants_table else ""
@@ -4061,7 +4070,7 @@ class AIClient:
                 body_md = "\n\n---\n\n".join(service_sections)
 
                 insights_block = ""
-                if all_service_insights:
+                if all_service_insights and not is_no_insights_requested(low):
                     insights_block = (
                         f"\n\n---\n\n### 💡 FinOps Insights & Multi-Service Optimization Levers:\n\n"
                         + "\n\n".join(all_service_insights)
@@ -4421,30 +4430,32 @@ class AIClient:
                             f"not eligible for Microsoft Azure Hybrid Benefit (Software Assurance/BYOS).\n\n"
                         )
 
-                    ahb_finops_insights_md = (
-                        f"#### 💡 Strategic FinOps Insights: TCO Economics, CapEx Licensing & Dev/Test Optimization\n\n"
-                        f"##### 1. Invoice Savings vs. Net Enterprise TCO (Do We Save the Same as Billed?)\n"
-                        f"- **Cloud Invoice (OpEx) Impact**: **100% of the software license surcharge is eliminated** immediately on your Azure billing meter (dropping the VM rate to the base Linux compute rate).\n"
-                        f"- **Net Enterprise TCO Reality**:\n"
-                        f"  $$\\text{{Net Enterprise Savings}} = \\text{{Cloud Billed Surcharge Waived}} - (\\text{{Amortized License CapEx}} + \\text{{Annual Software Assurance OpEx}})$$\n"
-                        f"  - **Surplus / Shelfware On-Premises Licenses**: If your organization already owns unassigned licenses with active Software Assurance (SA), or is decommissioning on-prem hardware during cloud migration, the marginal license cost is **$0.00**, capturing **100% pure net savings**.\n"
-                        f"  - **Purchasing Net-New Licenses**: If you must purchase licenses to qualify for AHB, perpetual licenses are capitalized (**CapEx** amortized over 3–5 years) while mandatory **Software Assurance** (~25%/year of base license price) is an annual operating expense (**OpEx**). Alternatively, 1-year or 3-year Server Subscriptions (via CSP/EA) provide an operational model with built-in SA.\n"
-                        f"  - **Breakeven Rule**: On-demand hourly licensing (PAYG) is cost-effective **only** for temporary or intermittent workloads running `< 40%–50%` of the month (~300 hours). For 24/7 steady-state production workloads, owning licenses with SA yields **40%–60% net savings over 3 years**.\n"
-                        f"  - **Minimum Core Floor**: Microsoft enforces a minimum licensing requirement of **8 core licenses per VM for Windows Server** (even on 2- or 4-vCPU VMs) and **4 core licenses per VM for SQL Server**.\n\n"
-                        f"##### 2. Azure Dev/Test Subscriptions for Non-Critical Workloads (Entitlement Preservation)\n"
-                        f"- **Automatic $0 Windows OS Surcharge**: Moving non-critical environments (Dev, Test, QA, Staging, Sandbox, POC) to **Azure Enterprise Dev/Test or PAYG Dev/Test Subscriptions** automatically bills Windows VMs at **base Linux rates**.\n"
-                        f"- **No AHB or Software Assurance Required**: Non-prod Windows VMs receive the discounted rate natively without buying licenses, allocating SA, or flipping AHB flags.\n"
-                        f"- **SQL Server Developer Edition ($0 License Cost)**: Dev/Test instances can run SQL Server Developer Edition, providing 100% of SQL Server Enterprise Edition features with **$0 licensing fees**.\n"
-                        f"- **Entitlement Preservation Strategy**: Running non-prod workloads in Dev/Test subscriptions preserves all corporate Software Assurance / AHB entitlements **exclusively for Production workloads**, eliminating the need for net-new license purchases.\n"
-                        f"- **Compliance & Operational Guardrails**:\n"
-                        f"  - Requires active Visual Studio subscriber licensing for all engineers/testers accessing the subscription; strictly zero production customer traffic allowed.\n"
-                        f"  - Pair Dev/Test subscriptions with **automated off-hours shutdown schedules** (e.g. stop after 7 PM and on weekends) to compound savings to **70%–85% overall non-prod cost reduction**.\n\n"
-                        f"##### 3. Strategic Workload Decision Tree\n"
-                        f"1. **Production Windows & SQL (24/7 Steady State)**: Apply **Azure Hybrid Benefit (Layer 0)** using corporate SA licenses, then layer 3-Year Reservations (up to 72%) on top.\n"
-                        f"2. **Non-Production Windows & SQL (Dev/Test/QA)**: Migrate to **Azure Dev/Test Subscriptions** (Free OS + $0 Dev SQL) and configure auto-shutdown policies.\n"
-                        f"3. **Base Linux (Ubuntu, Debian, CentOS)**: No AHB or Dev/Test OS discount needed (already $0 OS license). Maximize compute efficiency via Rightsizing & Compute Savings Plans.\n"
-                        f"4. **Commercial Linux (RHEL / SLES)**: Apply **Red Hat Cloud Access (RHEL_BYOS)** or **SUSE BYOS** if corporate subscriptions exist; otherwise evaluate modernizing to AlmaLinux/Rocky Linux.\n\n"
-                    )
+                    ahb_finops_insights_md = ""
+                    if not is_no_insights_requested(low):
+                        ahb_finops_insights_md = (
+                            f"#### 💡 Strategic FinOps Insights: TCO Economics, CapEx Licensing & Dev/Test Optimization\n\n"
+                            f"##### 1. Invoice Savings vs. Net Enterprise TCO (Do We Save the Same as Billed?)\n"
+                            f"- **Cloud Invoice (OpEx) Impact**: **100% of the software license surcharge is eliminated** immediately on your Azure billing meter (dropping the VM rate to the base Linux compute rate).\n"
+                            f"- **Net Enterprise TCO Reality**:\n"
+                            f"  $$\\text{{Net Enterprise Savings}} = \\text{{Cloud Billed Surcharge Waived}} - (\\text{{Amortized License CapEx}} + \\text{{Annual Software Assurance OpEx}})$$\n"
+                            f"  - **Surplus / Shelfware On-Premises Licenses**: If your organization already owns unassigned licenses with active Software Assurance (SA), or is decommissioning on-prem hardware during cloud migration, the marginal license cost is **$0.00**, capturing **100% pure net savings**.\n"
+                            f"  - **Purchasing Net-New Licenses**: If you must purchase licenses to qualify for AHB, perpetual licenses are capitalized (**CapEx** amortized over 3–5 years) while mandatory **Software Assurance** (~25%/year of base license price) is an annual operating expense (**OpEx**). Alternatively, 1-year or 3-year Server Subscriptions (via CSP/EA) provide an operational model with built-in SA.\n"
+                            f"  - **Breakeven Rule**: On-demand hourly licensing (PAYG) is cost-effective **only** for temporary or intermittent workloads running `< 40%–50%` of the month (~300 hours). For 24/7 steady-state production workloads, owning licenses with SA yields **40%–60% net savings over 3 years**.\n"
+                            f"  - **Minimum Core Floor**: Microsoft enforces a minimum licensing requirement of **8 core licenses per VM for Windows Server** (even on 2- or 4-vCPU VMs) and **4 core licenses per VM for SQL Server**.\n\n"
+                            f"##### 2. Azure Dev/Test Subscriptions for Non-Critical Workloads (Entitlement Preservation)\n"
+                            f"- **Automatic $0 Windows OS Surcharge**: Moving non-critical environments (Dev, Test, QA, Staging, Sandbox, POC) to **Azure Enterprise Dev/Test or PAYG Dev/Test Subscriptions** automatically bills Windows VMs at **base Linux rates**.\n"
+                            f"- **No AHB or Software Assurance Required**: Non-prod Windows VMs receive the discounted rate natively without buying licenses, allocating SA, or flipping AHB flags.\n"
+                            f"- **SQL Server Developer Edition ($0 License Cost)**: Dev/Test instances can run SQL Server Developer Edition, providing 100% of SQL Server Enterprise Edition features with **$0 licensing fees**.\n"
+                            f"- **Entitlement Preservation Strategy**: Running non-prod workloads in Dev/Test subscriptions preserves all corporate Software Assurance / AHB entitlements **exclusively for Production workloads**, eliminating the need for net-new license purchases.\n"
+                            f"- **Compliance & Operational Guardrails**:\n"
+                            f"  - Requires active Visual Studio subscriber licensing for all engineers/testers accessing the subscription; strictly zero production customer traffic allowed.\n"
+                            f"  - Pair Dev/Test subscriptions with **automated off-hours shutdown schedules** (e.g. stop after 7 PM and on weekends) to compound savings to **70%–85% overall non-prod cost reduction**.\n\n"
+                            f"##### 3. Strategic Workload Decision Tree\n"
+                            f"1. **Production Windows & SQL (24/7 Steady State)**: Apply **Azure Hybrid Benefit (Layer 0)** using corporate SA licenses, then layer 3-Year Reservations (up to 72%) on top.\n"
+                            f"2. **Non-Production Windows & SQL (Dev/Test/QA)**: Migrate to **Azure Dev/Test Subscriptions** (Free OS + $0 Dev SQL) and configure auto-shutdown policies.\n"
+                            f"3. **Base Linux (Ubuntu, Debian, CentOS)**: No AHB or Dev/Test OS discount needed (already $0 OS license). Maximize compute efficiency via Rightsizing & Compute Savings Plans.\n"
+                            f"4. **Commercial Linux (RHEL / SLES)**: Apply **Red Hat Cloud Access (RHEL_BYOS)** or **SUSE BYOS** if corporate subscriptions exist; otherwise evaluate modernizing to AlmaLinux/Rocky Linux.\n\n"
+                        )
 
                     return (
                         f"### 📊 Azure Virtual Machines: Azure Hybrid Benefit (AHB) Analysis{cust_str} — {svc_scope_label}\n\n"
@@ -4576,8 +4587,11 @@ class AIClient:
                         f"az sql vm update --resource-group <resourceGroup> --name <vmName> --license-type AHB\n"
                         f"```\n\n"
                         f"{ahb_finops_insights_md}"
-                        f"> **💡 FinOps Foundation Practice Note**:\n"
-                        f"> Azure Hybrid Benefit applies Software Assurance and BYOS rights directly to cloud compute, eliminating 25%–55% in software markup across Windows Server, RHEL, SLES, and SQL Server. Unlike Reservations, AHB carries no commitment term or lock-in and should be applied as Layer 0 before sizing compute commitments.\n\n"
+                        + (
+                            f"> **💡 FinOps Foundation Practice Note**:\n"
+                            f"> Azure Hybrid Benefit applies Software Assurance and BYOS rights directly to cloud compute, eliminating 25%–55% in software markup across Windows Server, RHEL, SLES, and SQL Server. Unlike Reservations, AHB carries no commitment term or lock-in and should be applied as Layer 0 before sizing compute commitments.\n\n"
+                            if not is_no_insights_requested(low) else ""
+                        ) +
                         f"*Source: `AZURE_COST_USAGE` via CloudHealth FlexReports.*"
                     )
 
@@ -4790,15 +4804,18 @@ class AIClient:
                         spot_note = "- **Spot Instance Opportunities**: Spot provides **60%–90% discounts** relative to retail On-Demand. Ideal for stateless Kubernetes workers, CI/CD runners, and batch processing."
                         rec_note = f"- **Commitment Rightsizing**: Identified **${od_spend:,.2f}** in On-Demand compute. Layer Compute Savings Plans for baseline 24/7 workloads to capture **${potential_sp_savings:,.2f}** in direct savings."
 
-                    finops_insights = (
-                        f"#### 💡 FinOps Insights & Commitment Optimization Levers\n\n"
-                        f"- **Current Commitment Coverage**: **{coverage_pct:.1f}%** of compute spend is currently protected under commitments (**${committed_spend:,.2f}** across RIs and Savings Plans).\n"
-                        f"{rec_note}\n"
-                        f"{spot_note}\n\n"
-                        f"> **FinOps Foundation Rate Optimization Principle**:\n"
-                        f"> Rightsizing and modernization (e.g. Graviton) must precede multi-year commitment purchases. Lock in baseline usage with flexible Savings Plans first, followed by standard RIs for static database instances.\n\n"
-                        f"*Source: AWS_CUR via CloudHealth FlexReports.*"
-                    )
+                    if is_no_insights_requested(low):
+                        finops_insights = "*Source: AWS_CUR via CloudHealth FlexReports.*"
+                    else:
+                        finops_insights = (
+                            f"#### 💡 FinOps Insights & Commitment Optimization Levers\n\n"
+                            f"- **Current Commitment Coverage**: **{coverage_pct:.1f}%** of compute spend is currently protected under commitments (**${committed_spend:,.2f}** across RIs and Savings Plans).\n"
+                            f"{rec_note}\n"
+                            f"{spot_note}\n\n"
+                            f"> **FinOps Foundation Rate Optimization Principle**:\n"
+                            f"> Rightsizing and modernization (e.g. Graviton) must precede multi-year commitment purchases. Lock in baseline usage with flexible Savings Plans first, followed by standard RIs for static database instances.\n\n"
+                            f"*Source: AWS_CUR via CloudHealth FlexReports.*"
+                        )
 
                     return (
                         f"### 📋 CloudHealth Lease Type & Pricing Model Breakdown: {svc_disp}\n\n"
@@ -5170,7 +5187,9 @@ class AIClient:
                         f"- **Database Savings Plans / Reserved Instances**: For steady-state 24/7 databases (`db.m5.2xlarge`, `db.r7g.xlarge`), committing to 1-year or 3-year Database RIs saves 30% to 55% relative to standard On-Demand pricing."
                     )
 
-                    insights_block = "\n#### 💡 FinOps Optimization Levers & Database Architecture Recommendations\n\n" + "\n".join(insights) + "\n"
+                    insights_block = ""
+                    if not is_no_insights_requested(low):
+                        insights_block = "\n#### 💡 FinOps Optimization Levers & Database Architecture Recommendations\n\n" + "\n".join(insights) + "\n"
 
                     partial_notice = (
                         f"> ⚠️ **FinOps Ingestion Notice**: Current date (`{today_str}`) is excluded from closed analysis as in-flight; "
@@ -5504,7 +5523,7 @@ class AIClient:
                             )
 
                         insights_block = ""
-                        if insights:
+                        if insights and not is_no_insights_requested(low):
                             insights_block = "\n#### 💡 FinOps Optimization Levers & Architecture Recommendations\n\n" + "\n".join(insights) + "\n"
 
                         partial_notice = (
@@ -5678,7 +5697,7 @@ class AIClient:
                             )
 
                         insights_block = ""
-                        if insights:
+                        if insights and not is_no_insights_requested(low):
                             insights_block = "\n#### 💡 FinOps Optimization Levers & Architecture Recommendations\n\n" + "\n".join(insights) + "\n"
 
                         if is_quantity_mode:
@@ -6104,7 +6123,9 @@ class AIClient:
 
                 # Attach domain-specific FinOps optimization levers
                 domain_insights = _generate_domain_finops_insights(major_svc_pcode, cat_totals, total_svc_spend)
-                insights_block = "\n#### 💡 FinOps Optimization Levers & Architecture Recommendations\n\n" + "\n".join(domain_insights) + "\n"
+                insights_block = ""
+                if domain_insights and not is_no_insights_requested(low):
+                    insights_block = "\n#### 💡 FinOps Optimization Levers & Architecture Recommendations\n\n" + "\n".join(domain_insights) + "\n"
 
                 partial_note = f"> ⚠️ *Note: Billing data for yesterday (`{yesterday_str}`) is preliminary/partial due to cloud billing settlement latency.*\n\n" if num_days > 0 else ""
 
@@ -6222,7 +6243,7 @@ class AIClient:
                     insights.append(f"- **Aurora Serverless Scaling**: Aurora Serverless ACU consumption accounts for **${aurora_cost:,.2f}**. Review min/max ACU allocation thresholds to optimize off-peak costs.")
 
                 insights_block = ""
-                if insights:
+                if insights and not is_no_insights_requested(low):
                     insights_block = "\n#### 💡 FinOps Key Observations & Optimization Levers\n\n" + "\n".join(insights) + "\n"
 
                 chart_type = _detect_chart_type(low)
@@ -6808,7 +6829,7 @@ class AIClient:
                             + "\n".join(f"| {m} | ${c:,.2f} | {mm} |" for m, c, mm in tbl_lines)
                         )
                         insight_md = ""
-                        if self.engine != "direct":
+                        if self.engine != "direct" and not is_no_insights_requested(low):
                             try:
                                 sys_msg = {"role": "system", "content": "You are Cleo, an expert FinOps AI. Provide 2 concise bullet observations about the monthly spend trend."}
                                 user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{table}"}
@@ -7119,7 +7140,7 @@ class AIClient:
                         chart_part = f"{chart_md}\n\n"
 
                 insight_md = ""
-                if self.engine != "direct" and svc_comparison_list:
+                if self.engine != "direct" and svc_comparison_list and not is_no_insights_requested(low):
                     try:
                         sys_msg = {"role": "system", "content": "You are Cleo, an expert FinOps AI. Provide 2 concise bullet observations about this service-level spend comparison, highlighting top drivers and significant MoM variance."}
                         user_msg = {"role": "user", "content": f"Scope: {scope_title}\nData summary:\n{table_rows}"}
@@ -7129,6 +7150,12 @@ class AIClient:
                     except Exception as e:
                         logger.debug(f"[LLM Commentary] {e}")
 
+                drivers_block = (
+                    f"**💡 Key FinOps Spend Drivers:**\n"
+                    f"{top_driver_bullets}"
+                    f"- **Customer Trajectory**: {scope_title} is tracking towards a month-end total of **${tot_proj:,.2f}**, representing an overall {tot_pct:+.1f}% ({tot_sign}${abs(tot_diff):,.2f}) variance against {last_ym}.\n\n"
+                ) if not is_no_insights_requested(low) else ""
+
                 return (
                     f"### 📊 Service-Level Cost Comparison & Run-Rate Forecast: {scope_title} ({cloud_scope_str})\n\n"
                     f"{chart_part}"
@@ -7137,9 +7164,7 @@ class AIClient:
                     f"|:---|:---|:---|:---|:---|:---|\n"
                     f"{table_rows}\n"
                     f"| **Total Customer Spend** | **${tot_lm:,.2f}** | **${tot_mtd:,.2f}** | **${tot_proj:,.2f}** | **{tot_sign}${abs(tot_diff):,.2f}** | **{tot_pct:+.1f}% {tot_icon}** |\n\n"
-                    f"**💡 Key FinOps Spend Drivers:**\n"
-                    f"{top_driver_bullets}"
-                    f"- **Customer Trajectory**: {scope_title} is tracking towards a month-end total of **${tot_proj:,.2f}**, representing an overall {tot_pct:+.1f}% ({tot_sign}${abs(tot_diff):,.2f}) variance against {last_ym}.\n\n"
+                    f"{drivers_block}"
                     f"{insight_md}\n\n"
                     f"*Source: {target_ds} via CloudHealth ({source_scope}). Run-rate projection formula: MTD * ({days_in_month}/{days_elapsed}). Numbers match CloudHealth Portal.*"
                 )
@@ -7456,7 +7481,7 @@ class AIClient:
                 ]) if top_svcs else "| *(No recorded usage for this month)* | $0.00 | 0.0% |"
 
                 insight_md = ""
-                if self.engine != "direct":
+                if self.engine != "direct" and not is_no_insights_requested(low):
                     try:
                         sys_m = {
                             "role": "system",
@@ -7852,7 +7877,7 @@ class AIClient:
                     title = f"Channel Customer Spend: Top {len(top_rows)} Customers"
 
                 insight_md = ""
-                if self.engine != "direct":
+                if self.engine != "direct" and not is_no_insights_requested(low):
                     try:
                         summary = "\n".join([f"{n}: {target_label} ${tc:,.2f}, Last Month ${lm:,.2f}, MTD ${mtd:,.2f}" for n, tc, lm, mtd in top_rows[:5]])
                         sys_m = {"role": "system", "content": "You are Cleo, an expert FinOps AI. Provide 2 concise bullet FinOps insights from channel customer spend."}
@@ -7962,7 +7987,7 @@ class AIClient:
                 )
                 
                 insight_md = ""
-                if self.engine != "direct":
+                if self.engine != "direct" and not is_no_insights_requested(low):
                     try:
                         sys_msg = {
                             "role": "system",
@@ -8811,34 +8836,35 @@ class AIClient:
                         svc_hdr = f"CloudHealth Spend Analysis: Top {prov_title} Services by Spend — {svc_scope_label}"
 
                         insight_md = ""
-                        if self.engine != "direct":
-                            try:
-                                sys_msg = {
-                                    "role": "system",
-                                    "content": (
-                                        f"You are Cleo, an expert FinOps AI. Provide 2 concise bullet observations about the {prov_title} service spend trend over time.\n"
-                                        "STRICT RULES:\n"
-                                        "1. Bullet titles MUST accurately reflect all services mentioned in that bullet.\n"
-                                        "2. Do not use the word 'Utilization' when analyzing a spend table; use 'Spend Concentration' or 'Cost Driver'.\n"
-                                        "3. Keep each bullet concise, accurate, and actionable with specific dollar amounts or percentages from the table."
-                                    )
-                                }
-                                user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{table}"}
-                                llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
-                                if llm_ans:
-                                    insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
-                            except Exception as e:
-                                logger.debug(f"[LLM Commentary] {e}")
+                        if not is_no_insights_requested(low):
+                            if self.engine != "direct":
+                                try:
+                                    sys_msg = {
+                                        "role": "system",
+                                        "content": (
+                                            f"You are Cleo, an expert FinOps AI. Provide 2 concise bullet observations about the {prov_title} service spend trend over time.\n"
+                                            "STRICT RULES:\n"
+                                            "1. Bullet titles MUST accurately reflect all services mentioned in that bullet.\n"
+                                            "2. Do not use the word 'Utilization' when analyzing a spend table; use 'Spend Concentration' or 'Cost Driver'.\n"
+                                            "3. Keep each bullet concise, accurate, and actionable with specific dollar amounts or percentages from the table."
+                                        )
+                                    }
+                                    user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{table}"}
+                                    llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
+                                    if llm_ans:
+                                        insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
+                                except Exception as e:
+                                    logger.debug(f"[LLM Commentary] {e}")
 
-                        if not insight_md:
-                            top_s1 = top_services[0] if top_services else "Primary Services"
-                            top_s2 = top_services[1] if len(top_services) > 1 else ""
-                            s_names = f"{top_s1} and {top_s2}" if top_s2 else top_s1
-                            insight_md = (
-                                "\n\n**💡 FinOps Insights:**\n"
-                                f"- **Core Infrastructure Trend ({s_names})**: {s_names} represent the predominant cost drivers across `{svc_scope_label}`. Tracking month-over-month variances ensures unexpected scaling spikes are remediated early.\n"
-                                f"- **Architecture & Commitment Modernization**: Leveraging multi-year commitments (Savings Plans, CUDs) alongside active waste cleanup yields significant run-rate reduction."
-                            )
+                            if not insight_md:
+                                top_s1 = top_services[0] if top_services else "Primary Services"
+                                top_s2 = top_services[1] if len(top_services) > 1 else ""
+                                s_names = f"{top_s1} and {top_s2}" if top_s2 else top_s1
+                                insight_md = (
+                                    "\n\n**💡 FinOps Insights:**\n"
+                                    f"- **Core Infrastructure Trend ({s_names})**: {s_names} represent the predominant cost drivers across `{svc_scope_label}`. Tracking month-over-month variances ensures unexpected scaling spikes are remediated early.\n"
+                                    f"- **Architecture & Commitment Modernization**: Leveraging multi-year commitments (Savings Plans, CUDs) alongside active waste cleanup yields significant run-rate reduction."
+                                )
 
                         chart_types = intent_info.get("chart_types") or []
                         det_type = _detect_chart_type(low)
@@ -9310,31 +9336,32 @@ class AIClient:
                         svc_hdr = f"CloudHealth Multi-Cloud Spend Analysis: Top Services Across All Clouds — {display_scope}"
 
                 insight_md = ""
-                if self.engine != "direct":
-                    try:
-                        sys_msg = {
-                            "role": "system",
-                            "content": (
-                                "You are Cleo, an expert FinOps AI. Provide 2 concise bullet observations about the multi-cloud service spend breakdown across providers.\n"
-                                "STRICT TITLE RULES:\n"
-                                "1. Bullet titles MUST accurately reflect all services mentioned in that bullet. NEVER label a bullet as 'EC2' or 'High EC2 Utilization' if the bullet discusses both EC2 and RDS! Instead, use 'Compute & Database Concentration (EC2 & RDS)'.\n"
-                                "2. Do not use the word 'Utilization' when analyzing a spend table; use 'Spend Concentration' or 'Cost Driver'.\n"
-                                "3. Keep each bullet concise, accurate, and actionable with specific dollar amounts or percentages from the table."
-                            )
-                        }
-                        user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{table}"}
-                        llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
-                        if llm_ans:
-                            insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
-                    except Exception as e:
-                        logger.debug(f"[LLM Commentary] {e}")
+                if not is_no_insights_requested(low):
+                    if self.engine != "direct":
+                        try:
+                            sys_msg = {
+                                "role": "system",
+                                "content": (
+                                    "You are Cleo, an expert FinOps AI. Provide 2 concise bullet observations about the multi-cloud service spend breakdown across providers.\n"
+                                    "STRICT TITLE RULES:\n"
+                                    "1. Bullet titles MUST accurately reflect all services mentioned in that bullet. NEVER label a bullet as 'EC2' or 'High EC2 Utilization' if the bullet discusses both EC2 and RDS! Instead, use 'Compute & Database Concentration (EC2 & RDS)'.\n"
+                                    "2. Do not use the word 'Utilization' when analyzing a spend table; use 'Spend Concentration' or 'Cost Driver'.\n"
+                                    "3. Keep each bullet concise, accurate, and actionable with specific dollar amounts or percentages from the table."
+                                )
+                            }
+                            user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{table}"}
+                            llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
+                            if llm_ans:
+                                insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
+                        except Exception as e:
+                            logger.debug(f"[LLM Commentary] {e}")
 
-                if not insight_md:
-                    insight_md = (
-                        "\n\n**💡 FinOps Insights:**\n"
-                        f"- **Multi-Cloud Core Infrastructure Concentration**: Compute and managed database instances across AWS, Azure, and GCP represent over 60% of total multi-cloud spend. Consolidating commitments (Savings Plans, Reservations) and modernizing silicon delivers the largest bottom-line reduction.\n"
-                        f"- **Data & Storage Modernization**: Storage volumes across AWS EBS, Azure Disks, and GCP BigQuery present immediate quick-win opportunities through storage tiering and gp3 upgrades."
-                    )
+                    if not insight_md:
+                        insight_md = (
+                            "\n\n**💡 FinOps Insights:**\n"
+                            f"- **Multi-Cloud Core Infrastructure Concentration**: Compute and managed database instances across AWS, Azure, and GCP represent over 60% of total multi-cloud spend. Consolidating commitments (Savings Plans, Reservations) and modernizing silicon delivers the largest bottom-line reduction.\n"
+                            f"- **Data & Storage Modernization**: Storage volumes across AWS EBS, Azure Disks, and GCP BigQuery present immediate quick-win opportunities through storage tiering and gp3 upgrades."
+                        )
 
                 chart_types = intent_info.get("chart_types") or []
                 det_type = _detect_chart_type(low)
@@ -9656,7 +9683,7 @@ class AIClient:
                             )
 
                             insight_md = ""
-                            if self.engine != "direct":
+                            if self.engine != "direct" and not is_no_insights_requested(low):
                                 try:
                                     sys_msg = {"role": "system", "content": f"You are Cleo, an expert FinOps AI. Provide 2 concise bullet observations about this multi-cloud {len(all_months_set)}-month spend trend, comparing historical trends and the latest forecast."}
                                     user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{table_md}"}
