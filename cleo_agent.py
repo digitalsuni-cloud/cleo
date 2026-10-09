@@ -1472,6 +1472,7 @@ class AIClient:
                     pass
 
         # ── Step 1: LLM-First Request Comprehension & Intent Routing ─────────
+        cont_ctx = _detect_contextual_continuation(messages, cust_map=getattr(self, "_cust_map_cache", {}))
         intent_info = self._understand_query(messages, mcp=mcp)
         logger.info(f"[AI Generate] LLM Intent: {intent_info}")
 
