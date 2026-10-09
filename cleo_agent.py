@@ -469,7 +469,11 @@ def _load_config() -> dict:
 def _save_config(updates: dict) -> dict:
     os.makedirs(APP_DATA_DIR, exist_ok=True)
     cfg = _load_config()
-    cfg.update(updates)
+    for k, v in updates.items():
+        if v is None:
+            cfg.pop(k, None)
+        else:
+            cfg[k] = v
     try:
         with open(CONFIG_FILE, "w") as f:
             json.dump(cfg, f, indent=2)

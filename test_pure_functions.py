@@ -1564,7 +1564,41 @@ def test_multiturn_context_passing_and_disambiguation():
     assert understood["cloud"] == "azure"
 
 
+def test_unconfigure_and_clear_token():
+    import os
+    from cleo_agent import _save_config, _load_config
+    from cleo_server import save_token, delete_token, TokenUpdateRequest
+
+    # 1. Test _save_config None removes key
+    _save_config({"TEST_TEMP_KEY": "temp_secret"})
+    assert _load_config().get("TEST_TEMP_KEY") == "temp_secret"
+    _save_config({"TEST_TEMP_KEY": None})
+    assert "TEST_TEMP_KEY" not in _load_config()
+
+    # 2. Test save_token and delete_token for frontier provider
+    res_save = save_token(TokenUpdateRequest(engine="gemini", token="mock-gemini-key-999"))
+    assert res_save["status"] == "ok"
+    assert _load_config().get("GEMINI_API_KEY") == "mock-gemini-key-999"
+    assert os.environ.get("GEMINI_API_KEY") == "mock-gemini-key-999"
+
+    # Now unconfigure/clear token
+    res_del = delete_token("gemini")
+    assert res_del["status"] == "ok"
+    assert res_del["unconfigured"] == "gemini"
+    assert "GEMINI_API_KEY" not in _load_config()
+    assert os.environ.get("GEMINI_API_KEY") is None
+
+    # 3. Test empty token via POST also triggers unconfigure
+    save_token(TokenUpdateRequest(engine="openai", token="mock-openai-key"))
+    assert _load_config().get("OPENAI_API_KEY") == "mock-openai-key"
+    res_empty = save_token(TokenUpdateRequest(engine="openai", token="   "))
+    assert res_empty["status"] == "ok"
+    assert "OPENAI_API_KEY" not in _load_config()
+    assert os.environ.get("OPENAI_API_KEY") is None
+
+
 if __name__ == "__main__":
+    test_unconfigure_and_clear_token()
     test_multiturn_context_passing_and_disambiguation()
     test_parse_query_time_context()
     test_extract_requested_service()
