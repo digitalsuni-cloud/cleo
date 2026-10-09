@@ -1063,6 +1063,15 @@ def test_cleo_enhancements_suite():
     extracted_date = (sample_row.get("end_date") or "").split("T")[0].split()[0] or sample_row.get("month", "")
     assert extracted_date == "2026-10-08"
 
+    # 6. Daily anomaly granularity & Marketplace tag
+    daily_row = {"day": "2026-10-07", "marketplace": "Yes", "account_id": "352755461691", "account_name": "demo-aws-bedrock"}
+    date_val = daily_row.get("day") or (daily_row.get("end_date") or "").split("T")[0]
+    mp_tag = " 🛒 *(Marketplace)*" if daily_row.get("marketplace", "").lower() in ("yes", "true", "1") else ""
+    acc_disp = f"`{daily_row['account_name']}` (`{daily_row['account_id']}`)"
+    assert date_val == "2026-10-07"
+    assert "Marketplace" in mp_tag
+    assert "demo-aws-bedrock" in acc_disp
+
 
 if __name__ == "__main__":
     test_cleo_enhancements_suite()
