@@ -2129,12 +2129,55 @@ def save_token(req: TokenUpdateRequest):
     if not env_var:
         raise HTTPException(status_code=400, detail=f"Unknown public LLM engine: {req.engine}")
 
-    _save_config({env_var: req.token.strip()})
+    clean_token = req.token.strip()
+    if not clean_token:
+        return delete_token(req.engine)
+
+    _save_config({env_var: clean_token})
+    os.environ[env_var] = clean_token
     cfg = _load_config()
     if _ai:
         _ai.cfg = cfg
     logger.info(f"🔑 [Token Saved] Updated token for engine: {req.engine}")
     return {"status": "ok", "engine": req.engine}
+
+@app.delete("/api/tokens/{engine}")
+def delete_token(engine: str):
+    global _ai, _active_engine_key, _engine_label
+    env_map = {
+        "gemini": "GEMINI_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY"
+    }
+    env_var = env_map.get(engine.lower())
+    if not env_var:
+        raise HTTPException(status_code=400, detail=f"Unknown public LLM engine: {engine}")
+
+    _save_config({env_var: None})
+    os.environ.pop(env_var, None)
+
+    cfg = _load_config()
+    if _ai:
+        _ai.cfg = cfg
+
+    switched = False
+    new_engine = _active_engine_key
+    if _active_engine_key == engine.lower():
+        sys_info = detect_system_info()
+        fallback = sys_info.get("recommended_engine_id") or "direct"
+        if fallback in ("gemini", "openai", "anthropic") and not (cfg.get(env_map.get(fallback)) or os.environ.get(env_map.get(fallback))):
+            fallback = "direct"
+        set_engine(EngineSelection(engine=fallback))
+        new_engine = fallback
+        switched = True
+
+    logger.info(f"🗑️ [Token Cleared] Unconfigured token for engine: {engine}")
+    return {
+        "status": "ok",
+        "unconfigured": engine,
+        "active_engine": new_engine,
+        "switched": switched
+    }
 
 class ChatRequest(BaseModel):
     message: str = Field(..., max_length=131072)  # 128 KB ceiling (security: L3)

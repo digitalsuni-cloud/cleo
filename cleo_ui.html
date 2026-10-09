@@ -2646,6 +2646,24 @@
       border-color: rgba(255, 255, 255, 0.18);
       color: #f1f5f9;
     }
+    .btn-icon-trash {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #94a3b8;
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-icon-trash:hover {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.35);
+      color: #f87171;
+    }
     .progress-bar-container {
       height: 4px;
       background: rgba(255, 255, 255, 0.07);
@@ -3228,9 +3246,17 @@
         <label id="token-modal-label" style="display:block; font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #94a3b8; margin-bottom: 6px;">API Key</label>
         <input type="password" id="token-modal-input" class="input-box" placeholder="Paste API key..." style="width: 100%; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
       </div>
-      <div style="display:flex; justify-content:flex-end; gap: 8px;">
-        <button class="btn btn-secondary" onclick="closeTokenModal()" style="font-size: 0.76rem; padding: 6px 14px;">Cancel</button>
-        <button class="btn btn-primary" onclick="submitToken()" style="font-size: 0.76rem; padding: 6px 14px;">Save & Activate</button>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap: 8px;">
+        <button id="token-modal-clear-btn" class="btn" onclick="handleTokenModalClear()" style="font-size: 0.76rem; padding: 6px 12px; color: #f87171; border: 1px solid rgba(239,68,68,0.25); background: rgba(239,68,68,0.06); display:none; align-items:center; gap:5px; cursor:pointer;" title="Clear and unconfigure API key from store">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+          </svg>
+          <span>Unconfigure</span>
+        </button>
+        <div style="display:flex; gap: 8px; margin-left: auto;">
+          <button class="btn btn-secondary" onclick="closeTokenModal()" style="font-size: 0.76rem; padding: 6px 14px;">Cancel</button>
+          <button class="btn btn-primary" onclick="submitToken()" style="font-size: 0.76rem; padding: 6px 14px;">Save & Activate</button>
+        </div>
       </div>
     </div>
   </div>
@@ -3492,6 +3518,7 @@
     let logPollTimer = null;
     let downloadPollTimer = null;
     let currentConfigEngine = null;
+    let currentConfigEngineName = '';
     let isGenerating = false;
     let currentAbortController = null;
 
@@ -4782,8 +4809,8 @@
             }
 
             const configTag = p.configured
-              ? `<span class="status-indicator-pill online"><span class="indicator-dot"></span>Configured</span>`
-              : `<span class="status-indicator-pill offline" style="cursor:pointer;" onclick="openTokenModal('${p.id}', '${p.name}', '${p.env_var}')" title="Configure API Key"><span class="indicator-dot"></span>Configure API Key</span>`;
+              ? `<span class="status-indicator-pill online" style="cursor:pointer;" onclick="openTokenModal('${p.id}', '${escapeHtml(p.name)}', '${p.env_var}', true)" title="Configured · Click to edit or unconfigure"><span class="indicator-dot"></span>Configured</span>`
+              : `<span class="status-indicator-pill offline" style="cursor:pointer;" onclick="openTokenModal('${p.id}', '${escapeHtml(p.name)}', '${p.env_var}', false)" title="Configure API Key"><span class="indicator-dot"></span>Configure API Key</span>`;
 
             return `
               <div class="model-row ${isActive ? 'active' : ''}">
@@ -4799,11 +4826,18 @@
                 </div>
                 <div style="display:flex; gap:6px; align-items:center;">
                   ${p.configured ? `
-                    <button class="btn-icon-key" onclick="openTokenModal('${p.id}', '${p.name}', '${p.env_var}')" title="Configure API Key">
+                    <button class="btn-icon-key" onclick="openTokenModal('${p.id}', '${escapeHtml(p.name)}', '${p.env_var}', true)" title="Edit API Key">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="7.5" cy="15.5" r="5.5"></circle>
                         <path d="m21 2-9.6 9.6"></path>
                         <path d="m15.5 7.5 3 3"></path>
+                      </svg>
+                    </button>
+                    <button class="btn-icon-trash" onclick="confirmClearToken('${p.id}', '${escapeHtml(p.name)}')" title="Unconfigure / Clear API Key">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
                       </svg>
                     </button>
                   ` : ''}
@@ -4898,18 +4932,73 @@
       document.getElementById('engine-modal').style.display = 'none';
     }
 
-    function openTokenModal(engineId, engineName, envVar) {
+    function openTokenModal(engineId, engineName, envVar, isConfigured = false) {
       currentConfigEngine = engineId;
-      document.getElementById('token-modal-title').textContent = `Configure ${engineName} API Key`;
-      document.getElementById('token-modal-desc').textContent = `Enter your API key for ${engineName}. It will be saved securely to ~/.cleo/config.json.`;
+      currentConfigEngineName = engineName;
+      document.getElementById('token-modal-title').textContent = isConfigured ? `Configure ${engineName}` : `Configure ${engineName} API Key`;
+      
+      const descEl = document.getElementById('token-modal-desc');
+      if (isConfigured) {
+        descEl.innerHTML = `An API key is currently saved for <strong>${escapeHtml(engineName)}</strong> in <code>~/.cleo/config.json</code>. You can paste a new key below to update it, or click <strong>Unconfigure</strong> to clear it.`;
+      } else {
+        descEl.textContent = `Enter your API key for ${engineName}. It will be saved securely to ~/.cleo/config.json.`;
+      }
+      
       document.getElementById('token-modal-label').textContent = `${envVar}`;
-      document.getElementById('token-modal-input').value = '';
+      const inputEl = document.getElementById('token-modal-input');
+      inputEl.value = '';
+      inputEl.placeholder = isConfigured ? 'Paste new API key to update...' : 'Paste API key...';
+      
+      const clearBtn = document.getElementById('token-modal-clear-btn');
+      if (clearBtn) {
+        clearBtn.style.display = isConfigured ? 'inline-flex' : 'none';
+      }
+      
       document.getElementById('token-config-modal').style.display = 'flex';
-      setTimeout(() => document.getElementById('token-modal-input').focus(), 50);
+      setTimeout(() => inputEl.focus(), 50);
     }
+
     function closeTokenModal() {
       document.getElementById('token-config-modal').style.display = 'none';
       currentConfigEngine = null;
+      currentConfigEngineName = '';
+    }
+
+    async function clearToken(engineId) {
+      if (!engineId) return;
+      try {
+        const res = await fetch(`/api/tokens/${encodeURIComponent(engineId)}`, {
+          method: 'DELETE'
+        });
+        if (res.ok) {
+          closeTokenModal();
+          showToast("API key cleared and unconfigured successfully", "success");
+          await loadEngines();
+          if (typeof checkHealth === 'function') await checkHealth();
+        } else {
+          const data = await res.json();
+          showToast(`Failed to unconfigure: ${data.detail || 'Unknown error'}`, "error");
+        }
+      } catch (e) {
+        showToast(`Error: ${e.message}`, "error");
+      }
+    }
+
+    async function confirmClearToken(engineId, engineName) {
+      const ok = await showAppConfirm(
+        `Unconfigure ${engineName}`,
+        `Are you sure you want to clear the API key for ${engineName}? This will remove it from ~/.cleo/config.json and unconfigure the provider.`,
+        { isDestructive: true, confirmText: 'Unconfigure', cancelText: 'Cancel' }
+      );
+      if (ok) {
+        await clearToken(engineId);
+      }
+    }
+
+    async function handleTokenModalClear() {
+      if (!currentConfigEngine) return;
+      const engineName = currentConfigEngineName || currentConfigEngine;
+      await confirmClearToken(currentConfigEngine, engineName);
     }
 
     async function submitToken() {
