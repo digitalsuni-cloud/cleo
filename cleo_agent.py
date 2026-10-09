@@ -8152,8 +8152,24 @@ class AIClient:
                 gcp_rows = []
                 oci_rows = []
                 multi_rows = []
+                used_fallback = False
                 table = ""
                 svc_hdr = ""
+
+                now_dt = datetime.date.today()
+                days_in_month = calendar.monthrange(now_dt.year, now_dt.month)[1]
+                days_elapsed = max(now_dt.day, 1)
+                runrate_factor = days_in_month / days_elapsed
+                is_mtd_scope = (
+                    (target_ym == current_ym or "mtd" in svc_scope_label.lower() or "mtd" in target_label.lower() or time_ctx.get("is_mtd", False))
+                    and not (req_months and req_months > 1)
+                    and not time_ctx.get("daily_range")
+                    and not time_ctx.get("timeframe_days")
+                )
+                fc_notice = (
+                    f"> ℹ️ **Run-Rate Projection Notice**: `{svc_scope_label}` is in-flight (Day {days_elapsed} of {days_in_month}). "
+                    f"Month-End Forecast is calculated via standard linear run-rate: `MTD * ({days_in_month}/{days_elapsed}) = {runrate_factor:.2f}x`.\n\n"
+                )
 
                 # Numerical Cost Filters, Exclusions, Limit & Sorting
                 min_cost = intent_info.get("min_cost") if intent_info.get("min_cost") is not None else cont_ctx.get("min_cost")
@@ -8685,17 +8701,32 @@ class AIClient:
                         total_val = sum(r[2] for r in dim_rows)
                         scope_disp = cloud_target.upper() if cloud_target != "all" else "Multi-Cloud"
                         unit_str = matched_dim.get("unit", "$")
-                        val_header = f"Cost ({svc_scope_label})" if is_cost else f"{dim_label} ({svc_scope_label})"
-                        tbl_lines = [
-                            f"| {prov} | `{d_val}` | {f'${v:,.2f}' if is_cost else f'{v:,.2f} {unit_str}'} | {((v/total_val)*100 if total_val else 0):.1f}% |"
-                            for prov, d_val, v in dim_rows[:limit]
-                        ]
-                        table = (
-                            f"| Cloud Provider | {dim_label} | {val_header} | % of Total |\n"
-                            f"|:---|:---|:---|:---|\n"
-                            f"{chr(10).join(tbl_lines)}\n\n"
-                            f"| **Total** | | **{f'${total_val:,.2f}' if is_cost else f'{total_val:,.2f} {unit_str}'}** | **100.0%** |"
-                        )
+                        has_enough_mtd = is_mtd_scope and not used_fallback and days_elapsed >= 3 and is_cost and total_val > 0
+                        if has_enough_mtd:
+                            total_val_fc = total_val * runrate_factor
+                            tbl_lines = [
+                                f"| {prov} | `{d_val}` | ${v:,.2f} | ${v * runrate_factor:,.2f} | {((v/total_val)*100 if total_val else 0):.1f}% |"
+                                for prov, d_val, v in dim_rows[:limit]
+                            ]
+                            table = (
+                                f"{fc_notice}"
+                                f"| Cloud Provider | {dim_label} | MTD Cost | Month-End Forecast | % of Total |\n"
+                                f"|:---|:---|:---|:---|:---|\n"
+                                f"{chr(10).join(tbl_lines)}\n\n"
+                                f"| **Total** | | **${total_val:,.2f}** | **${total_val_fc:,.2f}** | **100.0%** |"
+                            )
+                        else:
+                            val_header = f"Cost ({svc_scope_label})" if is_cost else f"{dim_label} ({svc_scope_label})"
+                            tbl_lines = [
+                                f"| {prov} | `{d_val}` | {f'${v:,.2f}' if is_cost else f'{v:,.2f} {unit_str}'} | {((v/total_val)*100 if total_val else 0):.1f}% |"
+                                for prov, d_val, v in dim_rows[:limit]
+                            ]
+                            table = (
+                                f"| Cloud Provider | {dim_label} | {val_header} | % of Total |\n"
+                                f"|:---|:---|:---|:---|\n"
+                                f"{chr(10).join(tbl_lines)}\n\n"
+                                f"| **Total** | | **{f'${total_val:,.2f}' if is_cost else f'{total_val:,.2f} {unit_str}'}** | **100.0%** |"
+                            )
 
                         chart_md = ""
                         if not is_no_chart_requested(low):
@@ -8811,17 +8842,27 @@ class AIClient:
                                 pass
 
                     if svc_cost > 0.0:
-                        fallback_note = (
-                            f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
-                            f"Displaying spend from the latest closed billing cycle (**{last_ym}**).\n\n"
-                            if used_fallback else ""
-                        )
-                        table = (
-                            f"{fallback_note}"
-                            f"| Cloud Provider | Service Category | Cost |\n"
-                            f"|:---|:---|:---|\n"
-                            f"| {prov_disp} | {pdisp} | **${svc_cost:,.2f}** |\n"
-                        )
+                        has_enough_mtd = is_mtd_scope and not used_fallback and days_elapsed >= 3
+                        if has_enough_mtd:
+                            fc_cost = svc_cost * runrate_factor
+                            table = (
+                                f"{fc_notice}"
+                                f"| Cloud Provider | Service Category | MTD Cost | Month-End Forecast |\n"
+                                f"|:---|:---|:---|:---|\n"
+                                f"| {prov_disp} | {pdisp} | **${svc_cost:,.2f}** | **${fc_cost:,.2f}** |\n"
+                            )
+                        else:
+                            fallback_note = (
+                                f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
+                                f"Displaying spend from the latest closed billing cycle (**{last_ym}**).\n\n"
+                                if used_fallback else ""
+                            )
+                            table = (
+                                f"{fallback_note}"
+                                f"| Cloud Provider | Service Category | Cost |\n"
+                                f"|:---|:---|:---|\n"
+                                f"| {prov_disp} | {pdisp} | **${svc_cost:,.2f}** |\n"
+                            )
                         svc_hdr = f"CloudHealth Spend Analysis: {pdisp} ({prov_disp}) Spend — {svc_scope_label if not used_fallback else last_ym}"
                     else:
                         return (
@@ -9059,22 +9100,37 @@ class AIClient:
                         "SELECT SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider = 'Azure'",
                         time_range_override=total_time_range
                     ) or sum(r[2] for r in azure_rows)
-                    tbl_lines = [
-                        f"| {p} | {s} | ${c:,.2f} | {((c/total_az)*100 if total_az else 0):.1f}% |"
-                        for p, s, c in azure_rows[:limit]
-                    ]
-                    fallback_note = (
-                        f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
-                        f"Displaying top Azure services from the latest closed billing cycle (**{last_ym}**).\n\n"
-                        if used_fallback else ""
-                    )
-                    table = (
-                        f"{fallback_note}"
-                        f"| Cloud Provider | Service Category | Cost | % of Azure Spend |\n"
-                        f"|:---|:---|:---|:---|\n"
-                        f"{chr(10).join(tbl_lines)}\n\n"
-                        f"| **Total Azure Spend** | | **${total_az:,.2f}** | **100.0%** |"
-                    )
+                    has_enough_mtd = is_mtd_scope and not used_fallback and days_elapsed >= 3 and total_az > 0
+                    if has_enough_mtd:
+                        total_az_fc = total_az * runrate_factor
+                        tbl_lines = [
+                            f"| {p} | {s} | ${c:,.2f} | ${c * runrate_factor:,.2f} | {((c/total_az)*100 if total_az else 0):.1f}% |"
+                            for p, s, c in azure_rows[:limit]
+                        ]
+                        table = (
+                            f"{fc_notice}"
+                            f"| Cloud Provider | Service Category | MTD Cost | Month-End Forecast | % of Azure Spend |\n"
+                            f"|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(tbl_lines)}\n\n"
+                            f"| **Total Azure Spend** | | **${total_az:,.2f}** | **${total_az_fc:,.2f}** | **100.0%** |"
+                        )
+                    else:
+                        tbl_lines = [
+                            f"| {p} | {s} | ${c:,.2f} | {((c/total_az)*100 if total_az else 0):.1f}% |"
+                            for p, s, c in azure_rows[:limit]
+                        ]
+                        fallback_note = (
+                            f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
+                            f"Displaying top Azure services from the latest closed billing cycle (**{last_ym}**).\n\n"
+                            if used_fallback else ""
+                        )
+                        table = (
+                            f"{fallback_note}"
+                            f"| Cloud Provider | Service Category | Cost | % of Azure Spend |\n"
+                            f"|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(tbl_lines)}\n\n"
+                            f"| **Total Azure Spend** | | **${total_az:,.2f}** | **100.0%** |"
+                        )
                     svc_hdr = f"CloudHealth Spend Analysis: Top Azure Services by Spend — {svc_scope_label if not used_fallback else last_ym}"
 
                 # ── GCP Specific Breakdown ──
@@ -9135,22 +9191,37 @@ class AIClient:
                         "SELECT SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider IN ('GCP', 'Google Cloud')",
                         time_range_override=total_time_range
                     ) or sum(r[2] for r in gcp_rows)
-                    tbl_lines = [
-                        f"| {p} | {s} | ${c:,.2f} | {((c/total_gcp)*100 if total_gcp else 0):.1f}% |"
-                        for p, s, c in gcp_rows[:limit]
-                    ]
-                    fallback_note = (
-                        f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
-                        f"Displaying top GCP services from the latest closed billing cycle (**{last_ym}**).\n\n"
-                        if used_fallback else ""
-                    )
-                    table = (
-                        f"{fallback_note}"
-                        f"| Cloud Provider | Service Category | Cost | % of GCP Spend |\n"
-                        f"|:---|:---|:---|:---|\n"
-                        f"{chr(10).join(tbl_lines)}\n\n"
-                        f"| **Total GCP Spend** | | **${total_gcp:,.2f}** | **100.0%** |"
-                    )
+                    has_enough_mtd = is_mtd_scope and not used_fallback and days_elapsed >= 3 and total_gcp > 0
+                    if has_enough_mtd:
+                        total_gcp_fc = total_gcp * runrate_factor
+                        tbl_lines = [
+                            f"| {p} | {s} | ${c:,.2f} | ${c * runrate_factor:,.2f} | {((c/total_gcp)*100 if total_gcp else 0):.1f}% |"
+                            for p, s, c in gcp_rows[:limit]
+                        ]
+                        table = (
+                            f"{fc_notice}"
+                            f"| Cloud Provider | Service Category | MTD Cost | Month-End Forecast | % of GCP Spend |\n"
+                            f"|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(tbl_lines)}\n\n"
+                            f"| **Total GCP Spend** | | **${total_gcp:,.2f}** | **${total_gcp_fc:,.2f}** | **100.0%** |"
+                        )
+                    else:
+                        tbl_lines = [
+                            f"| {p} | {s} | ${c:,.2f} | {((c/total_gcp)*100 if total_gcp else 0):.1f}% |"
+                            for p, s, c in gcp_rows[:limit]
+                        ]
+                        fallback_note = (
+                            f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
+                            f"Displaying top GCP services from the latest closed billing cycle (**{last_ym}**).\n\n"
+                            if used_fallback else ""
+                        )
+                        table = (
+                            f"{fallback_note}"
+                            f"| Cloud Provider | Service Category | Cost | % of GCP Spend |\n"
+                            f"|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(tbl_lines)}\n\n"
+                            f"| **Total GCP Spend** | | **${total_gcp:,.2f}** | **100.0%** |"
+                        )
                     svc_hdr = f"CloudHealth Spend Analysis: Top Google Cloud (GCP) Services by Spend — {svc_scope_label if not used_fallback else last_ym}"
 
                 # ── OCI Specific Breakdown ──
@@ -9252,22 +9323,37 @@ class AIClient:
                         "SELECT SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider = 'AWS'",
                         time_range_override=total_time_range
                     ) or sum(r[2] for r in aws_rows)
-                    tbl_lines = [
-                        f"| {p} | {s} | ${c:,.2f} | {((c/total_aws)*100 if total_aws else 0):.1f}% |"
-                        for p, s, c in aws_rows[:limit]
-                    ]
-                    fallback_note = (
-                        f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
-                        f"Displaying top AWS services from the latest closed billing cycle (**{last_ym}**).\n\n"
-                        if used_fallback else ""
-                    )
-                    table = (
-                        f"{fallback_note}"
-                        f"| Cloud Provider | Service Category | Cost | % of AWS Spend |\n"
-                        f"|:---|:---|:---|:---|\n"
-                        f"{chr(10).join(tbl_lines)}\n\n"
-                        f"| **Total AWS Spend** | | **${total_aws:,.2f}** | **100.0%** |"
-                    )
+                    has_enough_mtd = is_mtd_scope and not used_fallback and days_elapsed >= 3 and total_aws > 0
+                    if has_enough_mtd:
+                        total_aws_fc = total_aws * runrate_factor
+                        tbl_lines = [
+                            f"| {p} | {s} | ${c:,.2f} | ${c * runrate_factor:,.2f} | {((c/total_aws)*100 if total_aws else 0):.1f}% |"
+                            for p, s, c in aws_rows[:limit]
+                        ]
+                        table = (
+                            f"{fc_notice}"
+                            f"| Cloud Provider | Service Category | MTD Cost | Month-End Forecast | % of AWS Spend |\n"
+                            f"|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(tbl_lines)}\n\n"
+                            f"| **Total AWS Spend** | | **${total_aws:,.2f}** | **${total_aws_fc:,.2f}** | **100.0%** |"
+                        )
+                    else:
+                        tbl_lines = [
+                            f"| {p} | {s} | ${c:,.2f} | {((c/total_aws)*100 if total_aws else 0):.1f}% |"
+                            for p, s, c in aws_rows[:limit]
+                        ]
+                        fallback_note = (
+                            f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
+                            f"Displaying top AWS services from the latest closed billing cycle (**{last_ym}**).\n\n"
+                            if used_fallback else ""
+                        )
+                        table = (
+                            f"{fallback_note}"
+                            f"| Cloud Provider | Service Category | Cost | % of AWS Spend |\n"
+                            f"|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(tbl_lines)}\n\n"
+                            f"| **Total AWS Spend** | | **${total_aws:,.2f}** | **100.0%** |"
+                        )
                     svc_hdr = f"CloudHealth Spend Analysis: Top {len(tbl_lines)} AWS Services by Spend — {svc_scope_label if not used_fallback else last_ym}"
 
                 # ── Multi-Cloud / All Clouds Breakdown (AWS + Azure + GCP) ──
@@ -9310,17 +9396,31 @@ class AIClient:
                             )
 
                         total_multi = sum(r[1] for r in provider_rows)  # GROUP BY provider alone has no per-row limit to undercount
-
-                        tbl_lines = [
-                            f"| {p} | ${c:,.2f} | {((c/total_multi)*100 if total_multi else 0):.1f}% |"
-                            for p, c in provider_rows[:limit]
-                        ]
-                        table = (
-                            f"| Cloud Provider | Cost | % of Total |\n"
-                            f"|:---|:---|:---|\n"
-                            f"{chr(10).join(tbl_lines)}\n\n"
-                            f"| **Total Multi-Cloud Spend** | **${total_multi:,.2f}** | **100.0%** |"
-                        )
+                        has_enough_mtd = is_mtd_scope and not used_fallback and days_elapsed >= 3 and total_multi > 0
+                        if has_enough_mtd:
+                            total_multi_fc = total_multi * runrate_factor
+                            tbl_lines = [
+                                f"| {p} | ${c:,.2f} | ${c * runrate_factor:,.2f} | {((c/total_multi)*100 if total_multi else 0):.1f}% |"
+                                for p, c in provider_rows[:limit]
+                            ]
+                            table = (
+                                f"{fc_notice}"
+                                f"| Cloud Provider | MTD Cost | Month-End Forecast | % of Total |\n"
+                                f"|:---|:---|:---|:---|\n"
+                                f"{chr(10).join(tbl_lines)}\n\n"
+                                f"| **Total Multi-Cloud Spend** | **${total_multi:,.2f}** | **${total_multi_fc:,.2f}** | **100.0%** |"
+                            )
+                        else:
+                            tbl_lines = [
+                                f"| {p} | ${c:,.2f} | {((c/total_multi)*100 if total_multi else 0):.1f}% |"
+                                for p, c in provider_rows[:limit]
+                            ]
+                            table = (
+                                f"| Cloud Provider | Cost | % of Total |\n"
+                                f"|:---|:---|:---|\n"
+                                f"{chr(10).join(tbl_lines)}\n\n"
+                                f"| **Total Multi-Cloud Spend** | **${total_multi:,.2f}** | **100.0%** |"
+                            )
                         svc_hdr = f"CloudHealth Multi-Cloud Spend Analysis: Total Spend by Cloud Provider — {svc_scope_label}"
                     else:
                         multi_rows = []
@@ -9398,22 +9498,37 @@ class AIClient:
                         ) or sum(r[2] for r in multi_rows)
 
                         top_multi = multi_rows[:limit]
-                        tbl_lines = [
-                            f"| {p} | {s} | ${c:,.2f} | {((c/total_multi)*100 if total_multi else 0):.1f}% |"
-                            for p, s, c in top_multi
-                        ]
-                        fallback_note = (
-                            f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
-                            f"Displaying top cloud services from the latest closed billing cycle (**{last_ym}**).\n\n"
-                            if used_fallback else ""
-                        )
-                        table = (
-                            f"{fallback_note}"
-                            f"| Cloud Provider | Service Category | Cost | % of Total |\n"
-                            f"|:---|:---|:---|:---|\n"
-                            f"{chr(10).join(tbl_lines)}\n\n"
-                            f"| **Total Multi-Cloud Spend** | | **${total_multi:,.2f}** | **100.0%** |"
-                        )
+                        has_enough_mtd = is_mtd_scope and not used_fallback and days_elapsed >= 3 and total_multi > 0
+                        if has_enough_mtd:
+                            total_multi_fc = total_multi * runrate_factor
+                            tbl_lines = [
+                                f"| {p} | {s} | ${c:,.2f} | ${c * runrate_factor:,.2f} | {((c/total_multi)*100 if total_multi else 0):.1f}% |"
+                                for p, s, c in top_multi
+                            ]
+                            table = (
+                                f"{fc_notice}"
+                                f"| Cloud Provider | Service Category | MTD Cost | Month-End Forecast | % of Total |\n"
+                                f"|:---|:---|:---|:---|:---|\n"
+                                f"{chr(10).join(tbl_lines)}\n\n"
+                                f"| **Total Multi-Cloud Spend** | | **${total_multi:,.2f}** | **${total_multi_fc:,.2f}** | **100.0%** |"
+                            )
+                        else:
+                            tbl_lines = [
+                                f"| {p} | {s} | ${c:,.2f} | {((c/total_multi)*100 if total_multi else 0):.1f}% |"
+                                for p, s, c in top_multi
+                            ]
+                            fallback_note = (
+                                f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
+                                f"Displaying top cloud services from the latest closed billing cycle (**{last_ym}**).\n\n"
+                                if used_fallback else ""
+                            )
+                            table = (
+                                f"{fallback_note}"
+                                f"| Cloud Provider | Service Category | Cost | % of Total |\n"
+                                f"|:---|:---|:---|:---|\n"
+                                f"{chr(10).join(tbl_lines)}\n\n"
+                                f"| **Total Multi-Cloud Spend** | | **${total_multi:,.2f}** | **100.0%** |"
+                            )
                         display_scope = last_ym if used_fallback else svc_scope_label
                         svc_hdr = f"CloudHealth Multi-Cloud Spend Analysis: Top Services Across All Clouds — {display_scope}"
 

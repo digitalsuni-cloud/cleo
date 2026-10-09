@@ -1122,7 +1122,8 @@ def parse_query_time_context(query: str, context_ym: str = None) -> dict:
         "limit": limit,
         "timeframe_days": timeframe_days,
         "daily_range": daily_range,
-        "single_date": single_date
+        "single_date": single_date,
+        "is_mtd": is_mtd
     }
 
 def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None) -> dict:
