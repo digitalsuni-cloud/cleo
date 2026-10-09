@@ -31,6 +31,34 @@ def is_no_mom_requested(low: str) -> bool:
     return any(p in low for p in negative_mom_patterns)
 
 
+def is_no_insights_requested(text: str) -> bool:
+    """Check if the user explicitly asked to omit or skip FinOps insights, commentary, or recommendations."""
+    if not text:
+        return False
+    low = text.lower()
+    patterns = [
+        r'\bno\s+insights?\b',
+        r'\bwithout\s+(?:any\s+)?insights?\b',
+        r'\b(?:skip|omit|exclude|drop)\s+(?:the\s+|all\s+|any\s+)?insights?\b',
+        r'\b(?:do\s+not|don\'?t)\s+(?:need|provide|give|include|generate|want)\s+(?:any\s+)?insights?\b',
+        r'\bno\s+need\s+(?:for|of)\s+(?:any\s+)?insights?\b',
+        r'\binsights?\s+(?:not\s+needed|not\s+required|unnecessary)\b',
+        r'\bno\s+recommendations?\b',
+        r'\bwithout\s+(?:any\s+)?recommendations?\b',
+        r'\b(?:skip|omit|exclude|drop)\s+(?:the\s+|all\s+|any\s+)?recommendations?\b',
+        r'\bno\s+commentary\b',
+        r'\bwithout\s+commentary\b',
+        r'\bno\s+observations?\b',
+        r'\bwithout\s+observations?\b',
+        r'\b(?:just|only)\s+(?:the\s+)?data\b',
+        r'\bdata\s+only\b',
+        r'\braw\s+data\s+only\b',
+        r'\bno\s+analysis\b',
+        r'\bwithout\s+analysis\b',
+    ]
+    return any(bool(re.search(p, low)) for p in patterns)
+
+
 def is_exclude_other_requested(text: str) -> bool:
     """
     Check if the user explicitly asked to omit or exclude 'Other', 'Unallocated', etc.
@@ -100,6 +128,38 @@ def prune_mom_columns_from_markdown(text: str) -> str:
     res = res.replace("**Month-over-Month Variance by Cloud Provider:**", "**Monthly Spend by Cloud Provider:**")
     res = res.replace("Month-over-Month Variance", "Monthly Spend")
     return res
+
+
+def strip_finops_insights(markdown_text: str) -> str:
+    """Removes FinOps insight blocks and recommendations from response markdown if requested."""
+    if not markdown_text:
+        return markdown_text
+
+    # 1. Match headings starting with 💡 FinOps / Strategic / Optimization Levers
+    cleaned = re.sub(
+        r'(?:\n\n---\n\n|\n\n|\n)#{1,4}\s*💡\s*(?:FinOps|Strategic|Key FinOps|Optimization)[^\n]*\n.*?(?=(?:\n\n?\*?(?:Source|Live|💡\s*\*?Source)|\n\n---\n\n|\n\n#{1,3}\s+[A-Za-z0-9]|\Z))',
+        '',
+        markdown_text,
+        flags=re.DOTALL
+    )
+    # 2. Match bold **💡 FinOps ...** / **💡 Key FinOps ...** / **💡 Strategic ...**
+    cleaned = re.sub(
+        r'(?:\n\n|\n)\*\*💡\s*(?:FinOps|Key FinOps|Strategic)[^\n]*\*\*.*?(?=(?:\n\n?\*?(?:Source|Live|💡\s*\*?Source)|\n\n---\n\n|\n\n#{1,3}\s+[A-Za-z0-9]|\Z))',
+        '',
+        cleaned,
+        flags=re.DOTALL
+    )
+    # 3. Match blockquotes > **💡 FinOps ...**
+    cleaned = re.sub(
+        r'(?:\n\n|\n)>\s*\*\*💡\s*FinOps[^\n]*\*\*.*?(?=(?:\n\n?\*?(?:Source|Live|💡\s*\*?Source)|\n\n---\n\n|\n\n#{1,3}\s+[A-Za-z0-9]|\Z))',
+        '',
+        cleaned,
+        flags=re.DOTALL
+    )
+    # 4. Clean up multiple blank lines and orphaned horizontal rules
+    cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+    cleaned = re.sub(r'\n\n---\n\n\s*(\*Source|\Z)', r'\n\n\1', cleaned)
+    return cleaned.strip()
 
 
 def _detect_chart_type(low: str) -> Optional[str]:

@@ -1390,6 +1390,113 @@ def test_general_spend_filtering_and_exclusions_end_to_end():
     assert "Google Cloud Storage" not in res
 
 
+def test_no_insights_requested_predicate_and_stripping():
+    from cleo_charts import is_no_insights_requested, strip_finops_insights
+
+    # 1. Predicate testing
+    trues = [
+        "no Insights needed",
+        "show top anomalies, no Insights needed",
+        "show top services without insights",
+        "data only",
+        "just data",
+        "only the data",
+        "raw data only",
+        "show cost forecast, insights not needed",
+        "no recommendations please",
+        "skip insights",
+        "skip the insights",
+        "omit insights",
+        "without any insights",
+        "don't provide any insights",
+        "no need for insights",
+        "without commentary",
+        "no commentary",
+        "without observations",
+        "no analysis",
+        "without analysis",
+    ]
+    falses = [
+        "what are the insights",
+        "show me insights for EC2",
+        "give me insights",
+        "any insights on RDS?",
+    ]
+    for t in trues:
+        assert is_no_insights_requested(t) is True, f"Failed for {t}"
+    for f in falses:
+        assert is_no_insights_requested(f) is False, f"Failed for {f}"
+
+    # 2. Stripping test
+    md_with_insights = (
+        "### 📊 CloudHealth Cost Forecast\n\n"
+        "| Month | Cost |\n"
+        "|:---|:---|\n"
+        "| Jan | $100 |\n\n"
+        "**💡 FinOps Insights:**\n"
+        "- **Growth**: Spend grew by 10%.\n"
+        "- **Commitments**: Layer Savings Plans.\n\n"
+        "*Source: AWS_CUR via CloudHealth FlexReports.*"
+    )
+    stripped = strip_finops_insights(md_with_insights)
+    assert "💡 FinOps Insights" not in stripped
+    assert "| Jan | $100 |" in stripped
+    assert "*Source: AWS_CUR via CloudHealth FlexReports.*" in stripped
+
+    # 3. Stripping multi-service heading and blockquotes
+    md_heading = (
+        "### 📊 Multi-Service Spend\n\n"
+        "| Service | Cost |\n"
+        "|:---|:---|\n"
+        "| EC2 | $100 |\n\n"
+        "---\n\n"
+        "### 💡 FinOps Insights & Multi-Service Optimization Levers:\n\n"
+        "- **EC2**: Graviton migration.\n\n"
+        "> **💡 FinOps Foundation Practice Note**:\n"
+        "> Azure Hybrid Benefit applies Software Assurance...\n\n"
+        "*Source: CloudHealth FlexReports.*"
+    )
+    stripped_heading = strip_finops_insights(md_heading)
+    assert "💡 FinOps" not in stripped_heading
+    assert "| EC2 | $100 |" in stripped_heading
+    assert "*Source: CloudHealth FlexReports.*" in stripped_heading
+
+
+def test_no_insights_needed_agent_execution():
+    from cleo_agent import AIClient
+    import json
+
+    class MockMCP:
+        def __init__(self, csv_data=""):
+            self.csv_data = csv_data
+            self.calls = []
+
+        def call_tool(self, name, args):
+            self.calls.append((name, args))
+            if name == "execute_datasource_query":
+                return {"content": [{"type": "text", "text": json.dumps({"csv": self.csv_data})}]}
+            return {}
+
+    anom_csv = (
+        '"service","cost_impact","impact_pct","impact_type","status","duration_days","region","account_id","day","month"\n'
+        '"AmazonEC2","550.00","25.0","Spike","ACTIVE","3","us-east-1","123456789012","2026-10-01","2026-10"\n'
+        '"AmazonRDS","320.00","15.0","Spike","ACTIVE","2","us-west-2","123456789012","2026-10-02","2026-10"\n'
+    )
+    client = AIClient("direct", {}, [])
+
+    # Query WITH insights
+    res_with = client.generate([{"role": "user", "content": "Show top anomalies"}], mcp=MockMCP(anom_csv))
+    assert "💡" in res_with
+    assert "FinOps" in res_with
+
+    # Query with "no Insights needed"
+    res_without = client.generate([{"role": "user", "content": "Show top anomalies, no Insights needed"}], mcp=MockMCP(anom_csv))
+    assert "AmazonEC2" in res_without
+    assert "550.00" in res_without
+    assert "💡" not in res_without
+    assert "FinOps" not in res_without
+
+
 if __name__ == "__main__":
     test_parse_query_time_context()
     test_extract_requested_service()
@@ -1424,6 +1531,8 @@ if __name__ == "__main__":
     test_azure_hybrid_benefit_understanding()
     test_azure_hybrid_benefit_handler_execution()
     test_build_llm_schema_context_validity()
+    test_no_insights_requested_predicate_and_stripping()
+    test_no_insights_needed_agent_execution()
     print("All unit tests passed successfully!")
 
 
