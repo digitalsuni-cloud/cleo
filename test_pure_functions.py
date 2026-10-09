@@ -1657,7 +1657,90 @@ def test_top_services_continuation_and_no_insights():
     assert "💡 FinOps Insights" not in res
 
 
+def test_mtd_forecast_generation():
+    from cleo_agent import AIClient
+    import calendar
+    import json
+
+    # 1. Verify parse_query_time_context returns is_mtd correctly
+    ctx_mtd = parse_query_time_context("top services MTD")
+    assert ctx_mtd["is_mtd"] is True
+    ctx_this_mo = parse_query_time_context("show AWS cost this month")
+    assert ctx_this_mo["is_mtd"] is True
+    ctx_hist = parse_query_time_context("show spend for July 2026")
+    assert ctx_hist["is_mtd"] is False
+    ctx_multimo = parse_query_time_context("show top services for last 3 months")
+    assert ctx_multimo["is_mtd"] is False
+
+    now_dt = datetime.date.today()
+    days_in_month = calendar.monthrange(now_dt.year, now_dt.month)[1]
+    days_elapsed = max(now_dt.day, 1)
+    expected_factor = days_in_month / days_elapsed
+
+    class MockMCP:
+        def __init__(self, empty_first=False):
+            self.empty_first = empty_first
+            self.exec_count = 0
+
+        def call_tool(self, name, args):
+            if name == "execute_datasource_query":
+                self.exec_count += 1
+                if self.empty_first and self.exec_count == 1:
+                    return {"content": [{"text": json.dumps({"csv": ""})}]}
+            sql = args.get("queryInput", {}).get("sqlStatement", "")
+            if "SUM(EffectiveCost)" in sql and "GROUP BY" not in sql:
+                return {"content": [{"text": json.dumps({"csv": "cost\n15000.0\n"})}]}
+            csv_data = (
+                "provider,service,cost\n"
+                "AWS,Amazon EC2,10000.0\n"
+                "Azure,Virtual Machines,5000.0\n"
+            )
+            return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+
+    client = AIClient("direct", {}, [])
+
+    # 2. Test MTD query with sufficient days (days_elapsed >= 3)
+    if days_elapsed >= 3:
+        res = client._generate_impl([{"role": "user", "content": "show top services MTD"}], mcp=MockMCP())
+        assert "Month-End Forecast" in res
+        assert "MTD Cost" in res
+        assert "Run-Rate Projection Notice" in res
+        assert f"{expected_factor:.2f}x" in res
+        ec2_proj = 10000.0 * expected_factor
+        assert f"${ec2_proj:,.2f}" in res
+        tot_proj = 15000.0 * expected_factor
+        assert f"${tot_proj:,.2f}" in res
+    else:
+        res = client._generate_impl([{"role": "user", "content": "show top services MTD"}], mcp=MockMCP())
+        assert "Month-End Forecast" not in res
+        assert "Run-Rate Projection Notice" not in res
+
+    # 3. Test historical closed month (July 2026) -> No Forecast column
+    res_hist = client._generate_impl([{"role": "user", "content": "show top services in July 2026"}], mcp=MockMCP())
+    assert "Month-End Forecast" not in res_hist
+    assert "Run-Rate Projection Notice" not in res_hist
+
+    # 4. Test multi-month query -> No Forecast column
+    res_multi = client._generate_impl([{"role": "user", "content": "show top services for last 3 months"}], mcp=MockMCP())
+    assert "Month-End Forecast" not in res_multi
+    assert "Run-Rate Projection Notice" not in res_multi
+
+    # 5. Test Fallback when open month returns 0 rows (falling back to last month) -> No Forecast column
+    res_fb = client._generate_impl([{"role": "user", "content": "show top services MTD"}], mcp=MockMCP(empty_first=True))
+    assert "FinOps Ingestion Notice" in res_fb
+    assert "Month-End Forecast" not in res_fb
+    assert "Run-Rate Projection Notice" not in res_fb
+
+    # 6. Test AWS-specific MTD query
+    if days_elapsed >= 3:
+        res_aws = client._generate_impl([{"role": "user", "content": "show top AWS services MTD"}], mcp=MockMCP())
+        assert "Month-End Forecast" in res_aws
+        assert "MTD Cost" in res_aws
+        assert "Run-Rate Projection Notice" in res_aws
+
+
 if __name__ == "__main__":
+    test_mtd_forecast_generation()
     test_unconfigure_and_clear_token()
     test_multiturn_context_passing_and_disambiguation()
     test_parse_query_time_context()
