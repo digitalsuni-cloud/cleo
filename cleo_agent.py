@@ -1217,21 +1217,35 @@ class AIClient:
                         parsed["intent"] = "fetch_data"
                         parsed["is_new_data_fetch"] = True
 
-                    if cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "forecast":
-                        if not parsed.get("cloud") and cont_ctx.get("new_cloud"):
-                            parsed["cloud"] = cont_ctx["new_cloud"]
-                        parsed["timeframe_months"] = 12
-                        parsed["target_ym"] = f"{cont_ctx['inherited_target_year']}-01"
-                        if not parsed.get("corrected_query") or any(w in parsed["corrected_query"].lower() for w in ["similar", "simillar", "same"]):
-                            parsed["corrected_query"] = cont_ctx["expanded_query"]
+                    if cont_ctx.get("is_continuation"):
+                        if parsed.get("intent") in ("unsupported_capability", "general_finops_advisory", "general_chat", "none", None) or not parsed.get("is_new_data_fetch"):
+                            if cont_ctx.get("prior_query_type") == "anomalies":
+                                parsed["intent"] = "anomalies"
+                            elif cont_ctx.get("prior_query_type") == "forecast":
+                                parsed["intent"] = "fetch_data"
+                            else:
+                                parsed["intent"] = det_info.get("intent") or "fetch_data"
+                            parsed["is_new_data_fetch"] = True
 
-                    if cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "anomalies":
                         if not parsed.get("cloud") and cont_ctx.get("new_cloud"):
                             parsed["cloud"] = cont_ctx["new_cloud"]
-                        parsed["intent"] = "anomalies"
-                        parsed["is_new_data_fetch"] = True
-                        if not parsed.get("corrected_query") or any(w in parsed["corrected_query"].lower() for w in ["similar", "simillar", "same", "than 50", "more than", "impact cost"]):
-                            parsed["corrected_query"] = cont_ctx["expanded_query"]
+                        if not parsed.get("service") and cont_ctx.get("new_service"):
+                            parsed["service"] = cont_ctx["new_service"]
+                        if det_info.get("timeframe_months") and not parsed.get("timeframe_months"):
+                            parsed["timeframe_months"] = det_info["timeframe_months"]
+
+                        if cont_ctx.get("prior_query_type") == "forecast":
+                            parsed["timeframe_months"] = 12
+                            parsed["target_ym"] = f"{cont_ctx['inherited_target_year']}-01"
+
+                        if cont_ctx.get("prior_query_type") == "anomalies":
+                            parsed["intent"] = "anomalies"
+                            parsed["is_new_data_fetch"] = True
+
+                        if not parsed.get("corrected_query") or any(w in parsed["corrected_query"].lower() for w in [
+                            "unable to", "no previous", "no data was provided", "similar", "simillar", "same", "than 50", "more than", "impact cost"
+                        ]):
+                            parsed["corrected_query"] = cont_ctx.get("expanded_query") or last_msg
 
                     thresh_from_msg = extract_cost_threshold(last_msg)
                     min_cost_val = parsed.get("min_cost") if parsed.get("min_cost") is not None else (det_info.get("min_cost") or thresh_from_msg.get("min"))
@@ -1582,6 +1596,7 @@ class AIClient:
         is_telemetry_fetch = (
             intent_info.get("is_new_data_fetch")
             or intent_info.get("intent") in ("fetch_data", "anomalies", "reformat_previous", "history_qa", "finops_recommendations")
+            or cont_ctx.get("is_continuation")
             or any(kw in low for kw in [
                 "cost", "spend", "bill", "usage", "ec2", "s3", "rds", "lambda", "ebs", "cloudhealth",
                 "datasource", "tenant", "customer", "customer id", "org", "organization", "schema",
@@ -2353,7 +2368,9 @@ class AIClient:
                     target_label = f"Month {target_ym}"
 
             # If this is a follow-up turn without its own specific date, inherit the previous target date
-            if is_followup and not is_specific and prior_cost_query:
+            # only when the query is NOT asking for a multi-month timeframe/duration
+            has_multi_month_request = bool(req_months and req_months > 1) or bool(re.search(r'\b\d+\s*months?\b', low)) or any(w in low for w in ["months", "multi month", "trailing months", "past months"])
+            if is_followup and not is_specific and not has_multi_month_request and prior_cost_query:
                 prev_t_ctx = parse_query_time_context(prior_cost_query)
                 if prev_t_ctx["is_specific"]:
                     target_ym = prev_t_ctx["target_ym"]
@@ -2499,6 +2516,7 @@ class AIClient:
                 not requested_service
                 and not is_future_forecast
                 and not is_ai_models_query
+                and not (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") in ("top_services", "service_breakdown", "multi_service"))
                 and not any(w in low for w in [
                     "by service", "service level", "each service", "top services", "services across",
                     "service category", "service spend", "by product", "services by",
@@ -8078,7 +8096,7 @@ class AIClient:
                 )
 
             # 3c. Multi-Cloud & Provider Service & Dimensional Spend Breakdown (AWS, Azure, GCP, AI)
-            elif not is_monthly_trend_query and (requested_service or active_cloud or any(w in low for w in [
+            elif not is_monthly_trend_query and (requested_service or active_cloud or (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") in ("top_services", "service_breakdown", "multi_service")) or any(w in low for w in [
                 "service", "product", "ec2", "s3", "rds", "bigquery", "vertex", "blob",
                 "azure", "gcp", "aws", "cloud", "breakdown", "break down", "cost", "spend", "ai",
                 "category", "subcategory", "pricing", "account", "model", "resource", "region"
@@ -9254,6 +9272,7 @@ class AIClient:
 
                 # ── Multi-Cloud / All Clouds Breakdown (AWS + Azure + GCP) ──
                 else:
+                    used_fallback = False
                     # "break it down by cloud/provider" asks for one row per cloud; anything else
                     # (or no qualifier at all) gets the existing per-service breakdown. Without this,
                     # a "by cloud" request was routed into the same service-level table below.

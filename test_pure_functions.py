@@ -1597,6 +1597,66 @@ def test_unconfigure_and_clear_token():
     assert os.environ.get("OPENAI_API_KEY") is None
 
 
+def test_top_services_continuation_and_no_insights():
+    import json
+    from cleo_agent import AIClient
+    from cleo_query import extract_negative_exclusions, _detect_contextual_continuation
+    from cleo_charts import is_no_insights_requested
+
+    query = "give me the above data for last 3 months without any isights"
+
+    # 1. Negative exclusions does not mistake 'any isights' for a cloud service
+    excl = extract_negative_exclusions(query)
+    assert "any isights" not in excl["services"]
+    assert "isights" not in excl["services"]
+    assert excl["services"] == []
+
+    # 2. Typos like 'isights' are recognized as insight suppression
+    assert is_no_insights_requested(query) is True
+
+    # 3. Continuation context preserves top_services prior type
+    messages = [
+        {"role": "user", "content": "Show our top cloud services across AWS, Azure, and GCP this month"},
+        {"role": "assistant", "content": "### 📊 CloudHealth Multi-Cloud Spend Analysis: Top Services Across All Clouds — MTD (October 2026)\n\n| Cloud Provider | Service Category | Cost | % of Total |\n|:---|:---|:---|:---|\n| Google Cloud | Compute Engine | $548,696.75 | 15.5% |\n| Azure | Virtual Machines | $386,932.45 | 10.9% |\n| AWS | ComputeSavingsPlans | $367,012.32 | 10.3% |\n\n| **Total Multi-Cloud Spend** | | **$1,302,641.52** | **100.0%** |"},
+        {"role": "user", "content": query}
+    ]
+    cont = _detect_contextual_continuation(messages)
+    assert cont["is_continuation"] is True
+    assert cont["prior_query_type"] == "top_services"
+    assert cont["new_cloud"] == "all"
+
+    # 4. End-to-end execution with Mock LLM failure & Mock MCP returns multi-month table without insights
+    class MockMCP:
+        def call_tool(self, name, args):
+            csv_data = (
+                "month,provider,service,cost\n"
+                "2026-08,Google Cloud,Compute Engine,500000.0\n"
+                "2026-08,Azure,Virtual Machines,350000.0\n"
+                "2026-09,Google Cloud,Compute Engine,520000.0\n"
+                "2026-09,Azure,Virtual Machines,370000.0\n"
+                "2026-10,Google Cloud,Compute Engine,548696.75\n"
+                "2026-10,Azure,Virtual Machines,386932.45\n"
+            )
+            return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+
+    class FailingLLMClient(AIClient):
+        def _call_active_llm(self, msgs, stats_out=None, on_token=None):
+            # Simulate local LLM hallucinating unsupported_capability on continuation
+            return json.dumps({
+                "intent": "unsupported_capability",
+                "is_new_data_fetch": False,
+                "corrected_query": "Unable to fetch data as no previous data was provided in this conversation"
+            }), None
+
+    client = FailingLLMClient("ollama", {}, [])
+    res = client._generate_impl(messages, mcp=MockMCP())
+
+    assert "CloudHealth Spend Analysis: Top Multi-Cloud Services by Spend — Last 3 Months" in res
+    assert "Compute Engine" in res
+    assert "Virtual Machines" in res
+    assert "💡 FinOps Insights" not in res
+
+
 if __name__ == "__main__":
     test_unconfigure_and_clear_token()
     test_multiturn_context_passing_and_disambiguation()
