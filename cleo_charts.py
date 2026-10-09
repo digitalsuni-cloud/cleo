@@ -37,12 +37,12 @@ def is_no_insights_requested(text: str) -> bool:
         return False
     low = text.lower()
     patterns = [
-        r'\bno\s+insights?\b',
-        r'\bwithout\s+(?:any\s+)?insights?\b',
-        r'\b(?:skip|omit|exclude|drop)\s+(?:the\s+|all\s+|any\s+)?insights?\b',
-        r'\b(?:do\s+not|don\'?t)\s+(?:need|provide|give|include|generate|want)\s+(?:any\s+)?insights?\b',
-        r'\bno\s+need\s+(?:for|of)\s+(?:any\s+)?insights?\b',
-        r'\binsights?\s+(?:not\s+needed|not\s+required|unnecessary)\b',
+        r'\bno\s+i[ns]+ights?\b',
+        r'\bwithout\s+(?:any\s+)?i[ns]+ights?\b',
+        r'\b(?:skip|omit|exclude|drop)\s+(?:the\s+|all\s+|any\s+)?i[ns]+ights?\b',
+        r'\b(?:do\s+not|don\'?t)\s+(?:need|provide|give|include|generate|want)\s+(?:any\s+)?i[ns]+ights?\b',
+        r'\bno\s+need\s+(?:for|of)\s+(?:any\s+)?i[ns]+ights?\b',
+        r'\bi[ns]+ights?\s+(?:not\s+needed|not\s+required|unnecessary)\b',
         r'\bno\s+recommendations?\b',
         r'\bwithout\s+(?:any\s+)?recommendations?\b',
         r'\b(?:skip|omit|exclude|drop)\s+(?:the\s+|all\s+|any\s+)?recommendations?\b',

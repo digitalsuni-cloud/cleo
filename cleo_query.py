@@ -735,7 +735,15 @@ def extract_negative_exclusions(query_text: str) -> dict:
     )
     for m in matches:
         candidate = m.strip().strip('"').strip("'")
-        if not candidate or candidate in ("chart", "mom", "variance", "it", "this", "that"):
+        if not candidate:
+            continue
+        cand_words = set(candidate.split())
+        suppression_terms = {
+            "chart", "mom", "variance", "it", "this", "that", "insight", "insights",
+            "isight", "isights", "recommendation", "recommendations", "table", "summary",
+            "advice", "explanation", "details", "commentary", "observation", "observations"
+        }
+        if candidate in suppression_terms or (cand_words and cand_words.issubset(suppression_terms | {"any", "all", "the", "a", "an"})):
             continue
         res["has_exclusion"] = True
         res["raw_terms"].append(candidate)
