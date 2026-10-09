@@ -257,15 +257,15 @@ CURATED_DATASET_SPECS = {
     },
     "AWS_COST_ANOMALY": {
         "priority_measures": ["CostImpact", "Cost"],
-        "priority_dimensions": ["Service", "Region", "AccountID", "Status", "EndDate", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
+        "priority_dimensions": ["Service", "Region", "AccountID", "organization##accountname", "Status", "Marketplace", "timeInterval_Day", "EndDate", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
     },
     "AZURE_COST_ANOMALY": {
         "priority_measures": ["CostImpact", "Cost"],
-        "priority_dimensions": ["Service", "Region", "Status", "EndDate", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
+        "priority_dimensions": ["Service", "Region", "SubscriptionID", "SubscriptionName", "Status", "Marketplace", "timeInterval_Day", "EndDate", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
     },
     "GCP_COST_ANOMALY": {
         "priority_measures": ["CostImpact", "Cost"],
-        "priority_dimensions": ["Region", "Status", "EndDate", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
+        "priority_dimensions": ["CloudProduct", "Region", "ProjectID", "ProjectName", "Status", "timeInterval_Day", "EndDate", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
     },
     "AWS_EC2_COST_AND_USAGE": {
         "priority_measures": ["Billed_Cost", "Effective_Cost", "Amortized_Cost", "Instance_Cost", "Compute_Cost", "Instance_Hours", "Instances", "VCPUs"],
@@ -2738,24 +2738,24 @@ class AIClient:
 
                 if is_multi:
                     target_configs = [
-                        {"cloud": "AWS", "ds": "AWS_COST_ANOMALY", "svc_col": "Service", "acc_col": "AccountID", "badge": "🟠 AWS"},
-                        {"cloud": "GCP", "ds": "GCP_COST_ANOMALY", "svc_col": "CloudProduct", "acc_col": "ProjectID", "badge": "🟢 GCP"},
-                        {"cloud": "Azure", "ds": "AZURE_COST_ANOMALY", "svc_col": "Service", "acc_col": "SubscriptionID", "badge": "🔵 Azure"},
+                        {"cloud": "AWS", "ds": "AWS_COST_ANOMALY", "svc_col": "Service", "acc_col": "AccountID", "acc_name_col": "\"organization##accountname\"", "mp_col": "Marketplace", "badge": "🟠 AWS"},
+                        {"cloud": "GCP", "ds": "GCP_COST_ANOMALY", "svc_col": "CloudProduct", "acc_col": "ProjectID", "acc_name_col": "ProjectName", "mp_col": None, "badge": "🟢 GCP"},
+                        {"cloud": "Azure", "ds": "AZURE_COST_ANOMALY", "svc_col": "Service", "acc_col": "SubscriptionID", "acc_name_col": "SubscriptionName", "mp_col": "Marketplace", "badge": "🔵 Azure"},
                     ]
                     cloud_label = "Multi-Cloud"
                 elif is_gcp:
                     target_configs = [
-                        {"cloud": "GCP", "ds": "GCP_COST_ANOMALY", "svc_col": "CloudProduct", "acc_col": "ProjectID", "badge": "🟢 GCP"}
+                        {"cloud": "GCP", "ds": "GCP_COST_ANOMALY", "svc_col": "CloudProduct", "acc_col": "ProjectID", "acc_name_col": "ProjectName", "mp_col": None, "badge": "🟢 GCP"}
                     ]
                     cloud_label = "GCP"
                 elif is_azure:
                     target_configs = [
-                        {"cloud": "Azure", "ds": "AZURE_COST_ANOMALY", "svc_col": "Service", "acc_col": "SubscriptionID", "badge": "🔵 Azure"}
+                        {"cloud": "Azure", "ds": "AZURE_COST_ANOMALY", "svc_col": "Service", "acc_col": "SubscriptionID", "acc_name_col": "SubscriptionName", "mp_col": "Marketplace", "badge": "🔵 Azure"}
                     ]
                     cloud_label = "Azure"
                 else:
                     target_configs = [
-                        {"cloud": "AWS", "ds": "AWS_COST_ANOMALY", "svc_col": "Service", "acc_col": "AccountID", "badge": "🟠 AWS"}
+                        {"cloud": "AWS", "ds": "AWS_COST_ANOMALY", "svc_col": "Service", "acc_col": "AccountID", "acc_name_col": "\"organization##accountname\"", "mp_col": "Marketplace", "badge": "🟠 AWS"}
                     ]
                     cloud_label = "AWS"
 
@@ -2779,6 +2779,8 @@ class AIClient:
                     ds = cfg["ds"]
                     svc_col = cfg["svc_col"]
                     acc_col = cfg["acc_col"]
+                    acc_name_select = f", {cfg['acc_name_col']} AS account_name" if cfg.get("acc_name_col") else ""
+                    mp_select = f", {cfg['mp_col']} AS marketplace" if cfg.get("mp_col") else ""
 
                     where_clauses = []
                     if filter_ym:
@@ -2793,7 +2795,7 @@ class AIClient:
                         f"SELECT {svc_col} AS service, CostImpact AS cost_impact, "
                         f"CostImpactPercentage AS impact_pct, CostImpactType AS impact_type, "
                         f"Status AS status, Duration_Days AS duration_days, Region AS region, "
-                        f"{acc_col} AS account_id, EndDate AS end_date, timeInterval_Month AS month "
+                        f"{acc_col} AS account_id{acc_name_select}{mp_select}, timeInterval_Day AS day, timeInterval_Month AS month "
                         f"FROM {ds} "
                         f"{where_sql}"
                         f"ORDER BY CostImpact DESC"
@@ -2804,9 +2806,9 @@ class AIClient:
                         res_anom = mcp.call_tool("execute_datasource_query", {
                             "queryInput": {
                                 "sqlStatement": anomaly_sql,
-                                "dataGranularity": "MONTHLY",
+                                "dataGranularity": "DAILY",
                                 "limit": anomaly_limit,
-                                "timeRange": {"last": max(months_needed, 3), "qualifier": "MONTH"}
+                                "timeRange": {"last": 62}
                             },
                             "requestInfo": {"sourceType": "API", "caller": "mcp"}
                         })
@@ -2831,7 +2833,7 @@ class AIClient:
                                 f"SELECT {svc_col} AS service, CostImpact AS cost_impact, "
                                 f"CostImpactPercentage AS impact_pct, CostImpactType AS impact_type, "
                                 f"Status AS status, Duration_Days AS duration_days, Region AS region, "
-                                f"{acc_col} AS account_id, EndDate AS end_date, timeInterval_Month AS month "
+                                f"{acc_col} AS account_id{acc_name_select}{mp_select}, timeInterval_Day AS day, timeInterval_Month AS month "
                                 f"FROM {ds} "
                                 f"WHERE {' AND '.join(fb_where)} "
                                 f"ORDER BY CostImpact DESC"
@@ -2840,9 +2842,9 @@ class AIClient:
                                 res_fb = mcp.call_tool("execute_datasource_query", {
                                     "queryInput": {
                                         "sqlStatement": fb_sql,
-                                        "dataGranularity": "MONTHLY",
+                                        "dataGranularity": "DAILY",
                                         "limit": anomaly_limit,
-                                        "timeRange": {"last": 6, "qualifier": "MONTH"}
+                                        "timeRange": {"last": 62}
                                     },
                                     "requestInfo": {"sourceType": "API", "caller": "mcp"}
                                 })
@@ -2867,7 +2869,7 @@ class AIClient:
                                 f"SELECT {svc_col} AS service, CostImpact AS cost_impact, "
                                 f"CostImpactPercentage AS impact_pct, CostImpactType AS impact_type, "
                                 f"Status AS status, Duration_Days AS duration_days, Region AS region, "
-                                f"{acc_col} AS account_id, EndDate AS end_date, timeInterval_Month AS month "
+                                f"{acc_col} AS account_id{acc_name_select}{mp_select}, timeInterval_Day AS day, timeInterval_Month AS month "
                                 f"FROM {ds} "
                                 f"{fb2_where_sql}"
                                 f"ORDER BY CostImpact DESC"
@@ -2876,9 +2878,9 @@ class AIClient:
                                 res_fb2 = mcp.call_tool("execute_datasource_query", {
                                     "queryInput": {
                                         "sqlStatement": fallback_sql,
-                                        "dataGranularity": "MONTHLY",
+                                        "dataGranularity": "DAILY",
                                         "limit": anomaly_limit,
-                                        "timeRange": {"last": 6, "qualifier": "MONTH"}
+                                        "timeRange": {"last": 62}
                                     },
                                     "requestInfo": {"sourceType": "API", "caller": "mcp"}
                                 })
@@ -2969,38 +2971,44 @@ class AIClient:
 
                     svc = r.get("service", "Unknown")
                     reg = r.get("region", "global")
-                    acc = r.get("account_id", "—")
+                    acc_id = r.get("account_id", "—")
+                    acc_name = (r.get("account_name") or "").strip()
+                    acc_display = f"`{acc_name}` (`{acc_id}`)" if acc_name and acc_name != acc_id else f"`{acc_id}`"
                     dur = r.get("duration_days", "0")
                     dur_str = "Ongoing" if dur in ("0", "-1") and st == "ACTIVE" else f"{dur} days"
                     mo = r.get("month", "")
-                    raw_date = r.get("end_date") or r.get("EndDate") or ""
+                    raw_date = r.get("day") or r.get("end_date") or r.get("EndDate") or ""
                     date_val = raw_date.split("T")[0].split()[0] if raw_date else mo
                     sign = "+" if impact_val > 0 else ""
                     badge = r.get("badge", "")
+                    mp_val = (r.get("marketplace") or "").strip().lower()
+                    mp_tag = " 🛒 *(Marketplace)*" if mp_val in ("yes", "true", "1") else ""
 
                     if is_multi:
                         table_lines.append(
-                            f"| {idx+1} | {badge} | `{svc}` | {st_badge} | **{sign}${impact_val:,.2f}** | **{pct_val:+.1f}%** 🔺 | `{reg}` | `{acc}` | {dur_str} | {date_val} |"
+                            f"| {idx+1} | {badge} | `{svc}`{mp_tag} | {st_badge} | **{sign}${impact_val:,.2f}** | **{pct_val:+.1f}%** 🔺 | `{reg}` | {acc_display} | {dur_str} | {date_val} |"
                         )
                     else:
                         table_lines.append(
-                            f"| {idx+1} | `{svc}` | {st_badge} | **{sign}${impact_val:,.2f}** | **{pct_val:+.1f}%** 🔺 | `{reg}` | `{acc}` | {dur_str} | {date_val} |"
+                            f"| {idx+1} | `{svc}`{mp_tag} | {st_badge} | **{sign}${impact_val:,.2f}** | **{pct_val:+.1f}%** 🔺 | `{reg}` | {acc_display} | {dur_str} | {date_val} |"
                         )
 
                     # Synthesize FinOps insights for top anomalies across providers
                     if idx < 4:
-                        if "informatica" in svc.lower() or "wiz" in svc.lower() or "pendo" in svc.lower() or "marketplace" in svc.lower():
-                            insights.append(f"- **Cloud Marketplace SaaS Spikes ({st_badge})**: `{svc}` in Region `{reg}` ({r.get('cloud', '')}) surged by **{pct_val:+.1f}%** (adding **{sign}${impact_val:,.2f}** on {date_val}). Audit third-party marketplace SaaS subscriptions, private offer auto-renewals, or unmonitored tool additions in Account/Project `{acc}`.")
+                        if mp_val in ("yes", "true", "1") or "marketplace" in svc.lower() or any(w in svc.lower() for w in ["wiz", "pendo", "informatica"]):
+                            insights.append(f"- **Cloud Marketplace SaaS Spikes ({st_badge})**: `{svc}` in Region `{reg}` ({r.get('cloud', '')}) surged by **{pct_val:+.1f}%** (adding **{sign}${impact_val:,.2f}** on {date_val}). Confirmed via Cloud Marketplace telemetry (`Marketplace: Yes`). Audit third-party marketplace SaaS subscriptions, private offer auto-renewals, or unmonitored tool additions in {acc_display}.")
                         elif "fabric" in svc.lower() or "databricks" in svc.lower():
-                            insights.append(f"- **Data Analytics & Lakehouse Spikes ({st_badge})**: `{svc}` in Region `{reg}` added **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%). Check compute cluster auto-termination, job cluster runaway, or F-SKU capacity allocations in Account/Project `{acc}`.")
+                            insights.append(f"- **Data Analytics & Lakehouse Spikes ({st_badge})**: `{svc}` in Region `{reg}` added **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%). Check compute cluster auto-termination, job cluster runaway, or F-SKU capacity allocations in {acc_display}.")
                         elif any(k in svc.lower() for k in ["bedrock", "claude", "gpt", "anthropic", "openai", "vertex"]):
-                            insights.append(f"- **GenAI / LLM Model Spikes ({st_badge})**: `{svc}` in Region `{reg}` surged by **{pct_val:+.1f}%** (adding **{sign}${impact_val:,.2f}** on {date_val}). Audit active inference endpoints, batch invocation jobs, or newly deployed agent workloads in Account/Project `{acc}`.")
+                            insights.append(f"- **GenAI / LLM Model Spikes ({st_badge})**: `{svc}` in Region `{reg}` surged by **{pct_val:+.1f}%** (adding **{sign}${impact_val:,.2f}** on {date_val}). Audit active inference endpoints, batch invocation jobs, or newly deployed agent workloads in {acc_display}.")
                         elif any(k in svc.lower() for k in ["ec2", "ecs", "eks", "compute", "virtual machines"]):
-                            insights.append(f"- **Compute Capacity Surge ({st_badge})**: `{svc}` in Region `{reg}` had an anomalous spend jump of **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%). Check Auto Scaling group limits, unreserved on-demand instances, or container task runaway in Account/Project `{acc}`.")
+                            insights.append(f"- **Compute Capacity Surge ({st_badge})**: `{svc}` in Region `{reg}` had an anomalous spend jump of **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%). Check Auto Scaling group limits, unreserved on-demand instances, or container task runaway in {acc_display}.")
                         elif any(k in svc.lower() for k in ["rds", "database", "aurora", "sql"]):
-                            insights.append(f"- **Database Provisioning Variance ({st_badge})**: `{svc}` in Region `{reg}` experienced an anomalous increase of **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%). Audit multi-AZ replicas, unreserved instances, or provisioned IOPS in Account/Project `{acc}`.")
+                            insights.append(f"- **Database Provisioning Variance ({st_badge})**: `{svc}` in Region `{reg}` experienced an anomalous increase of **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%). Audit multi-AZ replicas, unreserved instances, or provisioned IOPS in {acc_display}.")
+                        elif "netapp" in svc.lower():
+                            insights.append(f"- **First-Party Managed Storage ({st_badge})**: `{svc}` in Region `{reg}` experienced an anomalous increase of **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%). Note: Google Cloud NetApp Volumes is a native 1st-party GCP managed storage pool (`Marketplace: No`), not a 3rd-party SaaS subscription. Verify storage pool capacity allocations (Standard/Premium/Extreme) or duplicate volume mounts in {acc_display}.")
                         else:
-                            insights.append(f"- **{svc} ({st_badge})**: Added an unexpected **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%) in Region `{reg}` (Account/Project `{acc}`).")
+                            insights.append(f"- **{svc} ({st_badge})**: Added an unexpected **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%) in Region `{reg}` ({acc_display}).")
 
                 # Multi-cloud summary breakdown card
                 summary_breakdown = ""
