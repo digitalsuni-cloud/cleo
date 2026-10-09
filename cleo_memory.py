@@ -261,6 +261,32 @@ def get_memory() -> CleoMemory:
     return _memory
 
 
+# ── Cross-session continuation helpers ───────────────────────────────────────
+_LAST_QUERY_PATH = Path(os.path.expanduser("~/.cleo/last_query.json"))
+
+
+def save_last_query(query_type: str, dataset: str, sql: str, time_range: dict) -> None:
+    """Persist the most recent successful query so new sessions can continue it."""
+    try:
+        _LAST_QUERY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _LAST_QUERY_PATH.write_text(
+            json.dumps({"query_type": query_type, "dataset": dataset, "sql": sql, "time_range": time_range, "ts": time.time()}, indent=2)
+        )
+    except Exception:
+        pass  # non-critical
+
+
+def load_last_query() -> dict:
+    """Return the last saved query, or {} if missing / stale (>24h)."""
+    try:
+        data = json.loads(_LAST_QUERY_PATH.read_text())
+        if time.time() - data.get("ts", 0) < 86400:  # 24-hour TTL
+            return data
+    except Exception:
+        pass
+    return {}
+
+
 if __name__ == "__main__":
     # Self-check using isolated temp file to avoid altering production memory
     import tempfile
