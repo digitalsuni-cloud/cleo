@@ -19,6 +19,305 @@ except ImportError:
 
 from cleo_charts import is_no_chart_requested, is_no_mom_requested, is_exclude_other_requested, is_other_category_name
 
+# ── Canonical Multi-Cloud & FOCUS 1.2 Column Synonyms & Metadata ────────
+COLUMN_SYNONYMS: Dict[str, Dict[str, Any]] = {
+    # Accounts & Hierarchy
+    "SubaccountId": {
+        "label": "Member / Usage Account ID",
+        "synonyms": [
+            "account", "subaccount", "sub-account", "member account", "linked account",
+            "usage account", "project", "project id", "subscription", "subscription id",
+            "cloud account", "account id", "account name", "linked accounts", "member accounts", "usage accounts"
+        ],
+        "description": "FOCUS member account identifier (AWS Linked Account ID, GCP Project ID, Azure Subscription ID)"
+    },
+    "BillingAccountId": {
+        "label": "Payer / Billing Account ID",
+        "synonyms": [
+            "billing account", "payer account", "master account", "root account",
+            "management account", "billing container", "parent account", "payer id",
+            "billing account id", "master account id", "root account id", "payer accounts", "master accounts"
+        ],
+        "description": "FOCUS root/payer container identifier"
+    },
+    "bill_PayerAccountId": {
+        "label": "Payer Account ID",
+        "synonyms": ["payer account", "master account", "root account", "management account", "payer id"],
+        "description": "AWS CUR root/payer account ID"
+    },
+    "lineItem_UsageAccountId": {
+        "label": "Usage / Linked Account ID",
+        "synonyms": ["usage account", "member account", "linked account", "subaccount", "account id"],
+        "description": "AWS CUR linked/usage member account ID"
+    },
+    "SubscriptionId": {
+        "label": "Subscription ID",
+        "synonyms": ["subscription", "subscription id", "sub id", "azure subscription", "account id"],
+        "description": "Azure subscription identifier"
+    },
+    "SubscriptionName": {
+        "label": "Subscription Name",
+        "synonyms": ["subscription name", "subscription", "account name"],
+        "description": "Azure subscription display name"
+    },
+
+    # Service & Taxonomy
+    "ServiceCategory": {
+        "label": "Service Category (Macro)",
+        "synonyms": [
+            "service category", "macro service", "service family", "category",
+            "domain", "service domain", "cloud domain", "category breakdown", "service categories"
+        ],
+        "description": "FOCUS 1.2 high-level service category (Compute, Storage, Database, Networking, AI & Machine Learning, Management & Governance)"
+    },
+    "ServiceSubcategory": {
+        "label": "Service Subcategory (Granular)",
+        "synonyms": [
+            "service subcategory", "granular service", "sub service", "sub-service",
+            "subcategory", "meter category", "meter subcategory", "service component",
+            "component", "sub services", "granular services"
+        ],
+        "description": "FOCUS 1.2 granular service subcategory (Virtual Machines, Object Storage, Relational Database, NAT Gateway)"
+    },
+    "ServiceName": {
+        "label": "Service Name",
+        "synonyms": ["service", "service name", "cloud service", "product", "offering", "service title", "services"],
+        "description": "Normalized cloud service name across providers"
+    },
+    "lineItem_ProductCode": {
+        "label": "AWS Service / Product Code",
+        "synonyms": ["service", "product code", "product", "aws service", "service name"],
+        "description": "AWS service identifier (e.g. AmazonEC2, AmazonRDS, AmazonS3)"
+    },
+    "MeterCategory": {
+        "label": "Azure Meter Category",
+        "synonyms": ["meter category", "service category", "azure service", "service family"],
+        "description": "Azure service classification"
+    },
+    "MeterSubCategory": {
+        "label": "Azure Meter Subcategory",
+        "synonyms": ["meter subcategory", "sub service", "azure subcategory", "service subcategory"],
+        "description": "Azure granular service classification"
+    },
+
+    # Pricing, Lease & Commercial Models
+    "PricingCategory": {
+        "label": "Pricing Category / Model",
+        "synonyms": [
+            "pricing category", "pricing model", "commercial model", "contract type",
+            "pricing type", "charge model", "pricing categories", "pricing breakdown"
+        ],
+        "description": "FOCUS commercial model (On-Demand, Committed, Dynamic, Spot)"
+    },
+    "pricing_term": {
+        "label": "AWS Pricing Term",
+        "synonyms": ["pricing term", "lease type", "purchase option", "lease model", "ondemand", "reservation"],
+        "description": "AWS pricing commitment term (OnDemand, Reserved)"
+    },
+    "lineItem_LineItemType": {
+        "label": "AWS Line Item Charge Type",
+        "synonyms": [
+            "line item type", "charge type", "fee type", "lease type",
+            "savings plan", "spot", "discount", "tax", "credit", "refund"
+        ],
+        "description": "AWS CUR line item charge type (Usage, Fee, Credit, DiscountedUsage, SavingsPlanCoveredUsage, SpotUsage)"
+    },
+    "pricing_PurchaseOption": {
+        "label": "AWS Purchase Option",
+        "synonyms": ["purchase option", "capacity type", "commitment option", "all upfront", "no upfront", "partial upfront"],
+        "description": "AWS commitment payment option"
+    },
+
+    # Service-Specific Technical Dimensions
+    "product_instanceType": {
+        "label": "EC2 Instance Type",
+        "synonyms": [
+            "instance type", "instance size", "vm size", "vm type",
+            "machine type", "compute size", "flavor", "node type"
+        ],
+        "description": "AWS compute instance size (e.g. r6a.large, m6gd.4xlarge)"
+    },
+    "InstanceType": {
+        "label": "RDS Instance Type",
+        "synonyms": ["instance type", "rds instance type", "database instance type", "db size", "db instance"],
+        "description": "AWS RDS database instance size (e.g. db.r6g.xlarge)"
+    },
+    "product_storageClass": {
+        "label": "S3 Storage Class / Tier",
+        "synonyms": [
+            "storage class", "storage tier", "s3 tier", "s3 storage class",
+            "lifecycle tier", "hot/cool/archive", "glacier", "storage tiering"
+        ],
+        "description": "AWS S3 storage tier (General Purpose/Standard, Intelligent-Tiering, Glacier Flexible/Deep Archive)"
+    },
+    "product_volumeType": {
+        "label": "EBS Volume Type",
+        "synonyms": [
+            "volume type", "ebs type", "disk type", "volume tier",
+            "gp2", "gp3", "io1", "io2", "provisioned iops"
+        ],
+        "description": "AWS EBS volume type (General Purpose gp2/gp3, Provisioned IOPS io1/io2, Cold HDD sc1)"
+    },
+    "lineItem_Operation": {
+        "label": "API Operation / Action",
+        "synonyms": ["operation", "api operation", "action", "event", "api call", "invocations", "runinstances"],
+        "description": "Cloud service API action or operation"
+    },
+
+    # Geography & Assets
+    "RegionId": {
+        "label": "Region ID / Location",
+        "synonyms": [
+            "region", "location", "cloud region", "datacenter", "data center",
+            "geography", "geo", "zone", "availability zone", "regional breakdown", "locations breakdown"
+        ],
+        "description": "Cloud geographic region code (e.g. us-east-1, eastus, europe-west1)"
+    },
+    "product_region": {
+        "label": "AWS Region",
+        "synonyms": ["region", "aws region", "datacenter", "location"],
+        "description": "AWS geographic region code"
+    },
+    "ResourceId": {
+        "label": "Resource Identifier",
+        "synonyms": [
+            "resource", "resource id", "resource name", "arn", "instance id",
+            "asset", "individual resource", "top resources", "resource-level", "asset breakdown"
+        ],
+        "description": "Unique cloud resource identifier or ARN"
+    },
+    "ResourceName": {
+        "label": "Resource Name",
+        "synonyms": ["resource name", "resource", "vm name", "bucket name", "database name"],
+        "description": "Display name of the cloud resource"
+    },
+
+    # Measures: Spend & Financials
+    "EffectiveCost": {
+        "label": "Effective Cost (Net / True Spend)",
+        "synonyms": [
+            "effective cost", "net cost", "true cost", "actual cost",
+            "real cost", "amortized cost", "cost", "spend", "spending"
+        ],
+        "description": "FOCUS true net cost after amortizing upfront commitments and deducting negotiated discounts"
+    },
+    "BilledCost": {
+        "label": "Billed Cost (Invoice Cost)",
+        "synonyms": ["billed cost", "invoice cost", "unblended cost", "gross spend", "invoice amount", "list spend"],
+        "description": "FOCUS undiscounted or invoiced cost charged on the periodic cloud bill"
+    },
+    "lineItem_UnblendedCost": {
+        "label": "Unblended Cost",
+        "synonyms": ["unblended cost", "cost", "spend", "spending", "dollar amount", "bill amount"],
+        "description": "AWS CUR direct cash charge for usage"
+    },
+    "ActualCostInUsd": {
+        "label": "Actual Cost in USD",
+        "synonyms": ["actual cost", "cost in usd", "spend", "spending", "azure cost"],
+        "description": "Azure direct accrued cost in USD"
+    },
+    "AmortizedCostInUsd": {
+        "label": "Amortized Cost in USD",
+        "synonyms": ["amortized cost", "effective cost", "true cost", "amortized spend"],
+        "description": "Azure amortized spend accounting for reservations and savings plans"
+    },
+
+    # Measures: Usage & Quantity
+    "PricingQuantity": {
+        "label": "Pricing Quantity (Usage Units)",
+        "synonyms": ["quantity", "pricing quantity", "usage quantity", "units", "hours", "gb-months", "invocations", "volume"],
+        "description": "FOCUS consumable unit count (Compute Hours, GB-Mo, Requests, Invocations)"
+    },
+    "lineItem_UsageAmount": {
+        "label": "AWS Usage Amount",
+        "synonyms": ["usage amount", "usage quantity", "quantity", "gb", "hours", "units", "invocations"],
+        "description": "AWS CUR consumable quantity measure"
+    },
+    "Quantity": {
+        "label": "Azure Quantity",
+        "synonyms": ["quantity", "units", "usage quantity", "hours", "gb"],
+        "description": "Azure consumed resource units"
+    },
+    "Instances": {
+        "label": "Instance Count",
+        "synonyms": ["instances", "instance count", "number of instances", "vms", "database count", "node count"],
+        "description": "Count of provisioned virtual compute or database instances"
+    },
+    "Instance_Hours": {
+        "label": "Instance Hours",
+        "synonyms": ["instance hours", "compute hours", "vm hours", "hours run"],
+        "description": "Total compute execution hours"
+    },
+
+    # AI & Foundation Models
+    "ModelProvider": {
+        "label": "AI Model Provider",
+        "synonyms": ["model provider", "ai provider", "ai vendor", "llm vendor", "ai company", "vendor"],
+        "description": "AI model publisher (OpenAI, Anthropic, Google, AWS Bedrock, Meta, Mistral)"
+    },
+    "Model": {
+        "label": "AI Model Name",
+        "synonyms": [
+            "model", "model name", "ai model", "foundation model",
+            "llm", "language model", "foundation models", "llm models"
+        ],
+        "description": "AI model name (e.g. gpt-4o, claude-3-5-sonnet, gemini-1.5-pro, llama-3)"
+    },
+    "Modality": {
+        "label": "AI Interaction Modality",
+        "synonyms": ["modality", "media type", "input modality", "text vs multimodal", "vision", "audio", "embedding"],
+        "description": "Model capability modality (text, multimodal, vision, speech, embedding)"
+    },
+    "ExecutionType": {
+        "label": "AI Execution Type",
+        "synonyms": ["execution type", "inference type", "batch vs streaming", "realtime vs batch", "processing mode"],
+        "description": "Inference delivery method (realtime synchronous, batch, streaming, fine-tuning)"
+    },
+    "TokenType": {
+        "label": "AI Token Type",
+        "synonyms": [
+            "token type", "prompt tokens", "completion tokens",
+            "input tokens", "output tokens", "cached tokens", "tokens"
+        ],
+        "description": "Token metering category (Input/Prompt, Output/Completion, Cache Read/Write)"
+    },
+    "HardwareType": {
+        "label": "AI Accelerator Type",
+        "synonyms": ["hardware type", "accelerator type", "accelerator", "gpu vs tpu", "hardware"],
+        "description": "Silicon compute accelerator (GPU, TPU, Trainium, Inferentia)"
+    },
+    "HardwareFamily": {
+        "label": "AI Accelerator Family",
+        "synonyms": ["hardware family", "gpu family", "accelerator family", "h100 vs a100", "b200"],
+        "description": "Specific chip generation family (NVIDIA H100, A100, B200, Google TPU v5e)"
+    },
+
+    # Commitments, Carbon & Customers
+    "Commitment_Plan": {
+        "label": "Commitment Plan",
+        "synonyms": [
+            "commitment plan", "savings plan", "reservation", "ri",
+            "reserved instance", "commitment type", "savings plans", "reserved instances"
+        ],
+        "description": "Multi-cloud rate commitment type (Compute Savings Plans, EC2 Instance Savings Plans, Standard RIs, Azure Reservations)"
+    },
+    "Country": {
+        "label": "Emissions Geography / Country",
+        "synonyms": ["country", "emissions country", "carbon country", "datacenter country", "geography"],
+        "description": "Datacenter geographic country for carbon accounting"
+    },
+    "Carbon": {
+        "label": "Carbon Footprint",
+        "synonyms": ["carbon", "emissions", "mt co2e", "carbon footprint", "greenhouse gas", "ghg"],
+        "description": "Metric tons of CO2 equivalent emissions"
+    },
+    "CustomerName": {
+        "label": "Channel Customer / Tenant",
+        "synonyms": ["customer", "customer name", "tenant", "client", "organization", "msp customer"],
+        "description": "MSP channel customer or end-client organization"
+    }
+}
+
 # ── Multi-Cloud Service Mapping & Extraction (AWS, Azure, GCP) ────────
 class ServiceMatch(tuple):
     """Subclass of tuple supporting both 2-item legacy unpacking (pcode, disp) and .provider property."""
@@ -554,7 +853,33 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
     Pulls analysis type (forecast, monthly trend, anomalies, etc.), timeframes,
     and dimensions from prior turns and substitutes the newly requested target entity.
     """
-    if not messages or len(messages) < 2:
+    if not messages:
+        return {"is_continuation": False}
+
+    if len(messages) < 2:
+        # Cross-session fallback: check if user asks to repeat or continue prior session query
+        try:
+            from cleo_memory import load_last_query
+            saved = load_last_query()
+            if saved and saved.get("sql"):
+                q_type = str(saved.get("query_type", "")).lower()
+                if "forecast" in q_type or "forecast" in saved["sql"].lower():
+                    asst_title = "### 📊 CloudHealth Cost Forecast: Spend Projection"
+                elif "monthly" in q_type or "trend" in q_type:
+                    asst_title = "### 📊 Monthly Spend Trend & Breakdown"
+                elif "anomal" in q_type:
+                    asst_title = "### 🛡️ CloudHealth Cost Anomaly Detection"
+                else:
+                    asst_title = f"### 📊 CloudHealth Spend Analysis\nData for {saved.get('dataset', 'CloudHealth')}"
+
+                synthetic_msgs = [
+                    {"role": "user", "content": saved["sql"]},
+                    {"role": "assistant", "content": asst_title},
+                    messages[-1]
+                ]
+                return _detect_contextual_continuation(synthetic_msgs, cust_map=cust_map)
+        except Exception:
+            pass
         return {"is_continuation": False}
 
     last_msg = messages[-1].get("content", "") if messages else ""
@@ -942,6 +1267,12 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
 
     # Breakdowns
     breakdowns = []
+    if any(w in low for w in [
+        "lease type", "leasetype", "by lease", "lease breakdown", "lease types",
+        "purchase option", "purchaseoption", "pricing model", "ondemand", "reservation",
+        "savingsplan", "savings plan", "spot"
+    ]):
+        breakdowns.append("lease_type")
     if any(w in low for w in ["instancetype", "instance type", "instance size", "instance"]):
         breakdowns.append("instance_type")
     if any(w in low for w in ["enginetype", "engine type", "engine", "database engine"]):
@@ -1070,7 +1401,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "number of", "how many", "count of", "quantity", "quantities",
         "instance count", "instances count", "vm count", "server count",
         "hours", "runtime", "instance hours", "vm hours", "compute hours",
-        "vcpus", "vcpu", "cores",
+        "vcpus", "vcpu", "cores", "units", "consumed quantity", "usage amount", "usage quantity",
         "storage used", "storage volume", "volume in gb", "volume in tb",
         "gb used", "gigabytes", "tb used", "terabytes",
         "invocations", "executions", "requests"
@@ -1089,70 +1420,119 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     elif any(w in low for w in [
         "by account", "per account", "account name", "account names", "account breakdown",
         "breakdown by account", "each account", "by project", "per project",
-        "by subscription", "per subscription", "sub account", "subaccount", "sub-account"
+        "by subscription", "per subscription", "sub account", "subaccount", "sub-account",
+        "member account", "linked account", "usage account", "cloud account",
+        "by member account", "by linked account", "by usage account", "by cloud account",
+        "subscription-level", "project-level", "per cloud account", "linked accounts",
+        "member accounts", "usage accounts"
     ]):
         breakdowns.append("account")
         target_dimension = "SubaccountId"
     elif any(w in low for w in [
         "by billing account", "per billing account", "billing account id", "billing accounts",
-        "billing account breakdown", "breakdown by billing account", "payer account", "master account"
+        "billing account breakdown", "breakdown by billing account", "payer account", "master account",
+        "root account", "management account", "parent account", "by payer", "by master",
+        "billing container", "by payer account", "by management account", "by root account",
+        "payer id", "master account id", "root account id", "payer accounts", "master accounts"
     ]):
         breakdowns.append("billing_account")
         target_dimension = "BillingAccountId"
     elif any(w in low for w in [
         "by service category", "by service_category", "by category", "per category",
-        "service categories", "category breakdown", "breakdown by category", "per service category"
+        "service categories", "category breakdown", "breakdown by category", "per service category",
+        "by service categories", "by macro service", "macro service", "service family",
+        "by service family", "by domain", "domain breakdown", "service domain", "cloud domain"
     ]):
         breakdowns.append("service_category")
         target_dimension = "ServiceCategory"
     elif any(w in low for w in [
         "by pricing category", "by pricing model", "by pricing", "per pricing category",
-        "pricing categories", "pricing category breakdown", "breakdown by pricing", "by pricing type"
+        "pricing categories", "pricing category breakdown", "breakdown by pricing", "by pricing type",
+        "by lease type", "by lease", "lease type", "leasetype", "lease breakdown", "lease types",
+        "by purchase option", "purchase option", "purchase options", "purchase option breakdown",
+        "capacity type", "by capacity type", "by commercial model", "commercial model",
+        "by contract type", "contract type", "by commitment type", "commitment type",
+        "by charge type", "charge type breakdown"
+    ]) or (any(w in low for w in ["ondemand", "on-demand", "reservation", "savings plan", "savingsplan", "spot"]) and any(w in low for w in ["breakdown", "break down", "split", "by", "usage", "cost", "spend", "lease", "above", "rds", "ec2"])):
+        breakdowns.append("lease_type")
+        target_dimension = "LeaseType"
+    elif any(w in low for w in [
+        "by resource", "per resource", "resource breakdown", "breakdown by resource",
+        "by resource id", "resource-level", "top resources", "by individual resource",
+        "by resource name", "resource name", "by arn", "per resource id", "individual resources",
+        "by instance id", "by asset", "asset breakdown"
     ]):
-        breakdowns.append("pricing_category")
-        target_dimension = "PricingCategory"
-    elif any(w in low for w in ["by resource", "per resource", "resource breakdown", "breakdown by resource"]):
         breakdowns.append("resource")
         target_dimension = "ResourceId"
-    elif any(w in low for w in ["by model provider", "per model provider", "model provider breakdown", "ai provider"]):
+    elif any(w in low for w in [
+        "by region", "per region", "by region id", "region breakdown", "breakdown by region",
+        "by location", "per location", "regional breakdown", "by datacenter", "by data center",
+        "datacenter breakdown", "by geography", "by geo", "geographic breakdown", "geo breakdown",
+        "by zone", "by availability zone", "cloud region", "by cloud region", "locations breakdown"
+    ]):
+        breakdowns.append("region")
+        target_dimension = "RegionId"
+    elif any(w in low for w in [
+        "by model provider", "per model provider", "model provider breakdown", "breakdown by model provider",
+        "ai provider", "by ai provider", "ai provider breakdown", "ai vendor", "by ai vendor",
+        "llm vendor", "model vendor", "ai company"
+    ]):
         breakdowns.append("model_provider")
         target_dimension = "ModelProvider"
-    elif any(w in low for w in ["by model", "per model", "ai model", "model breakdown", "by llm", "llm breakdown"]) or cont_ctx.get("prior_query_type") == "ai_model_breakdown" or (is_exclude_other_requested(low) and any(w in low for w in ["model", "models", "ai"])):
+    elif any(w in low for w in [
+        "by model", "per model", "ai model", "model breakdown", "by llm", "llm breakdown",
+        "foundation model", "by foundation model", "models breakdown", "by model name",
+        "per model name", "model name", "breakdown by model name", "break down by model name",
+        "break down by model", "break it down by model name", "break it down by model",
+        "foundation models", "by llm model", "llm models", "language model", "language models"
+    ]) or cont_ctx.get("prior_query_type") == "ai_model_breakdown" or (is_exclude_other_requested(low) and any(w in low for w in ["model", "models", "ai"])):
         breakdowns.append("model")
         target_dimension = "Model"
-    elif any(w in low for w in ["by modality", "per modality", "modality breakdown"]):
+    elif any(w in low for w in ["by modality", "per modality", "modality breakdown", "breakdown by modality", "media type", "by media type", "input modality", "text vs multimodal", "multimodal breakdown"]):
         breakdowns.append("modality")
         target_dimension = "Modality"
-    elif any(w in low for w in ["by execution type", "execution type breakdown"]):
+    elif any(w in low for w in ["by execution type", "per execution type", "execution type breakdown", "breakdown by execution type", "inference type", "by inference type", "batch vs streaming", "realtime vs batch", "processing mode"]):
         breakdowns.append("execution_type")
         target_dimension = "ExecutionType"
-    elif any(w in low for w in ["by token type", "token type breakdown"]):
+    elif any(w in low for w in ["by token type", "per token type", "token type breakdown", "breakdown by token type", "prompt tokens", "completion tokens", "input tokens", "output tokens", "cached tokens", "tokens breakdown", "by tokens"]):
         breakdowns.append("token_type")
         target_dimension = "TokenType"
-    elif any(w in low for w in ["by hardware type", "by hardware", "hardware breakdown"]):
-        breakdowns.append("hardware_type")
-        target_dimension = "HardwareType"
-    elif any(w in low for w in ["by hardware family", "hardware family breakdown"]):
+    elif any(w in low for w in ["by hardware family", "per hardware family", "hardware family breakdown", "gpu family", "accelerator family", "h100 vs a100"]):
         breakdowns.append("hardware_family")
         target_dimension = "HardwareFamily"
+    elif any(w in low for w in ["by hardware type", "by hardware", "per hardware type", "hardware breakdown", "breakdown by hardware", "accelerator type", "by accelerator", "gpu vs tpu", "accelerators"]):
+        breakdowns.append("hardware_type")
+        target_dimension = "HardwareType"
     elif is_ahb:
         breakdowns.append("hybrid_benefit")
         target_dimension = "hybrid_benefit"
-    elif any(w in low for w in ["by commitment plan", "by commitment", "savings plan breakdown", "by savings plan"]):
+    elif any(w in low for w in ["by commitment plan", "by commitment", "by commitment type", "commitment breakdown", "savings plan breakdown", "by savings plan", "by reservation", "reservation breakdown", "by ri", "ri breakdown", "savings plans breakdown", "reserved instances"]):
         breakdowns.append("commitment_plan")
         target_dimension = "Commitment_Plan"
-    elif any(w in low for w in ["by country", "emissions by country", "carbon by country"]):
+    elif any(w in low for w in ["by country", "emissions by country", "carbon by country", "emissions by geography", "carbon by geography", "by datacenter country"]):
         breakdowns.append("country")
         target_dimension = "Country"
-    elif any(w in low for w in ["storageclass", "storage class", "tier"]):
+    elif any(w in low for w in ["storageclass", "storage class", "tier", "storage tier", "by storage tier", "s3 tier", "lifecycle tier", "tier breakdown"]):
         breakdowns.append("storage_class")
         target_dimension = "product_storageClass"
-    if any(w in low for w in ["volumetype", "volume type", "gp2", "gp3", "ebs type"]):
+    if any(w in low for w in ["volumetype", "volume type", "gp2", "gp3", "ebs type", "by volume type", "by disk type", "disk type", "by ebs type", "ebs volume type", "gp2 vs gp3"]):
         breakdowns.append("volume_type")
         target_dimension = "product_volumeType"
-    if any(w in low for w in ["subcategory", "sub-category", "service subcategory"]):
+    if any(w in low for w in [
+        "subcategory", "sub-category", "service subcategory", "by sub service", "per sub service",
+        "sub-service", "sub service", "granular service", "service component", "meter category",
+        "meter subcategory", "by meter", "component breakdown", "sub services", "granular services",
+        "by meter category", "by meter subcategory"
+    ]):
         breakdowns.append("service_subcategory")
         target_dimension = "ServiceSubcategory"
+    if any(w in low for w in ["by operation", "operation breakdown", "api operation", "by api operation", "by action", "action breakdown", "api calls"]):
+        breakdowns.append("operation")
+        target_dimension = "lineItem_Operation"
+    if any(w in low for w in ["by instance type", "instancetype", "by vm size", "vm size", "by machine type", "machine type", "instance size", "by instance size", "node type"]):
+        breakdowns.append("instance_type")
+        if not target_dimension:
+            target_dimension = "product_InstanceType"
 
     if not target_dimension and not (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") in ("forecast", "monthly_trend")):
         if service == "AmazonEC2":
@@ -1188,7 +1568,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     if cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "forecast":
         target_ym = f"{cont_ctx['inherited_target_year']}-01"
 
-    return {
+    result = {
         "intent": intent,
         "cloud": cloud,
         "service": service,
@@ -1207,4 +1587,19 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "anomaly_status": detect_anomaly_status_filter(last_msg) if is_anomaly else None,
         "corrected_query": cont_ctx.get("expanded_query") or last_msg
     }
+
+    # ponytail: fuzzy service correction — fires only when deterministic match failed
+    # ceiling: difflib is O(n*m) but n is tiny (50 service names) so cost is negligible
+    if not result.get("service"):
+        from difflib import get_close_matches
+        service_keys = list(AWS_SERVICES_MAP.keys()) + list(CLOUD_SERVICES_MAP.keys())
+        matches = get_close_matches(low, service_keys, n=1, cutoff=0.82)
+        if matches:
+            matched_key = matches[0]
+            canonical = AWS_SERVICES_MAP.get(matched_key) or CLOUD_SERVICES_MAP.get(matched_key)
+            if canonical:
+                result["service"] = canonical
+                result["fuzzy_corrected"] = True
+
+    return result
 

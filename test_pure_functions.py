@@ -880,7 +880,193 @@ def test_build_llm_schema_context_validity():
     assert "Status" in schema_ctx
 
 
+def test_lease_type_understanding_and_handler_execution():
+    from cleo_query import _deterministic_understand_query
+    from cleo_agent import AIClient
+    import json
+
+    # 1. Test intent & dimension extraction
+    res1 = _deterministic_understand_query([{"role": "user", "content": "breakdown the above usage by Lease type"}])
+    assert res1["target_dimension"] == "LeaseType"
+    assert "lease_type" in res1["breakdowns"]
+
+    res2 = _deterministic_understand_query([{"role": "user", "content": "give me the RDS cost and usage by purchase option for YTD"}])
+    assert res2["target_dimension"] == "LeaseType"
+    assert "lease_type" in res2["breakdowns"]
+    assert res2["service"] == "AmazonRDS"
+
+    res3 = _deterministic_understand_query([{"role": "user", "content": "EC2 spend by ondemand, reservation, savings plan and spot"}])
+    assert res3["target_dimension"] == "LeaseType"
+    assert "lease_type" in res3["breakdowns"]
+
+    # 2. Test execution with MockMCP simulating the user's exact chat session
+    class MockMCP:
+        def __init__(self, csv_data=""):
+            self.csv_data = csv_data
+            self.calls = []
+
+        def call_tool(self, name, args):
+            self.calls.append((name, args))
+            if name == "execute_datasource_query":
+                return {"content": [{"type": "text", "text": json.dumps({"csv": self.csv_data})}]}
+            return {}
+
+    sample_cur_csv = (
+        '"month","pricing_term","item_type","cost","usage_amount"\n'
+        '"2026-08","OnDemand","Usage","62059.75","2000.0"\n'
+        '"2026-08","Reserved","RIFee","8494.47","500.0"\n'
+        '"2026-08","OnDemand","SavingsPlanCoveredUsage","5833.75","200.0"\n'
+        '"2026-08",,"EdpDiscount","-12597.99","0.0"\n'
+        '"2026-09","OnDemand","Usage","60362.28","1900.0"\n'
+        '"2026-09","Reserved","RIFee","8220.46","480.0"\n'
+        '"2026-09","OnDemand","SavingsPlanCoveredUsage","6541.57","210.0"\n'
+        '"2026-09",,"EdpDiscount","-13180.88","0.0"\n'
+    )
+
+    mock_mcp = MockMCP(csv_data=sample_cur_csv)
+    client = AIClient("direct", {}, [])
+
+    chat_history = [
+        {"role": "user", "content": "give me the RDS and S3 cost and usage data for YTD"},
+        {"role": "assistant", "content": "### 📊 CloudHealth Multi-Service Spend Analysis: RDS & S3\n- Target Billing Period: Year-to-Date (2025-12 to 2026-10)"},
+        {"role": "user", "content": "remove 'Other' from above data from RDS Spend"},
+        {"role": "assistant", "content": "### 🗄️ CloudHealth RDS Spend Analysis: Instance Type Breakdown\n- Target Billing Period: Year-to-Date (2025-12 to 2026-10)"},
+        {"role": "user", "content": "breakdown the above usage by Lease type"}
+    ]
+
+    res = client.generate(chat_history, mcp=mock_mcp)
+
+    # Verify query executed against AWS_CUR grouping by pricing_term and lineItem_LineItemType
+    query_calls = [c for c in mock_mcp.calls if c[0] == "execute_datasource_query"]
+    assert len(query_calls) > 0, "Expected execute_datasource_query call"
+    sql_stmt = query_calls[0][1]["queryInput"]["sqlStatement"]
+    assert "FROM AWS_CUR" in sql_stmt
+    assert "pricing_term" in sql_stmt
+    assert "lineItem_LineItemType" in sql_stmt
+
+    # Verify response contains all canonical lease types
+    assert "On-Demand" in res
+    assert "Reserved Instances (RI)" in res
+    assert "Savings Plans" in res
+    assert "Spot Instances" in res
+    assert "Amazon RDS" in res
+    # Verify Spot note for RDS
+    assert "Spot instances are not supported for Amazon RDS" in res
+    # Verify commitment coverage %
+    assert "Commitment Coverage" in res
+
+
+def test_column_synonyms_and_expanded_context():
+    import cleo_agent
+    from cleo_query import COLUMN_SYNONYMS, _deterministic_understand_query
+
+    # 1. Verify COLUMN_SYNONYMS catalog exists and contains key dimensions
+    assert "SubaccountId" in COLUMN_SYNONYMS
+    assert "member account" in COLUMN_SYNONYMS["SubaccountId"]["synonyms"]
+    assert "BillingAccountId" in COLUMN_SYNONYMS
+    assert "master account" in COLUMN_SYNONYMS["BillingAccountId"]["synonyms"]
+    assert "ServiceCategory" in COLUMN_SYNONYMS
+    assert "macro service" in COLUMN_SYNONYMS["ServiceCategory"]["synonyms"]
+    assert "ServiceSubcategory" in COLUMN_SYNONYMS
+    assert "granular service" in COLUMN_SYNONYMS["ServiceSubcategory"]["synonyms"]
+    assert "product_storageClass" in COLUMN_SYNONYMS
+    assert "storage tier" in COLUMN_SYNONYMS["product_storageClass"]["synonyms"]
+    assert "product_volumeType" in COLUMN_SYNONYMS
+    assert "disk type" in COLUMN_SYNONYMS["product_volumeType"]["synonyms"]
+    assert "HardwareFamily" in COLUMN_SYNONYMS
+    assert "h100 vs a100" in COLUMN_SYNONYMS["HardwareFamily"]["synonyms"]
+
+    # 2. Verify build_llm_schema_context() includes annotations and the synonyms dictionary
+    ctx = cleo_agent.build_llm_schema_context()
+    assert "COLUMN & DIMENSION NATURAL LANGUAGE SYNONYMS DICTIONARY" in ctx
+    assert "SubaccountId / lineItem_UsageAccountId / SubscriptionId" in ctx
+    assert "ServiceCategory / MeterCategory" in ctx
+    assert "LeaseType (pricing_term & lineItem_LineItemType)" in ctx
+
+    # 3. Verify deterministic query understanding routes synonyms correctly
+    test_cases = [
+        ("azure cost by member account", "SubaccountId", "account"),
+        ("aws spend by master account", "BillingAccountId", "billing_account"),
+        ("cloud spend by macro service", "ServiceCategory", "service_category"),
+        ("gcp cost by granular service", "ServiceSubcategory", "service_subcategory"),
+        ("aws spend by datacenter", "RegionId", "region"),
+        ("aws spend by asset", "ResourceId", "resource"),
+        ("s3 cost by storage tier", "product_storageClass", "storage_class"),
+        ("ebs cost by disk type", "product_volumeType", "volume_type"),
+        ("ai spend by foundation model", "Model", "model"),
+        ("ai spend by accelerator family", "HardwareFamily", "hardware_family"),
+        ("cloud spend by commercial model", "LeaseType", "lease_type"),
+    ]
+    for q, expected_dim, expected_bdown in test_cases:
+        res = _deterministic_understand_query([{"role": "user", "content": q}])
+        assert res.get("target_dimension") == expected_dim, f"Query '{q}' failed: expected target_dimension '{expected_dim}', got '{res.get('target_dimension')}'"
+        assert expected_bdown in (res.get("breakdowns") or []), f"Query '{q}' failed: expected breakdown '{expected_bdown}' in {res.get('breakdowns')}"
+
+    # 4. Verify quantity triggers with units/quantities
+    q_res = _deterministic_understand_query([{"role": "user", "content": "ec2 usage quantity in units"}])
+    assert q_res.get("metric_type") == "quantity"
+
+
+def test_cleo_enhancements_suite():
+    """Validates the roadmap improvements: cross-session continuation, live specs, fuzzy typos, empty diagnostics."""
+    import tempfile, pathlib
+    from cleo_memory import save_last_query, load_last_query, _LAST_QUERY_PATH
+    from cleo_query import _detect_contextual_continuation, _deterministic_understand_query
+    from cleo_agent import merge_live_metadata_into_curated_specs, CURATED_DATASET_SPECS, _format_empty_data_notice
+
+    # 1. Cross-Session Continuation Persistence
+    orig_path = _LAST_QUERY_PATH
+    with tempfile.NamedTemporaryFile(suffix=".json") as tf:
+        test_file = pathlib.Path(tf.name)
+        import cleo_memory
+        cleo_memory._LAST_QUERY_PATH = test_file
+
+        save_last_query("forecast", "MULTICLOUD_FOCUS_COST_AND_USAGE", "forecast for aws", {"from": "2026-01", "to": "2026-12"})
+        loaded = load_last_query()
+        assert loaded.get("dataset") == "MULTICLOUD_FOCUS_COST_AND_USAGE"
+        assert loaded.get("sql") == "forecast for aws"
+
+        # Verify single-turn continuation picks up saved session query
+        cont_res = _detect_contextual_continuation([{"role": "user", "content": "same for azure"}])
+        assert cont_res.get("is_continuation") is True
+        assert cont_res.get("new_cloud") == "azure"
+
+        cleo_memory._LAST_QUERY_PATH = orig_path
+
+    # 2. Dynamic Live Metadata Enrichment into CURATED_DATASET_SPECS
+    test_live = {
+        "CUSTOM_FINOPS_FLEET": {
+            "displayName": "Custom FinOps Fleet",
+            "columns": [
+                {"name": "FleetCost", "type": "MEASURE", "dataType": "DOUBLE"},
+                {"name": "FleetId", "type": "DIMENSION", "dataType": "STRING"}
+            ]
+        }
+    }
+    merge_live_metadata_into_curated_specs(test_live)
+    assert "CUSTOM_FINOPS_FLEET" in CURATED_DATASET_SPECS
+    assert "FleetCost" in CURATED_DATASET_SPECS["CUSTOM_FINOPS_FLEET"]["priority_measures"]
+    assert "FleetId" in CURATED_DATASET_SPECS["CUSTOM_FINOPS_FLEET"]["priority_dimensions"]
+
+    # 3. Contextual Empty Data Diagnostics
+    notice = _format_empty_data_notice("AWS_CUR", "instance_type", "EC2", "2026-06")
+    assert "FinOps Diagnostic Tips" in notice
+    assert "Billing Ingestion Latency" in notice
+    assert "2026-06" in notice
+
+    # 4. Fuzzy service matching in deterministic router
+    fuzzy_q = _deterministic_understand_query([{"role": "user", "content": "amazonec2"}])
+    assert fuzzy_q.get("service") == "AmazonEC2"
+
+    # 5. Anomaly date extraction (date granularity vs month)
+    sample_row = {"end_date": "2026-10-08T00:00:00Z", "month": "2026-10"}
+    extracted_date = (sample_row.get("end_date") or "").split("T")[0].split()[0] or sample_row.get("month", "")
+    assert extracted_date == "2026-10-08"
+
+
 if __name__ == "__main__":
+    test_cleo_enhancements_suite()
+    test_column_synonyms_and_expanded_context()
     # Self-run check
     test_parse_query_time_context()
     test_extract_requested_service()

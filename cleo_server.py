@@ -334,7 +334,7 @@ def _setup_and_activate_venv():
 
 _setup_and_activate_venv()
 
-import json, uuid, time, argparse, urllib.parse, urllib.request, base64, hashlib, socket, subprocess, platform, shutil
+import json, uuid, time, argparse, urllib.parse, urllib.request, base64, hashlib, socket, subprocess, platform, shutil, re
 from datetime import datetime, timezone
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -666,6 +666,7 @@ def _save_sessions():
         logger.warning(f"Could not save sessions cache: {e}")
 
 _sessions: dict        = _load_sessions()
+# ponytail: query-result caching is handled at MCPClient._query_cache (cleo_mcp.py:~380) — no duplicate cache needed here
 _server_start          = datetime.now(timezone.utc).isoformat()
 _active_engine_key     = _init_engine_key
 _engine_label          = _init_engine_label
@@ -2279,6 +2280,23 @@ def chat(req: ChatRequest, request: Request):
 
     messages.append({"role": "user", "content": req.message})
     session_entry["updated_at"] = now_iso
+
+    # ── /teach shortcut: write directly to memory, skip LLM ──────────────────
+    _teach_m = re.match(r'^/teach[:\s]+(.+)', req.message.strip(), re.IGNORECASE | re.DOTALL)
+    if _teach_m:
+        instruction = _teach_m.group(1).strip()
+        _get_memory().record_correction("general", instruction)
+        _teach_reply = (
+            f"✅ **Cleo learned:** {instruction}\n\n"
+            "*This correction is now stored in memory and will influence future responses.*"
+        )
+        messages.append({"role": "assistant", "content": _teach_reply})
+        session_entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _save_sessions()
+        return Response(
+            content=json.dumps({"response": _teach_reply, "session_id": session_id, "tool_calls": []}),
+            media_type="application/json"
+        )
 
     tool_log: list[ToolCallLog] = []
     original_call_tool = _mcp.call_tool

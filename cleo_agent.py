@@ -41,13 +41,17 @@ except ImportError:
 
 # Self-learning memory
 try:
-    from cleo_memory import get_memory
+    from cleo_memory import get_memory, save_last_query, load_last_query
 except ImportError:
     def get_memory():  # type: ignore
         class _Noop:
             def build_context_block(self, q): return ""
             def record_sql_fix(self, *a): pass
         return _Noop()
+    def save_last_query(*a, **k): pass
+    def load_last_query(): return {}
+
+from cleo_query import COLUMN_SYNONYMS
 
 # Real-world market intelligence (AI model token rates, cloud retail pricing, FinOps trends)
 try:
@@ -188,6 +192,10 @@ def crawl_and_cache_all_datasource_metadata(mcp, force: bool = False) -> dict:
         with open(DATASOURCES_METADATA_CACHE_FILE, "w") as f:
             json.dump(payload, f, indent=2)
         _datasources_metadata_memory_cache = results
+        try:
+            merge_live_metadata_into_curated_specs(results)
+        except Exception:
+            pass
         logger.info(f"✅ [Metadata Crawler] Successfully cached {len(results)} datasource schemas to {DATASOURCES_METADATA_CACHE_FILE}")
     except Exception as e:
         logger.error(f"[Metadata Crawler] Failed to write cache file: {e}")
@@ -196,8 +204,8 @@ def crawl_and_cache_all_datasource_metadata(mcp, force: bool = False) -> dict:
 
 CURATED_DATASET_SPECS = {
     "AWS_CUR": {
-        "priority_measures": ["lineItem_UnblendedCost", "lineItem_BlendedCost", "lineItem_NetUnblendedCost", "pricing_publicOnDemandCost", "discount_TotalDiscount", "savingsPlan_TotalCommitmentToDate"],
-        "priority_dimensions": ["lineItem_ProductCode", "product_instanceType", "product_region", "lineItem_ResourceId", "lineItem_UsageType", "lineItem_Operation", "bill_PayerAccountId", "lineItem_UsageAccountId", "timeInterval_Month"]
+        "priority_measures": ["lineItem_UnblendedCost", "lineItem_BlendedCost", "lineItem_NetUnblendedCost", "pricing_publicOnDemandCost", "discount_TotalDiscount", "savingsPlan_TotalCommitmentToDate", "lineItem_UsageAmount"],
+        "priority_dimensions": ["lineItem_ProductCode", "product_instanceType", "product_region", "lineItem_ResourceId", "lineItem_UsageType", "lineItem_Operation", "bill_PayerAccountId", "lineItem_UsageAccountId", "timeInterval_Month", "pricing_term", "lineItem_LineItemType", "pricing_PurchaseOption", "product_storageClass", "product_volumeType"]
     },
     "AZURE_COST_USAGE": {
         "priority_measures": ["ActualCostInBillingCurrency", "ActualCostInUsd", "CostInBillingCurrency", "Quantity", "AmortizedCostInUsd"],
@@ -205,19 +213,19 @@ CURATED_DATASET_SPECS = {
     },
     "MULTICLOUD_FOCUS_COST_AND_USAGE": {
         "priority_measures": ["EffectiveCost", "BilledCost", "PricingQuantity"],
-        "priority_dimensions": ["provider", "ServiceName", "ServiceCategory", "ServiceSubcategory", "RegionId", "SubaccountId", "BillingAccountId", "Month"]
+        "priority_dimensions": ["provider", "ServiceName", "ServiceCategory", "ServiceSubcategory", "PricingCategory", "RegionId", "SubaccountId", "BillingAccountId", "ResourceId", "PricingUnit", "Month"]
     },
     "AWS_FOCUS_COST_AND_USAGE": {
         "priority_measures": ["EffectiveCost", "BilledCost", "AmortizedCost", "ListCost", "PricingQuantity"],
-        "priority_dimensions": ["Provider", "ServiceName", "ServiceCategory", "ServiceSubcategory", "SubaccountId", "BillingAccountId", "Month"]
+        "priority_dimensions": ["Provider", "ServiceName", "ServiceCategory", "ServiceSubcategory", "PricingCategory", "SubaccountId", "BillingAccountId", "ResourceId", "PricingUnit", "Month"]
     },
     "AZURE_FOCUS_COST_AND_USAGE": {
         "priority_measures": ["EffectiveCost", "BilledCost", "AmortizedCost", "PricingQuantity"],
-        "priority_dimensions": ["Provider", "ServiceName", "ServiceCategory", "ServiceSubcategory", "RegionId", "SubaccountId", "BillingAccountId", "Month"]
+        "priority_dimensions": ["Provider", "ServiceName", "ServiceCategory", "ServiceSubcategory", "PricingCategory", "RegionId", "SubaccountId", "BillingAccountId", "ResourceId", "PricingUnit", "Month"]
     },
     "GCP_FOCUS_COST_AND_USAGE": {
         "priority_measures": ["EffectiveCost", "BilledCost", "PricingQuantity"],
-        "priority_dimensions": ["Provider", "ServiceName", "ServiceCategory", "ServiceSubcategory", "RegionId", "SubaccountId", "BillingAccountId", "Month"]
+        "priority_dimensions": ["Provider", "ServiceName", "ServiceCategory", "ServiceSubcategory", "RegionId", "SubaccountId", "BillingAccountId", "ResourceId", "PricingUnit", "Month"]
     },
     "MULTICLOUD_COMMITMENT_SAVINGS": {
         "priority_measures": ["Commitment_Savings", "Commitment_Covered_On_Demand_Cost", "Commitment_Used_Cost", "Commitment_Purchase_Cost", "On_Demand_Equivalent_Cost", "Negotiated_Discount"],
@@ -233,11 +241,11 @@ CURATED_DATASET_SPECS = {
     },
     "MULTICLOUD_AI_COST_AND_USAGE": {
         "priority_measures": ["EffectiveCost", "BilledCost", "PricingQuantity", "UnitCost"],
-        "priority_dimensions": ["provider", "ServiceName", "Model", "ModelProvider", "TokenType", "RegionId", "Month"]
+        "priority_dimensions": ["provider", "ServiceName", "Model", "ModelProvider", "Modality", "ExecutionType", "TokenType", "HardwareType", "HardwareFamily", "ProcessingMode", "RegionId", "SubaccountId", "BillingAccountId", "Month"]
     },
     "AWS_AI_COST_AND_USAGE": {
         "priority_measures": ["EffectiveCost", "BilledCost", "PricingQuantity", "ListCost", "UnitCost"],
-        "priority_dimensions": ["Provider", "ServiceName", "Model", "ModelProvider", "TokenType", "RegionId", "Month"]
+        "priority_dimensions": ["Provider", "ServiceName", "Model", "ModelProvider", "Modality", "ExecutionType", "TokenType", "RegionId", "Month"]
     },
     "OPENAI_COST_AND_USAGE": {
         "priority_measures": ["Cost_Value", "Input_Tokens", "Output_Tokens", "Cached_Input_Tokens", "Num_Requests", "Effective_Cost_Per_1k_Output_Tokens"],
@@ -249,15 +257,15 @@ CURATED_DATASET_SPECS = {
     },
     "AWS_COST_ANOMALY": {
         "priority_measures": ["CostImpact", "Cost"],
-        "priority_dimensions": ["Service", "Region", "AccountID", "Status", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
+        "priority_dimensions": ["Service", "Region", "AccountID", "Status", "EndDate", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
     },
     "AZURE_COST_ANOMALY": {
         "priority_measures": ["CostImpact", "Cost"],
-        "priority_dimensions": ["Service", "Region", "Status", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
+        "priority_dimensions": ["Service", "Region", "Status", "EndDate", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
     },
     "GCP_COST_ANOMALY": {
         "priority_measures": ["CostImpact", "Cost"],
-        "priority_dimensions": ["Region", "Status", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
+        "priority_dimensions": ["Region", "Status", "EndDate", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
     },
     "AWS_EC2_COST_AND_USAGE": {
         "priority_measures": ["Billed_Cost", "Effective_Cost", "Amortized_Cost", "Instance_Cost", "Compute_Cost", "Instance_Hours", "Instances", "VCPUs"],
@@ -301,6 +309,59 @@ CURATED_DATASET_SPECS = {
     }
 }
 
+def merge_live_metadata_into_curated_specs(live_metadata: dict) -> None:
+    """
+    Dynamically enriches CURATED_DATASET_SPECS from live/cached CloudHealth metadata schemas.
+    Ensures new custom datasets or updated dimensions discovered at runtime are queryable.
+    """
+    if not live_metadata or not isinstance(live_metadata, dict):
+        return
+    for ds_name, ds_info in live_metadata.items():
+        if not isinstance(ds_info, dict):
+            continue
+        cols = ds_info.get("columns", [])
+        if not cols:
+            continue
+        discovered_dims = []
+        discovered_measures = []
+        for c in cols:
+            c_name = c.get("name")
+            if not c_name:
+                continue
+            c_type = str(c.get("type", "")).upper()
+            c_dtype = str(c.get("dataType", "")).upper()
+            if c_type == "MEASURE" or c_dtype in ("NUMBER", "FLOAT", "INTEGER", "DOUBLE"):
+                discovered_measures.append(c_name)
+            else:
+                discovered_dims.append(c_name)
+
+        if ds_name in CURATED_DATASET_SPECS:
+            spec = CURATED_DATASET_SPECS[ds_name]
+            p_dims = spec.setdefault("priority_dimensions", [])
+            for d in discovered_dims:
+                if d not in p_dims:
+                    p_dims.append(d)
+            p_meas = spec.setdefault("priority_measures", [])
+            for m in discovered_measures:
+                if m not in p_meas:
+                    p_meas.append(m)
+        else:
+            CURATED_DATASET_SPECS[ds_name] = {
+                "priority_measures": discovered_measures[:10],
+                "priority_dimensions": discovered_dims[:15],
+                "displayName": ds_info.get("displayName", ds_name),
+                "description": ds_info.get("description", "")
+            }
+
+# Seed from local metadata cache on startup if present
+if os.path.exists(DATASOURCES_METADATA_CACHE_FILE):
+    try:
+        _init_meta = get_cached_datasource_metadata()
+        if _init_meta:
+            merge_live_metadata_into_curated_specs(_init_meta)
+    except Exception:
+        pass
+
 def build_llm_schema_context() -> str:
     """
     Builds a concise, high-density catalog of CloudHealth datasets and key columns
@@ -335,13 +396,55 @@ def build_llm_schema_context() -> str:
                 ])
             ][:12]
 
+        def _col_label(c_name: str) -> str:
+            info = COLUMN_SYNONYMS.get(c_name)
+            if info and info.get("label"):
+                return f"{c_name} ({info['label']})"
+            return c_name
+
         lines.append(f"- `{key}` ({disp}):")
         if measures:
-            lines.append(f"  * Measures (Metrics): {', '.join(measures)}")
+            lines.append(f"  * Measures (Metrics): {', '.join(_col_label(m) for m in measures)}")
         if dims:
-            lines.append(f"  * Key Dimensions: {', '.join(dims)}")
+            lines.append(f"  * Key Dimensions: {', '.join(_col_label(d) for d in dims)}")
+
+    lines.append("\nCOLUMN & DIMENSION NATURAL LANGUAGE SYNONYMS DICTIONARY:")
+    lines.append("- SubaccountId / lineItem_UsageAccountId / SubscriptionId: 'account', 'subaccount', 'member account', 'linked account', 'usage account', 'project', 'subscription'")
+    lines.append("- BillingAccountId / bill_PayerAccountId: 'billing account', 'payer account', 'master account', 'root account', 'management account'")
+    lines.append("- ServiceCategory / MeterCategory: 'service category', 'macro service', 'service family', 'domain', 'category'")
+    lines.append("- ServiceSubcategory / MeterSubCategory: 'service subcategory', 'granular service', 'sub service', 'meter category', 'meter subcategory', 'component'")
+    lines.append("- PricingCategory: 'pricing category', 'pricing model', 'commercial model', 'contract type', 'pricing type'")
+    lines.append("- LeaseType (pricing_term & lineItem_LineItemType): 'lease type', 'purchase option', 'capacity type', 'ondemand', 'reservation', 'savings plan', 'spot'")
+    lines.append("- product_storageClass: 'storage class', 'storage tier', 's3 tier', 'lifecycle tier', 'hot/cool/archive'")
+    lines.append("- product_volumeType: 'volume type', 'ebs type', 'disk type', 'volume tier', 'gp2', 'gp3', 'io1', 'io2'")
+    lines.append("- lineItem_Operation: 'operation', 'api operation', 'action', 'event', 'invocations'")
+    lines.append("- product_instanceType / InstanceType: 'instance type', 'instance size', 'vm size', 'vm type', 'machine type', 'flavor'")
+    lines.append("- RegionId / product_region / Region: 'region', 'location', 'cloud region', 'datacenter', 'geography', 'zone'")
+    lines.append("- ResourceId / ResourceName / lineItem_ResourceId: 'resource', 'resource id', 'resource name', 'arn', 'asset', 'top resources'")
+    lines.append("- Model / ModelName: 'model', 'model name', 'ai model', 'foundation model', 'llm'")
+    lines.append("- ModelProvider: 'model provider', 'ai provider', 'ai vendor', 'llm vendor'")
+    lines.append("- Modality: 'modality', 'media type', 'input modality', 'text vs multimodal', 'vision'")
+    lines.append("- ExecutionType / ProcessingMode: 'execution type', 'inference type', 'batch vs streaming', 'realtime'")
+    lines.append("- TokenType: 'token type', 'prompt tokens', 'completion tokens', 'cached tokens'")
+    lines.append("- HardwareType / HardwareFamily: 'hardware type', 'hardware family', 'accelerator', 'gpu', 'tpu', 'h100', 'a100'")
+    lines.append("- Commitment_Plan: 'commitment plan', 'savings plan', 'reservation', 'ri', 'reserved instance'")
+    lines.append("- Country / Carbon: 'country', 'emissions country', 'carbon country', 'carbon footprint', 'mt co2e'")
+    lines.append("- EffectiveCost / lineItem_UnblendedCost / ActualCostInUsd: 'effective cost', 'net cost', 'true cost', 'actual cost', 'cost', 'spend'")
+    lines.append("- BilledCost: 'billed cost', 'invoice cost', 'unblended cost', 'gross spend'")
+    lines.append("- PricingQuantity / lineItem_UsageAmount / Quantity: 'quantity', 'usage quantity', 'units', 'hours', 'gb-months', 'volume'")
 
     return "\n".join(lines)
+
+def _format_empty_data_notice(dataset: str, dimension: str, scope: str, time_label: str = "") -> str:
+    """Provides actionable contextual troubleshooting tips when a query returns 0 rows."""
+    time_ctx = f" for **{time_label}**" if time_label else ""
+    return (
+        f"No spend data was returned from `{dataset}` for {dimension} in {scope}{time_ctx}.\n\n"
+        f"> 💡 **FinOps Diagnostic Tips**:\n"
+        f"> 1. **Billing Ingestion Latency**: Cloud providers typically settle billing telemetry with a 24–48 hour delay. Try querying the prior closed month (e.g. 'last month') if analyzing current MTD.\n"
+        f"> 2. **Account / Filter Scope**: If filtering by a specific subaccount, customer, or service, verify that resources were actively provisioned during this timeframe.\n"
+        f"> 3. **Dataset Ingestion**: Check whether `{dataset}` is active and configured in your CloudHealth FlexReports tenant."
+    )
 
 # ── Local & Public Model Catalogs (from cleo_llm.py) ───────────────────────────
 from cleo_llm import MLX_MODELS, LOCAL_MODELS, PUBLIC_ENGINES, AI_ENGINES
@@ -554,32 +657,33 @@ def build_system_prompt(tools: list[dict], engine_label: str = None) -> str:
         "   - Always present financial figures in crisp markdown tables with dollar signs ($), commas, and percentage changes where applicable.\n"
         "   - Highlight cost drivers, trends, and actionable FinOps optimization opportunities.\n"
         "6. MULTI-CLOUD BEST DEFAULT DIMENSIONS & QUANTITY VS COST INTELLIGENCE:\n"
-        "   - QUANTITY VS COST DISAMBIGUATION: When user asks for operational, volume, or capacity metrics (e.g. 'number of ec2 instances', 'how many VMs', 'count of databases', 'storage volume in GB', 'instance hours', 'invocations'), prioritize quantity measures (SUM(Instances), SUM(PricingQuantity), SUM(lineItem_UsageAmount), SUM(Instance_Hours)) over financial spend.\n"
+        "   - QUANTITY VS COST DISAMBIGUATION: When user asks for operational, volume, or capacity metrics (e.g. 'number of ec2 instances', 'how many VMs', 'count of databases', 'storage volume in GB', 'instance hours', 'invocations', 'units', 'consumed quantity', 'usage amount', 'usage quantity'), prioritize quantity measures (SUM(Instances), SUM(PricingQuantity), SUM(lineItem_UsageAmount), SUM(Instance_Hours), SUM(Quantity)) over financial spend.\n"
         "   - BEST DEFAULT DIMENSIONS MATRIX (NEVER DEFAULT TO REGION UNLESS EXPLICITLY REQUESTED):\n"
-        "     * AWS EC2: Default dimension is 'product_InstanceType' (e.g. r6a.large, m6gd.4xlarge). Quantity = SUM(Instances), SUM(Instance_Hours).\n"
-        "     * AWS RDS: Default dimension is 'InstanceType' & Database Engine. Quantity = SUM(Instances).\n"
-        "     * AWS S3: Default dimension is 'product_storageClass' (General Purpose/Standard, Intelligent-Tiering, Archive). Quantity = SUM(lineItem_UsageAmount) (GB-Mo).\n"
-        "     * AWS EBS: Default dimension is 'product_volumeType' (General Purpose/gp2/gp3, Provisioned IOPS/io2). Quantity = SUM(lineItem_UsageAmount) (GB-Mo).\n"
-        "     * AWS Lambda: Default dimension is 'lineItem_Operation' (Invocations, Duration). Quantity = SUM(lineItem_UsageAmount).\n"
-        "     * Azure Compute/Storage/DB: Default dimension is 'ServiceSubcategory' from AZURE_FOCUS_COST_AND_USAGE. Quantity = SUM(PricingQuantity) (Hours / GB-Mo).\n"
+        "     * AWS EC2: Default dimension is 'product_InstanceType' (synonyms: instance type, vm size, machine type, flavor, node type). Quantity = SUM(Instances), SUM(Instance_Hours).\n"
+        "     * AWS RDS: Default dimension is 'InstanceType' & Database Engine (synonyms: rds instance type, db size, db instance). Quantity = SUM(Instances).\n"
+        "     * AWS S3: Default dimension is 'product_storageClass' (synonyms: storage class, storage tier, s3 tier, lifecycle tier: Standard, Intelligent-Tiering, Glacier). Quantity = SUM(lineItem_UsageAmount) (GB-Mo).\n"
+        "     * AWS EBS: Default dimension is 'product_volumeType' (synonyms: volume type, ebs type, disk type, gp2, gp3, io1, io2). Quantity = SUM(lineItem_UsageAmount) (GB-Mo).\n"
+        "     * AWS Lambda: Default dimension is 'lineItem_Operation' (synonyms: operation, api operation, action, invocations, duration). Quantity = SUM(lineItem_UsageAmount).\n"
+        "     * Azure Compute/Storage/DB: Default dimension is 'ServiceSubcategory' from AZURE_FOCUS_COST_AND_USAGE (synonyms: meter category, meter subcategory, sub service). Quantity = SUM(PricingQuantity) (Hours / GB-Mo).\n"
         "     * GCP Compute/Storage/DB: Default dimension is 'ServiceSubcategory' from GCP_FOCUS_COST_AND_USAGE. Quantity = SUM(PricingQuantity) (Hours / GB-Mo).\n"
         "   - NEVER substitute Region or Location for service-specific dimensions unless the user explicitly used words like 'region', 'regional', or 'location'.\n"
-        "7. COMPREHENSIVE MULTI-CLOUD & FOCUS 1.2 DIMENSIONAL TAXONOMY:\n"
-        "   - SubaccountId: Member / Usage Account ID or Project Name across AWS, Azure, GCP. In MULTICLOUD_FOCUS_COST_AND_USAGE, represents AWS Account IDs, GCP Projects, or Azure Subscriptions. Use for 'by account', 'account names', 'per project', 'by subscription'.\n"
-        "   - BillingAccountId: Root / Payer / Management Account ID. In MULTICLOUD_FOCUS_COST_AND_USAGE, represents the parent billing container. Use for 'by billing account', 'payer account', 'master account'.\n"
-        "   - ServiceCategory: FOCUS 1.2 Macro category (Compute, Storage, Database, Networking, AI & Machine Learning, Management & Governance). Use for 'by category', 'service category'.\n"
-        "   - ServiceSubcategory: FOCUS 1.2 Granular category (Virtual Machines, Object Storage, Relational Database, NAT Gateway). Use for 'by subcategory', 'service subcategory'.\n"
-        "   - PricingCategory: FOCUS commercial model (On-Demand, Committed, Dynamic, Spot). Use for 'by pricing category', 'pricing model'.\n"
-        "   - RegionId: Geographic cloud location code (e.g. us-east-1, eastus). Use for 'by region', 'regional breakdown'.\n"
-        "   - ResourceId: Individual resource identifier or ARN. Use for 'by resource', 'top resources'.\n"
-        "   - ModelProvider: AI provider (OpenAI, Anthropic, Google, AWS Bedrock, Meta) in MULTICLOUD_AI_COST_AND_USAGE. Use for 'by model provider', 'ai provider'.\n"
-        "   - Model: AI model name (gpt-4o, claude-3-5-sonnet, gemini-1.5-pro) in MULTICLOUD_AI_COST_AND_USAGE. Use for 'by model', 'ai model'.\n"
-        "   - Modality: Interaction modality (text, multimodal, vision, embedding) in MULTICLOUD_AI_COST_AND_USAGE. Use for 'by modality'.\n"
-        "   - ExecutionType: Execution pipeline (synchronous, batch, fine-tuning) in MULTICLOUD_AI_COST_AND_USAGE. Use for 'by execution type'.\n"
-        "   - TokenType: Token cost driver (prompt, completion, cached) in MULTICLOUD_AI_COST_AND_USAGE. Use for 'by token type'.\n"
-        "   - HardwareType / HardwareFamily: Accelerator type & family (GPU, TPU, H100, A100) in MULTICLOUD_AI_COST_AND_USAGE. Use for 'by hardware', 'gpu breakdown'.\n"
-        "   - Commitment_Plan: Savings Plan / Reservation type in MULTICLOUD_COMMITMENT_SAVINGS. Use for 'by commitment plan', 'savings plans'.\n"
-        "   - Country: Carbon footprint geography in MULTICLOUD_OPERATIONAL_EMISSIONS. Use for 'by country', 'emissions by country'.\n\n"
+        "7. COMPREHENSIVE MULTI-CLOUD & FOCUS 1.2 DIMENSIONAL TAXONOMY (NATURAL LANGUAGE SYNONYMS):\n"
+        "   - SubaccountId: Member / Usage Account ID or Project Name across AWS, Azure, GCP. In MULTICLOUD_FOCUS_COST_AND_USAGE, represents AWS Account IDs, GCP Projects, or Azure Subscriptions. Synonyms: 'account', 'subaccount', 'sub-account', 'member account', 'linked account', 'usage account', 'project', 'subscription', 'cloud account', 'account id', 'account name'. Use for 'by account', 'account names', 'per project', 'by subscription', 'member accounts'.\n"
+        "   - BillingAccountId: Root / Payer / Management Account ID. In MULTICLOUD_FOCUS_COST_AND_USAGE, represents the parent billing container. Synonyms: 'billing account', 'payer account', 'master account', 'root account', 'management account', 'billing container', 'parent account', 'payer id', 'billing account id'. Use for 'by billing account', 'payer account', 'master account', 'root account'.\n"
+        "   - ServiceCategory: FOCUS 1.2 Macro category (Compute, Storage, Database, Networking, AI & Machine Learning, Management & Governance). Synonyms: 'service category', 'macro service', 'service family', 'category', 'domain', 'service domain', 'cloud domain'. Use for 'by category', 'service category', 'by domain', 'service family'.\n"
+        "   - ServiceSubcategory: FOCUS 1.2 Granular category (Virtual Machines, Object Storage, Relational Database, NAT Gateway). Synonyms: 'service subcategory', 'granular service', 'sub service', 'sub-service', 'subcategory', 'meter category', 'meter subcategory', 'service component'. Use for 'by subcategory', 'service subcategory', 'by sub service', 'granular services'.\n"
+        "   - PricingCategory: FOCUS commercial model (On-Demand, Committed, Dynamic, Spot). Synonyms: 'pricing category', 'pricing model', 'commercial model', 'contract type', 'pricing type', 'commitment type', 'charge type'. Use for 'by pricing category', 'pricing model', 'commercial model'.\n"
+        "   - LeaseType / Purchase Option: Lease model analyzed via AWS_CUR (pricing_term & lineItem_LineItemType). Synonyms: 'lease type', 'purchase option', 'capacity type', 'ondemand', 'reservation', 'savings plan', 'spot'.\n"
+        "   - RegionId: Geographic cloud location code (e.g. us-east-1, eastus). Synonyms: 'region', 'location', 'cloud region', 'datacenter', 'data center', 'geography', 'geo', 'zone'. Use for 'by region', 'regional breakdown', 'by location', 'by datacenter'.\n"
+        "   - ResourceId: Individual resource identifier or ARN. Synonyms: 'resource', 'resource id', 'resource name', 'arn', 'instance id', 'asset', 'individual resource', 'top resources'. Use for 'by resource', 'top resources', 'resource-level'.\n"
+        "   - ModelProvider: AI provider in MULTICLOUD_AI_COST_AND_USAGE. Synonyms: 'model provider', 'ai provider', 'ai vendor', 'llm vendor', 'ai company'. Use for 'by model provider', 'ai provider'.\n"
+        "   - Model: AI model name in MULTICLOUD_AI_COST_AND_USAGE. Synonyms: 'model', 'model name', 'ai model', 'foundation model', 'llm', 'language model'. Use for 'by model', 'ai model', 'foundation model'.\n"
+        "   - Modality: Interaction modality in MULTICLOUD_AI_COST_AND_USAGE. Synonyms: 'modality', 'media type', 'input modality', 'text vs multimodal', 'vision', 'embedding'. Use for 'by modality'.\n"
+        "   - ExecutionType: Execution pipeline in MULTICLOUD_AI_COST_AND_USAGE. Synonyms: 'execution type', 'inference type', 'batch vs streaming', 'realtime vs batch', 'processing mode'. Use for 'by execution type'.\n"
+        "   - TokenType: Token cost driver in MULTICLOUD_AI_COST_AND_USAGE. Synonyms: 'token type', 'prompt tokens', 'completion tokens', 'cached tokens', 'tokens'. Use for 'by token type'.\n"
+        "   - HardwareType / HardwareFamily: Accelerator type & family in MULTICLOUD_AI_COST_AND_USAGE. Synonyms: 'hardware type', 'hardware family', 'accelerator', 'gpu', 'tpu', 'h100', 'a100'. Use for 'by hardware', 'gpu breakdown'.\n"
+        "   - Commitment_Plan: Savings Plan / Reservation type in MULTICLOUD_COMMITMENT_SAVINGS. Synonyms: 'commitment plan', 'savings plan', 'reservation', 'ri', 'reserved instance'. Use for 'by commitment plan', 'savings plans'.\n"
+        "   - Country: Carbon footprint geography in MULTICLOUD_OPERATIONAL_EMISSIONS. Synonyms: 'country', 'emissions country', 'carbon country', 'datacenter country', 'geography'. Use for 'by country', 'emissions by country'.\n\n"
         "AVAILABLE TOOLS:\n"
     )
     for t in tools:
@@ -736,6 +840,20 @@ class AIClient:
                     m["content"] = f"- Active AI Engine: {engine_label}\n" + m["content"]
                     break
 
+        # ponytail: universal injection of learned memory & user corrections across all LLM handlers
+        last_u_text = ""
+        for m in reversed(clean_messages):
+            if m.get("role") == "user":
+                last_u_text = m.get("content", "")
+                break
+        if last_u_text:
+            mem_block = get_memory().build_context_block(last_u_text)
+            if mem_block and not any("CLEO LEARNED MEMORY" in m.get("content", "") for m in clean_messages if m.get("role") == "system"):
+                for m in clean_messages:
+                    if m.get("role") == "system":
+                        m["content"] += f"\n\n{mem_block}"
+                        break
+
         if engine.startswith("mlx:") or "mlx-community" in engine:
             repo_id = engine.removeprefix("mlx:").strip()
             try:
@@ -853,11 +971,11 @@ class AIClient:
             '  "service": "AmazonRDS" | "AmazonEC2" | "AmazonS3" | "AWSLambda" | "AmazonBedrock" | string | null,\n'
             '  "customer": string or null,\n'
             '  "metric_type": "quantity" | "cost",\n'
-            '  "target_dimension": "product_InstanceType" | "ServiceSubcategory" | "ServiceCategory" | "PricingCategory" | "SubaccountId" | "BillingAccountId" | "ResourceId" | "RegionId" | "Model" | "ModelProvider" | "Modality" | "ExecutionType" | "TokenType" | "HardwareType" | "HardwareFamily" | "Commitment_Plan" | "Country" | "product_storageClass" | "product_volumeType" | "lineItem_Operation" | "ServiceName" | "provider" | string | null,\n'
+            '  "target_dimension": "product_InstanceType" | "ServiceSubcategory" | "ServiceCategory" | "PricingCategory" | "LeaseType" | "SubaccountId" | "BillingAccountId" | "ResourceId" | "RegionId" | "Model" | "ModelProvider" | "Modality" | "ExecutionType" | "TokenType" | "HardwareType" | "HardwareFamily" | "Commitment_Plan" | "Country" | "product_storageClass" | "product_volumeType" | "lineItem_Operation" | "ServiceName" | "provider" | string | null,\n'
             '  "target_ym": "YYYY-MM" or null,\n'
             '  "timeframe_months": integer or null,\n'
             '  "timeframe_days": integer or null,\n'
-            '  "breakdowns": ["instance_type", "engine_type", "storage_class", "volume_type", "service_subcategory", "service_category", "pricing_category", "account", "billing_account", "region", "location", "service", "customer", "resource", "model", "model_provider", "modality", "execution_type", "token_type", "hardware_type", "hardware_family", "commitment_plan", "country"],\n'
+            '  "breakdowns": ["instance_type", "engine_type", "storage_class", "volume_type", "service_subcategory", "service_category", "pricing_category", "lease_type", "account", "billing_account", "region", "location", "service", "customer", "resource", "model", "model_provider", "modality", "execution_type", "token_type", "hardware_type", "hardware_family", "commitment_plan", "country"],\n'
             '  "chart_types": ["bar", "horizontal-bar", "pie", "donut", "line"],\n'
             '  "include_chart": boolean,\n'
             '  "include_mom": boolean,\n'
@@ -887,24 +1005,29 @@ class AIClient:
             "   When the user asks for 'similar data', 'simillar data', 'same data', 'same for X', or 'what about Y', ALWAYS inspect recent chat history (Previous User Query & Previous Assistant Topic).\n"
             "   Inherit the exact query intent (e.g. if prior was a 2027 forecast, current is ALSO a 2027 forecast; if prior was a 6-month monthly trend, current is a 6-month trend), timeframe, and breakdown structure, updating ONLY the entity specified by the user (e.g. cloud provider changed to Azure).\n"
             "   In 'corrected_query', write out the fully expanded contextual question (e.g. 'forecast for Azure cost for FY 2027 and break it down monthly').\n"
-            "10. COMPREHENSIVE MULTI-CLOUD & FOCUS 1.2 DIMENSIONAL TAXONOMY:\n"
-            "   - Account / Projects: 'account', 'accounts', 'account names', 'projects', 'subscriptions', 'subaccounts' -> target_dimension='SubaccountId', breakdowns=['account']. NEVER classify 'account' or 'account names' as 'customer'! 'customer' is strictly for MSP channel clients / organizations.\n"
-            "   - Billing Account: 'billing account', 'payer account', 'master account' -> target_dimension='BillingAccountId', breakdowns=['billing_account'].\n"
-            "   - Service Category: 'service category', 'by category', 'categories' -> target_dimension='ServiceCategory', breakdowns=['service_category'].\n"
-            "   - Service Subcategory: 'service subcategory', 'by subcategory' -> target_dimension='ServiceSubcategory', breakdowns=['service_subcategory'].\n"
-            "   - Pricing Category: 'pricing category', 'pricing model', 'pricing type' -> target_dimension='PricingCategory', breakdowns=['pricing_category'].\n"
-            "   - Resource ID: 'resource', 'resource id', 'top resources' -> target_dimension='ResourceId', breakdowns=['resource'].\n"
-            "   - Region: 'region', 'location', 'geography' -> target_dimension='RegionId', breakdowns=['region']. (Only if explicitly requested!)\n"
-            "   - AI Model Provider: 'model provider', 'ai provider', 'by provider' (in AI context) -> target_dimension='ModelProvider', breakdowns=['model_provider'].\n"
-            "   - AI Model: 'ai model', 'by model', 'by llm', 'foundation model' -> target_dimension='Model', breakdowns=['model'].\n"
-            "   - AI Modality: 'modality', 'text vs multimodal', 'embedding' -> target_dimension='Modality', breakdowns=['modality'].\n"
-            "   - AI Execution Type: 'execution type', 'batch vs streaming', 'realtime' -> target_dimension='ExecutionType', breakdowns=['execution_type'].\n"
-            "   - AI Token Type: 'token type', 'prompt vs completion tokens', 'input tokens' -> target_dimension='TokenType', breakdowns=['token_type'].\n"
-            "   - AI Hardware Type: 'hardware type', 'by hardware', 'gpu vs tpu', 'accelerator' -> target_dimension='HardwareType', breakdowns=['hardware_type'].\n"
-            "   - Commitment Plan: 'commitment plan', 'savings plan', 'reserved instance' -> target_dimension='Commitment_Plan', breakdowns=['commitment_plan']. (NEVER classify Azure Hybrid Benefit or Hybrid Discounts as Commitment Plan! AHB is a software licensing overlay analyzed via AZURE_COST_USAGE).\n"
+            "10. COMPREHENSIVE MULTI-CLOUD & FOCUS 1.2 DIMENSIONAL TAXONOMY (NATURAL LANGUAGE SYNONYMS):\n"
+            "   - Account / Projects: 'account', 'accounts', 'account names', 'projects', 'subscriptions', 'subaccounts', 'member accounts', 'linked accounts', 'usage accounts', 'cloud account' -> target_dimension='SubaccountId', breakdowns=['account']. NEVER classify 'account' or 'account names' as 'customer'! 'customer' is strictly for MSP channel clients / organizations.\n"
+            "   - Billing Account: 'billing account', 'payer account', 'master account', 'root account', 'management account', 'billing container', 'parent account' -> target_dimension='BillingAccountId', breakdowns=['billing_account'].\n"
+            "   - Service Category: 'service category', 'macro service', 'service family', 'category', 'domain', 'service domain', 'cloud domain' -> target_dimension='ServiceCategory', breakdowns=['service_category'].\n"
+            "   - Service Subcategory: 'service subcategory', 'granular service', 'sub service', 'sub-service', 'meter category', 'meter subcategory', 'service component' -> target_dimension='ServiceSubcategory', breakdowns=['service_subcategory'].\n"
+            "   - Pricing Category: 'pricing category', 'pricing model', 'commercial model', 'contract type', 'pricing type', 'commitment type', 'charge type' -> target_dimension='PricingCategory', breakdowns=['pricing_category'].\n"
+            "   - Lease Type / Purchase Option: 'lease type', 'by lease', 'purchase option', 'capacity type', 'ondemand', 'reservation', 'savings plan', 'spot' -> target_dimension='LeaseType', breakdowns=['lease_type']. Analyzed via AWS_CUR & CloudHealth FlexReports.\n"
+            "   - Storage Class / Tier: 'storage class', 'storage tier', 's3 tier', 's3 storage class', 'lifecycle tier' -> target_dimension='product_storageClass', breakdowns=['storage_class'].\n"
+            "   - Volume Type: 'volume type', 'ebs type', 'disk type', 'volume tier', 'gp2', 'gp3', 'io1', 'io2' -> target_dimension='product_volumeType', breakdowns=['volume_type'].\n"
+            "   - Operation: 'operation', 'api operation', 'action', 'event', 'invocations' -> target_dimension='lineItem_Operation', breakdowns=['operation'].\n"
+            "   - Instance Type: 'instance type', 'instance size', 'vm size', 'vm type', 'machine type', 'flavor' -> target_dimension='product_InstanceType', breakdowns=['instance_type'].\n"
+            "   - Resource ID: 'resource', 'resource id', 'resource name', 'arn', 'instance id', 'asset', 'top resources' -> target_dimension='ResourceId', breakdowns=['resource'].\n"
+            "   - Region: 'region', 'location', 'cloud region', 'datacenter', 'geography', 'zone' -> target_dimension='RegionId', breakdowns=['region']. (Only if explicitly requested!)\n"
+            "   - AI Model Provider: 'model provider', 'ai provider', 'ai vendor', 'llm vendor', 'by provider' (in AI context) -> target_dimension='ModelProvider', breakdowns=['model_provider'].\n"
+            "   - AI Model: 'ai model', 'by model', 'by llm', 'foundation model', 'model name', 'language model' -> target_dimension='Model', breakdowns=['model'].\n"
+            "   - AI Modality: 'modality', 'media type', 'input modality', 'text vs multimodal', 'vision', 'embedding' -> target_dimension='Modality', breakdowns=['modality'].\n"
+            "   - AI Execution Type: 'execution type', 'inference type', 'batch vs streaming', 'realtime vs batch', 'processing mode' -> target_dimension='ExecutionType', breakdowns=['execution_type'].\n"
+            "   - AI Token Type: 'token type', 'prompt tokens', 'completion tokens', 'input tokens', 'cached tokens', 'tokens' -> target_dimension='TokenType', breakdowns=['token_type'].\n"
+            "   - AI Hardware Type / Family: 'hardware type', 'hardware family', 'by hardware', 'gpu vs tpu', 'accelerator', 'h100 vs a100' -> target_dimension='HardwareType', breakdowns=['hardware_type'].\n"
+            "   - Commitment Plan: 'commitment plan', 'savings plan', 'reservation', 'ri', 'reserved instance' -> target_dimension='Commitment_Plan', breakdowns=['commitment_plan']. (NEVER classify Azure Hybrid Benefit or Hybrid Discounts as Commitment Plan! AHB is a software licensing overlay analyzed via AZURE_COST_USAGE).\n"
             "   - Azure Hybrid Benefit / Hybrid Discounts: 'hybrid discount', 'hybrid discounts', 'azure hybrid benefit', 'ahb', 'hybrid benefit' for Azure VMs (Windows Server, Red Hat Enterprise Linux, SUSE Linux Enterprise, SQL Server) -> target_dimension='hybrid_benefit', breakdowns=['hybrid_benefit'], service='Virtual Machines', cloud='azure'. Analyzed via AZURE_COST_USAGE.\n"
-            "   - Carbon & Emissions: 'emissions by country', 'carbon by country', 'by country' -> target_dimension='Country', breakdowns=['country'].\n"
-            "   - Cost Anomalies: When user asks about cost anomalies, spikes, or unusual spend, set intent='anomalies' and is_new_data_fetch=true. By default anomalies must target Active status unless user explicitly requests Inactive ones.\n"
+            "   - Carbon & Emissions: 'emissions by country', 'carbon by country', 'by country', 'emissions by geography' -> target_dimension='Country', breakdowns=['country'].\n"
+            "   - Cost Anomalies & Spikes: When user asks about cost anomalies, spikes, unusual spend, or 'why is X high', 'explain this spike', 'what drove the increase in Y', set intent='anomalies' and is_new_data_fetch=true. By default anomalies must target Active status unless user explicitly requests Inactive ones.\n"
             "11. GENERAL CHAT & AGENT/MODEL IDENTITY: Set intent to 'general_chat' and is_new_data_fetch to false if the user asks conversational questions, greetings, jokes, general knowledge, or questions about the AI model, engine, or assistant identity (e.g. 'what llm we are using right now?', 'who are you', 'what can you do', 'hello', 'tell me a joke', 'what model is this?').\n"
         )
 
@@ -967,6 +1090,21 @@ class AIClient:
                         parsed["breakdowns"] = bdowns
                         parsed["service"] = "Virtual Machines"
                         parsed["cloud"] = "azure"
+                        parsed["intent"] = "fetch_data"
+                        parsed["is_new_data_fetch"] = True
+
+                    # Sanitize: Lease Type / Purchase Option (On-Demand, RI, Savings Plan, Spot)
+                    is_lease_type_trigger = any(w in low for w in [
+                        "lease type", "leasetype", "by lease", "lease breakdown", "lease types",
+                        "purchase option", "purchase options", "purchase option breakdown", "by purchase option",
+                        "pricing model", "pricing models", "pricing model breakdown", "by pricing model",
+                        "capacity type", "by capacity type"
+                    ]) or (any(w in low for w in ["ondemand", "on-demand", "reservation", "savings plan", "savingsplan", "spot"]) and any(w in low for w in ["breakdown", "break down", "split", "by", "usage", "cost", "spend", "lease", "above"]))
+                    if is_lease_type_trigger:
+                        if "lease_type" not in bdowns:
+                            bdowns.append("lease_type")
+                        parsed["target_dimension"] = "LeaseType"
+                        parsed["breakdowns"] = bdowns
                         parsed["intent"] = "fetch_data"
                         parsed["is_new_data_fetch"] = True
 
@@ -1112,15 +1250,16 @@ class AIClient:
                                 "(3) Context Window & Token Pruning (preventing quadratic input token accumulation in multi-turn agent loops), "
                                 "(4) Batch Inference (50% discount for asynchronous evaluation or extraction workloads), "
                                 "(5) Output Token Optimization (strict max_tokens and concise formatting), "
-                                "and (6) Provisioned Throughput (PTUs / Bedrock Provisioned) vs. Pay-per-Token crossover analysis for high steady-state workloads."
+                                "and (6) Provisioned Throughput (PTUs / Bedrock Provisioned) vs. Pay-per-Token crossover analysis for high steady-state workloads. "
+                                "CRITICAL 5 (Cloud Identity vs Region): NEVER confuse cloud Regions (e.g., sa-east-1, us-east-1, us-west-2, westus2, europe-west1) with Cloud Accounts, Subscriptions, or Project IDs. Regions are physical geographic deployment locations, NOT accounts. Always cite the Cloud Account ID / Subscription ID / Project ID when identifying ownership, and clearly designate the Region as the deployment location (e.g., 'Account `964862064788` in Region `sa-east-1`'). NEVER refer to a region code as an account (e.g. never say 'the sa-east-1 account')."
                             )
                         }
                         if is_exclude_other_requested(last_msg):
-                            sys_msg["content"] += " CRITICAL 5: The user explicitly requested to EXCLUDE 'Other' / unallocated categories. Under NO circumstance should you mention, analyze, or recommend actions on 'Other' or unallocated items in your insights."
+                            sys_msg["content"] += " CRITICAL 6: The user explicitly requested to EXCLUDE 'Other' / unallocated categories. Under NO circumstance should you mention, analyze, or recommend actions on 'Other' or unallocated items in your insights."
                         all_req_svcs = extract_all_requested_services(last_msg)
                         if len(all_req_svcs) >= 2:
                             svc_names_list = [getattr(s, "display_name", None) or getattr(s, "disp", None) or (s[1] if len(s) > 1 else s[0]) for s in all_req_svcs]
-                            sys_msg["content"] += " CRITICAL 6: The user asked for multiple services (" + ", ".join(svc_names_list) + "). Provide balanced, actionable insights across each requested service. Never claim a service is missing or unqueried if its section is present in the data."
+                            sys_msg["content"] += " CRITICAL 7: The user asked for multiple services (" + ", ".join(svc_names_list) + "). Provide balanced, actionable insights across each requested service. Never claim a service is missing or unqueried if its section is present in the data."
                         # Strip raw HTML canvas tags to avoid confusing the LLM and wasting tokens
                         clean_resp_text = re.sub(r'<canvas.*?</canvas>', '', resp, flags=re.DOTALL)
                         user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{clean_resp_text}"}
@@ -1152,6 +1291,18 @@ class AIClient:
             if trailing_thinking:
                 self.last_thinking = (self.last_thinking + "\n\n" + trailing_thinking).strip() if getattr(self, "last_thinking", None) else trailing_thinking
                 resp = clean_final
+
+            # ponytail: save successful data query for cross-session continuation
+            if "###" in resp and ("|" in resp or "Spend" in resp or "Cost" in resp) and "No spend data" not in resp:
+                try:
+                    save_last_query(
+                        query_type="cost_analysis",
+                        dataset="CloudHealth",
+                        sql=last_msg,
+                        time_range={"target": last_msg}
+                    )
+                except Exception:
+                    pass
 
             return resp
         finally:
@@ -2004,6 +2155,13 @@ class AIClient:
             if self.engine != "direct":
                 cal = get_realtime_calendar_info()
                 adv_context = f"AUTHORITATIVE FINOPS GUIDANCE & CONTEXT:\n{finops_adv}\n" if finops_adv else ""
+                if any(w in low for w in ["latest", "recent", "trend", "update", "focus 1.2", "news", "announcement", "current", "2026", "2025", "specification"]):
+                    try:
+                        web_results = search_finops_web(last_msg, max_results=3)
+                        if web_results:
+                            adv_context += f"\n\nCURRENT INDUSTRY WEB KNOWLEDGE:\n{format_finops_search_markdown(last_msg, web_results)}\n"
+                    except Exception as e:
+                        logger.debug(f"[Advisory Web Grounding] {e}")
                 if mem_ctx:
                     adv_context = f"{mem_ctx}\n\n{adv_context}"
                 sys_msg = {
@@ -2565,10 +2723,12 @@ class AIClient:
             # 3-Anomaly. CloudHealth Cost Anomaly Detection (AWS_COST_ANOMALY, AZURE_COST_ANOMALY & GCP_COST_ANOMALY)
             is_anomaly_query = any(w in low for w in [
                 "anomal", "cost spike", "spend spike", "spike in cost",
-                "spikes", "unusual spend", "abnormal spend", "abnormal cost", "unusual cost"
+                "spikes", "unusual spend", "abnormal spend", "abnormal cost", "unusual cost",
+                "why is", "why was", "why did", "explain the spike", "explain this spike",
+                "what drove", "what caused", "root cause", "driver of", "drivers of"
             ]) or (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "anomalies") or (
                 any(p in low for p in ["inactive ones", "the inactive ones", "active ones", "the active ones"])
-            )
+            ) or intent_info.get("intent") in ("anomalies", "explain_spike")
             if is_anomaly_query:
                 is_multi = (active_cloud == "all") or any(w in low for w in [
                     "all cloud", "all clouds", "across all clouds", "multi-cloud", "multicloud", "cross-cloud", "every cloud"
@@ -2633,7 +2793,7 @@ class AIClient:
                         f"SELECT {svc_col} AS service, CostImpact AS cost_impact, "
                         f"CostImpactPercentage AS impact_pct, CostImpactType AS impact_type, "
                         f"Status AS status, Duration_Days AS duration_days, Region AS region, "
-                        f"{acc_col} AS account_id, timeInterval_Month AS month "
+                        f"{acc_col} AS account_id, EndDate AS end_date, timeInterval_Month AS month "
                         f"FROM {ds} "
                         f"{where_sql}"
                         f"ORDER BY CostImpact DESC"
@@ -2671,7 +2831,7 @@ class AIClient:
                                 f"SELECT {svc_col} AS service, CostImpact AS cost_impact, "
                                 f"CostImpactPercentage AS impact_pct, CostImpactType AS impact_type, "
                                 f"Status AS status, Duration_Days AS duration_days, Region AS region, "
-                                f"{acc_col} AS account_id, timeInterval_Month AS month "
+                                f"{acc_col} AS account_id, EndDate AS end_date, timeInterval_Month AS month "
                                 f"FROM {ds} "
                                 f"WHERE {' AND '.join(fb_where)} "
                                 f"ORDER BY CostImpact DESC"
@@ -2707,7 +2867,7 @@ class AIClient:
                                 f"SELECT {svc_col} AS service, CostImpact AS cost_impact, "
                                 f"CostImpactPercentage AS impact_pct, CostImpactType AS impact_type, "
                                 f"Status AS status, Duration_Days AS duration_days, Region AS region, "
-                                f"{acc_col} AS account_id, timeInterval_Month AS month "
+                                f"{acc_col} AS account_id, EndDate AS end_date, timeInterval_Month AS month "
                                 f"FROM {ds} "
                                 f"{fb2_where_sql}"
                                 f"ORDER BY CostImpact DESC"
@@ -2813,32 +2973,34 @@ class AIClient:
                     dur = r.get("duration_days", "0")
                     dur_str = "Ongoing" if dur in ("0", "-1") and st == "ACTIVE" else f"{dur} days"
                     mo = r.get("month", "")
+                    raw_date = r.get("end_date") or r.get("EndDate") or ""
+                    date_val = raw_date.split("T")[0].split()[0] if raw_date else mo
                     sign = "+" if impact_val > 0 else ""
                     badge = r.get("badge", "")
 
                     if is_multi:
                         table_lines.append(
-                            f"| {idx+1} | {badge} | `{svc}` | {st_badge} | **{sign}${impact_val:,.2f}** | **{pct_val:+.1f}%** 🔺 | `{reg}` | `{acc}` | {dur_str} | {mo} |"
+                            f"| {idx+1} | {badge} | `{svc}` | {st_badge} | **{sign}${impact_val:,.2f}** | **{pct_val:+.1f}%** 🔺 | `{reg}` | `{acc}` | {dur_str} | {date_val} |"
                         )
                     else:
                         table_lines.append(
-                            f"| {idx+1} | `{svc}` | {st_badge} | **{sign}${impact_val:,.2f}** | **{pct_val:+.1f}%** 🔺 | `{reg}` | `{acc}` | {dur_str} | {mo} |"
+                            f"| {idx+1} | `{svc}` | {st_badge} | **{sign}${impact_val:,.2f}** | **{pct_val:+.1f}%** 🔺 | `{reg}` | `{acc}` | {dur_str} | {date_val} |"
                         )
 
                     # Synthesize FinOps insights for top anomalies across providers
                     if idx < 4:
                         if "informatica" in svc.lower() or "wiz" in svc.lower() or "pendo" in svc.lower() or "marketplace" in svc.lower():
-                            insights.append(f"- **Cloud Marketplace SaaS Spikes ({st_badge})**: `{svc}` in `{reg}` ({r.get('cloud', '')}) surged by **{pct_val:+.1f}%** (adding **{sign}${impact_val:,.2f}** in {mo}). Audit third-party marketplace SaaS subscriptions, private offer auto-renewals, or unmonitored tool additions in Account/Project `{acc}`.")
+                            insights.append(f"- **Cloud Marketplace SaaS Spikes ({st_badge})**: `{svc}` in Region `{reg}` ({r.get('cloud', '')}) surged by **{pct_val:+.1f}%** (adding **{sign}${impact_val:,.2f}** on {date_val}). Audit third-party marketplace SaaS subscriptions, private offer auto-renewals, or unmonitored tool additions in Account/Project `{acc}`.")
                         elif "fabric" in svc.lower() or "databricks" in svc.lower():
-                            insights.append(f"- **Data Analytics & Lakehouse Spikes ({st_badge})**: `{svc}` in `{reg}` added **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%). Check compute cluster auto-termination, job cluster runaway, or F-SKU capacity allocations.")
+                            insights.append(f"- **Data Analytics & Lakehouse Spikes ({st_badge})**: `{svc}` in Region `{reg}` added **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%). Check compute cluster auto-termination, job cluster runaway, or F-SKU capacity allocations in Account/Project `{acc}`.")
                         elif any(k in svc.lower() for k in ["bedrock", "claude", "gpt", "anthropic", "openai", "vertex"]):
-                            insights.append(f"- **GenAI / LLM Model Spikes ({st_badge})**: `{svc}` in `{reg}` surged by **{pct_val:+.1f}%** (adding **{sign}${impact_val:,.2f}** in {mo}). Audit active inference endpoints, batch invocation jobs, or newly deployed agent workloads in Account/Project `{acc}`.")
+                            insights.append(f"- **GenAI / LLM Model Spikes ({st_badge})**: `{svc}` in Region `{reg}` surged by **{pct_val:+.1f}%** (adding **{sign}${impact_val:,.2f}** on {date_val}). Audit active inference endpoints, batch invocation jobs, or newly deployed agent workloads in Account/Project `{acc}`.")
                         elif any(k in svc.lower() for k in ["ec2", "ecs", "eks", "compute", "virtual machines"]):
-                            insights.append(f"- **Compute Capacity Surge ({st_badge})**: `{svc}` in `{reg}` had an anomalous spend jump of **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%). Check Auto Scaling group limits, unreserved on-demand instances, or container task runaway in `{acc}`.")
+                            insights.append(f"- **Compute Capacity Surge ({st_badge})**: `{svc}` in Region `{reg}` had an anomalous spend jump of **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%). Check Auto Scaling group limits, unreserved on-demand instances, or container task runaway in Account/Project `{acc}`.")
                         elif any(k in svc.lower() for k in ["rds", "database", "aurora", "sql"]):
-                            insights.append(f"- **Database Provisioning Variance ({st_badge})**: `{svc}` in `{reg}` experienced an anomalous increase of **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%). Audit multi-AZ replicas, unreserved instances, or provisioned IOPS in `{acc}`.")
+                            insights.append(f"- **Database Provisioning Variance ({st_badge})**: `{svc}` in Region `{reg}` experienced an anomalous increase of **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%). Audit multi-AZ replicas, unreserved instances, or provisioned IOPS in Account/Project `{acc}`.")
                         else:
-                            insights.append(f"- **{svc} ({st_badge})**: Added an unexpected **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%) in `{reg}` (`{acc}`).")
+                            insights.append(f"- **{svc} ({st_badge})**: Added an unexpected **{sign}${impact_val:,.2f}** ({pct_val:+.1f}%) in Region `{reg}` (Account/Project `{acc}`).")
 
                 # Multi-cloud summary breakdown card
                 summary_breakdown = ""
@@ -2855,10 +3017,10 @@ class AIClient:
                     insights_block = "\n#### 💡 FinOps Root Cause & Investigation Insights\n\n" + "\n".join(insights) + "\n"
 
                 table_header = (
-                    "| # | Cloud | Service / Asset | Status | Cost Impact | Variance (%) | Region | Account / Sub / Project | Duration | Month |\n"
+                    "| # | Cloud | Service / Asset | Status | Cost Impact | Variance (%) | Region / Location | Account / Sub / Project | Duration | Detected Date |\n"
                     "|:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|\n"
                     if is_multi else
-                    "| # | Service / Asset | Status | Cost Impact | Variance (%) | Region | Account / Sub | Duration | Month |\n"
+                    "| # | Service / Asset | Status | Cost Impact | Variance (%) | Region / Location | Account / Sub / Project | Duration | Detected Date |\n"
                     "|:---|:---|:---|:---|:---|:---|:---|:---|:---|\n"
                 )
 
@@ -3707,8 +3869,21 @@ class AIClient:
                         + "\n\n".join(all_service_insights)
                     )
 
+                is_explicit_compare = any(w in low for w in ["compare", "vs", "versus", "comparison", "side by side", "side-by-side"])
+                comparison_chart = ""
+                if (is_explicit_compare or intent_info.get("include_chart", True)) and len(service_grand_totals) >= 2 and not is_no_chart_requested(low):
+                    chart_title = f"Comparative Spend: {svc_title} ({period_str})"
+                    comparison_chart = _chart_block(
+                        "bar",
+                        chart_title,
+                        list(service_grand_totals.keys()),
+                        values=[round(v, 2) for v in service_grand_totals.values()],
+                        value_label="Spend ($)"
+                    ) + "\n\n"
+
                 return (
                     f"{header_md}"
+                    f"{comparison_chart}"
                     f"{body_md}"
                     f"{insights_block}\n\n"
                     f"*Source: Standard CloudHealth FlexReports datasets via CloudHealth MCP.*"
@@ -4208,6 +4383,236 @@ class AIClient:
                         f"*Source: `AZURE_COST_USAGE` via CloudHealth FlexReports.*"
                     )
 
+            # 3-LEASE-TYPE. Dedicated CloudHealth & AWS CUR Lease Type Breakdown (On-Demand, Reserved Instances, Savings Plans, Spot)
+            is_lease_type_request = (
+                intent_info.get("target_dimension") in ("LeaseType", "PricingCategory", "PurchaseOption") or
+                "lease_type" in (intent_info.get("breakdowns") or []) or
+                any(w in low for w in [
+                    "lease type", "leasetype", "by lease", "lease breakdown", "lease types",
+                    "purchase option", "purchase options", "purchase option breakdown", "by purchase option",
+                    "pricing model", "pricing models", "pricing model breakdown", "by pricing model",
+                    "capacity type", "by capacity type"
+                ]) or
+                (any(w in low for w in ["ondemand", "on-demand", "reservation", "savings plan", "savingsplan", "spot"]) and any(w in low for w in ["breakdown", "break down", "split", "by", "usage", "cost", "spend", "lease", "above"]))
+            ) and not is_ai_models_query and not any(w in low for w in ["recommendation", "anomal", "spike"])
+
+            if is_lease_type_request and mcp:
+                target_svc = intent_info.get("service")
+                if not target_svc and is_followup:
+                    hist_blob = " ".join(prior_cost_low.split() + [a.lower() for a in prior_assistant_msgs[-2:]])
+                    if any(w in hist_blob for w in ["rds", "relational database", "aurora", "database"]):
+                        target_svc = "AmazonRDS"
+                    elif any(w in hist_blob for w in ["ec2", "elastic compute", "virtual machine"]):
+                        target_svc = "AmazonEC2"
+
+                is_rds = (target_svc == "AmazonRDS") or ("rds" in low) or ("database" in low and "ec2" not in low)
+                is_ec2 = (target_svc == "AmazonEC2") or ("ec2" in low)
+                if is_rds:
+                    target_svc = "AmazonRDS"
+                    svc_disp = "Amazon RDS"
+                    where_svc = "WHERE lineItem_ProductCode = 'AmazonRDS'"
+                elif is_ec2:
+                    target_svc = "AmazonEC2"
+                    svc_disp = "Amazon EC2"
+                    where_svc = "WHERE lineItem_ProductCode = 'AmazonEC2'"
+                else:
+                    svc_disp = "AWS Compute"
+                    where_svc = "WHERE lineItem_ProductCode IN ('AmazonEC2', 'AmazonRDS')"
+
+                is_ytd = bool(re.search(r'\b(?:ytd|year[- ]to[- ]date|this\s*year)\b', low))
+                is_qtd = bool(re.search(r'\b(?:qtd|quarter[- ]to[- ]date|this\s*quarter)\b', low))
+                if not is_ytd and not is_qtd and is_followup:
+                    hist_blob = " ".join(prior_cost_low.split() + [a.lower() for a in prior_assistant_msgs[-2:]])
+                    if re.search(r'\b(?:ytd|year[- ]to[- ]date|this\s*year)\b', hist_blob):
+                        is_ytd = True
+                    elif re.search(r'\b(?:qtd|quarter[- ]to[- ]date|this\s*quarter)\b', hist_blob):
+                        is_qtd = True
+
+                m_months = re.search(r'\b(\d+)\s*(?:months?|m)\b', low)
+                m_days = re.search(r'\b(\d+)\s*(?:days?|d)\b', low)
+                has_explicit_months = is_ytd or is_qtd or bool(m_months) or bool(intent_info.get("timeframe_months")) or any(w in low for w in ["12months", "12 months", "year", "annual", "months", "month by month", "monthly"])
+                if has_explicit_months:
+                    num_months = intent_info.get("timeframe_months") or (datetime.date.today().month if is_ytd else (((datetime.date.today().month - 1) % 3) + 1 if is_qtd else (int(m_months.group(1)) if m_months else 12)))
+                else:
+                    num_months = 3  # Default to recent 3 months for lease breakdown trend
+
+                tenant_suffix = " (Tenant)" if any(w in low for w in ["tenant"]) else ""
+                cust_label = named_customer or (f"All Accounts{tenant_suffix}" if tenant_suffix else "All Accounts")
+
+                cur_sql = (
+                    "SELECT timeInterval_Month AS month, pricing_term AS pricing_term, lineItem_LineItemType AS item_type, "
+                    "SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_amount "
+                    "FROM AWS_CUR "
+                    f"{where_svc} "
+                    "GROUP BY timeInterval_Month, pricing_term, lineItem_LineItemType "
+                    "ORDER BY month ASC, cost DESC"
+                )
+                cur_q_params = {
+                    "queryInput": {
+                        "sqlStatement": cur_sql,
+                        "dataGranularity": "MONTHLY",
+                        "limit": 300,
+                        "timeRange": {"last": num_months, "qualifier": "MONTH"}
+                    },
+                    "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                }
+                if named_customer_crn:
+                    cur_q_params["channelCustomerId"] = named_customer_crn
+
+                lease_totals = defaultdict(float)
+                usage_totals = defaultdict(float)
+                monthly_lease = defaultdict(lambda: defaultdict(float))
+                monthly_net = defaultdict(float)
+                all_months = set()
+                chart_rows = []
+
+                try:
+                    res_cur = mcp.call_tool("execute_datasource_query", cur_q_params)
+                    txt_cur = res_cur.get("content", [{}])[0].get("text", "{}")
+                    raw_csv = json.loads(txt_cur).get("csv", "")
+                    for r in csv.DictReader(io.StringIO(raw_csv)):
+                        m = (r.get("month") or "").strip()
+                        term = (r.get("pricing_term") or "").strip()
+                        itype = (r.get("item_type") or "").strip()
+                        c = float(r.get("cost") or 0.0)
+                        u = float(r.get("usage_amount") or 0.0)
+                        if not m:
+                            continue
+                        all_months.add(m)
+
+                        if term == "OnDemand" and itype == "Usage":
+                            ltype = "On-Demand"
+                        elif term == "Reserved" or itype in ("RIFee", "DiscountedUsage"):
+                            ltype = "Reserved Instances (RI)"
+                        elif "SavingsPlan" in itype:
+                            if itype == "SavingsPlanCoveredUsage":
+                                ltype = "Savings Plans"
+                            elif itype == "SavingsPlanNegation":
+                                ltype = "Discounts & Offsets"
+                            else:
+                                ltype = "Savings Plans"
+                        elif term == "Spot" or "spot" in itype.lower():
+                            ltype = "Spot Instances"
+                        elif itype == "Fee":
+                            ltype = "Upfront Fees / Commitments"
+                        elif c < 0 or itype in ("EdpDiscount", "SppDiscount", "PrivateRateDiscount", "Credit", "BundledDiscount"):
+                            ltype = "Discounts & Offsets"
+                        else:
+                            ltype = "Other / Unallocated"
+
+                        if ltype in ("On-Demand", "Reserved Instances (RI)", "Savings Plans", "Spot Instances"):
+                            lease_totals[ltype] += c
+                            usage_totals[ltype] += u
+                            monthly_lease[m][ltype] += c
+                            if c > 0:
+                                chart_rows.append({"month": m, "category": ltype, "cost": c})
+                        elif ltype in ("Upfront Fees / Commitments", "Discounts & Offsets"):
+                            monthly_lease[m][ltype] += c
+                        monthly_net[m] += c
+                except Exception as e:
+                    logger.warning(f"[AWS_CUR Lease Type Query] {e}")
+
+                if lease_totals:
+                    sorted_months = sorted(list(all_months))
+                    if is_ytd:
+                        period_str = f"Year-to-Date (YTD {datetime.date.today().year})" if not sorted_months else f"Year-to-Date ({sorted_months[0]} to {sorted_months[-1]})"
+                    elif is_qtd:
+                        curr_q = ((datetime.date.today().month - 1) // 3) + 1
+                        period_str = f"Quarter-to-Date (QTD Q{curr_q} {datetime.date.today().year})"
+                    else:
+                        period_str = f"Last {num_months} Months ({sorted_months[0]} to {sorted_months[-1]})" if sorted_months else f"Last {num_months} Months"
+
+                    CANONICAL_LEASES = [
+                        ("On-Demand", "Standard uncommitted pay-as-you-go capacity"),
+                        ("Reserved Instances (RI)", "1-Yr / 3-Yr committed capacity reservations"),
+                        ("Savings Plans", "Flexible commitment-discounted usage"),
+                        ("Spot Instances", "Discounted spare capacity (N/A for RDS, active for EC2)")
+                    ]
+                    total_compute = sum(lease_totals[lt] for lt, _ in CANONICAL_LEASES)
+                    committed_spend = lease_totals["Reserved Instances (RI)"] + lease_totals["Savings Plans"]
+                    coverage_pct = (committed_spend / total_compute * 100) if total_compute > 0 else 0.0
+
+                    sum_rows = []
+                    for idx, (lt, desc) in enumerate(CANONICAL_LEASES, 1):
+                        sp = lease_totals.get(lt, 0.0)
+                        pct = (sp / total_compute * 100) if total_compute > 0 else 0.0
+                        u_hrs = usage_totals.get(lt, 0.0)
+                        hrs_str = f"{u_hrs:,.1f} hrs" if u_hrs > 0 else ("N/A (Managed DB)" if is_rds and lt == "Spot Instances" else "—")
+                        status_badge = "✅ Committed" if "Reserved" in lt or "Savings" in lt else ("⚡ Flexible" if "Spot" in lt else "⚠️ Uncommitted")
+                        sum_rows.append(
+                            f"| {idx} | **{lt}** | ${sp:,.2f} | {pct:.1f}% | {hrs_str} | {status_badge} | {desc} |"
+                        )
+
+                    summary_table = (
+                        f"#### 🖥️ Spend & Usage Breakdown by Lease Type\n\n"
+                        f"| # | Lease Type / Purchase Option | Billed Spend | % of Spend | Usage Hours | Status | FinOps Definition |\n"
+                        f"|:---|:---|:---|:---|:---|:---|:---|\n"
+                        f"{chr(10).join(sum_rows)}\n"
+                        f"| | **Total Compute Spend** | **${total_compute:,.2f}** | **100.0%** | | | Commitment Coverage: **{coverage_pct:.1f}%** |\n"
+                    )
+
+                    trend_table = ""
+                    if len(sorted_months) > 1:
+                        m_rows = []
+                        for m in sorted_months:
+                            od = monthly_lease[m].get("On-Demand", 0.0)
+                            ri = monthly_lease[m].get("Reserved Instances (RI)", 0.0)
+                            sp = monthly_lease[m].get("Savings Plans", 0.0)
+                            spot = monthly_lease[m].get("Spot Instances", 0.0)
+                            disc = monthly_lease[m].get("Discounts & Offsets", 0.0)
+                            net = monthly_net[m]
+                            m_rows.append(
+                                f"| {m} | ${od:,.2f} | ${ri:,.2f} | ${sp:,.2f} | ${spot:,.2f} | ${disc:,.2f} | ${net:,.2f} |"
+                            )
+                        trend_table = (
+                            f"\n#### 📅 Monthly Trend by Lease Type\n\n"
+                            f"| Month | On-Demand | Reserved (RI) | Savings Plan | Spot | Discounts (EDP/SPP) | Net Spend |\n"
+                            f"|:---|:---|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(m_rows)}\n"
+                        )
+
+                    chart_md = ""
+                    if not is_no_chart_requested(low) and chart_rows:
+                        chart_md = _build_time_category_stacked_chart(
+                            f"{svc_disp} Spend by Lease Type & Month — {cust_label}",
+                            chart_rows,
+                            time_col="month",
+                            cat_col="category",
+                            cost_col="cost",
+                            time_format="month",
+                            max_cats=6
+                        )
+
+                    od_spend = lease_totals.get("On-Demand", 0.0)
+                    potential_sp_savings = od_spend * 0.30
+                    if is_rds:
+                        spot_note = "- **Spot Instance Applicability**: **Spot instances are not supported for Amazon RDS**. AWS limits Spot capacity to stateless, fault-tolerant workloads (EC2, ECS, EMR, Batch). Relational database clusters require guaranteed hardware tenancy and stateful persistence."
+                        rec_note = f"- **Commitment Coverage Target (30%–55% Savings)**: Identified **${od_spend:,.2f}** in steady-state On-Demand RDS spend. Sizing **1-Year or 3-Year Database Savings Plans** or Database RIs to achieve 70%–80% coverage would yield estimated savings of **${potential_sp_savings:,.2f} to ${od_spend*0.50:,.2f}**."
+                    else:
+                        spot_note = "- **Spot Instance Opportunities**: Spot provides **60%–90% discounts** relative to retail On-Demand. Ideal for stateless Kubernetes workers, CI/CD runners, and batch processing."
+                        rec_note = f"- **Commitment Rightsizing**: Identified **${od_spend:,.2f}** in On-Demand compute. Layer Compute Savings Plans for baseline 24/7 workloads to capture **${potential_sp_savings:,.2f}** in direct savings."
+
+                    finops_insights = (
+                        f"#### 💡 FinOps Insights & Commitment Optimization Levers\n\n"
+                        f"- **Current Commitment Coverage**: **{coverage_pct:.1f}%** of compute spend is currently protected under commitments (**${committed_spend:,.2f}** across RIs and Savings Plans).\n"
+                        f"{rec_note}\n"
+                        f"{spot_note}\n\n"
+                        f"> **FinOps Foundation Rate Optimization Principle**:\n"
+                        f"> Rightsizing and modernization (e.g. Graviton) must precede multi-year commitment purchases. Lock in baseline usage with flexible Savings Plans first, followed by standard RIs for static database instances.\n\n"
+                        f"*Source: AWS_CUR via CloudHealth FlexReports.*"
+                    )
+
+                    return (
+                        f"### 📋 CloudHealth Lease Type & Pricing Model Breakdown: {svc_disp}\n\n"
+                        f"Queried live from standard dataset **`AWS_CUR`** for **{cust_label}**:\n\n"
+                        f"- **Target Billing Period**: {period_str}\n"
+                        f"- **Total Analyzed Compute Spend**: **${total_compute:,.2f}**\n\n"
+                        f"{summary_table}\n"
+                        f"{trend_table}\n"
+                        f"{chart_md}\n"
+                        f"{finops_insights}"
+                    )
+
             # 3-RDS-IT. Dedicated RDS Instance Type, Engine & Spend Analysis via AWS_RDS_COST_AND_USAGE & AWS_CUR
             is_rds_instance_or_usage = (
                 (
@@ -4215,22 +4620,22 @@ class AIClient:
                     any(w in low for w in ["rds", "relational database", "aurora"]) or
                     ("database" in low and any(w in low for w in ["instance", "type", "engine", "usage", "spend", "cost", "breakdown"]))
                 ) and not is_ai_models_query
-            ) and not any(w in low for w in ["recommendation", "anomal", "spike", "optimize rds"]) and not is_multi_service_request
+            ) and not any(w in low for w in ["recommendation", "anomal", "spike", "optimize rds"]) and not is_multi_service_request and not is_lease_type_request
 
             if not is_rds_instance_or_usage and is_followup:
                 prev_is_rds = any("aws_rds_cost_and_usage" in a.lower() or "rds spend analysis" in a.lower() or "rds usage" in a.lower() for a in prior_assistant_msgs[-1:]) or \
                               any(w in prior_cost_low for w in ["rds", "database engine", "rds instance", "relational database"])
-                if prev_is_rds and not any(w in low for w in ["customer", "tenant", "anomal", "recommendation", "ec2", "s3", "bigquery", "azure"]) and not is_multi_service_request:
+                if prev_is_rds and not any(w in low for w in ["customer", "tenant", "anomal", "recommendation", "ec2", "s3", "bigquery", "azure", "lease"]) and not is_multi_service_request and not is_lease_type_request:
                     is_rds_instance_or_usage = True
 
             if is_rds_instance_or_usage and mcp:
-                is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
-                is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
+                is_ytd = bool(re.search(r'\b(?:ytd|year[- ]to[- ]date|this\s*year)\b', low))
+                is_qtd = bool(re.search(r'\b(?:qtd|quarter[- ]to[- ]date|this\s*quarter)\b', low))
                 if not is_ytd and not is_qtd and is_followup:
                     hist_text = " ".join(prior_cost_low.split() + [a.lower() for a in prior_assistant_msgs[-2:]])
-                    if any(w in hist_text for w in ["ytd", "year to date", "this year"]):
+                    if re.search(r'\b(?:ytd|year[- ]to[- ]date|this\s*year)\b', hist_text):
                         is_ytd = True
-                    elif any(w in hist_text for w in ["qtd", "quarter to date", "this quarter"]):
+                    elif re.search(r'\b(?:qtd|quarter[- ]to[- ]date|this\s*quarter)\b', hist_text):
                         is_qtd = True
 
                 is_exclude_other = is_exclude_other_requested(low) or is_exclude_other_requested(intent_info.get("corrected_query", ""))
@@ -4612,22 +5017,22 @@ class AIClient:
                     ("ec2" in low and any(w in low for w in ["instance", "type", "breakdown", "how many", "number of", "count"])) or
                     (intent_info.get("service") == "AmazonEC2" and not is_ai_models_query and intent_info.get("metric_type") == "quantity")
                 )
-            ) and not any(w in low for w in ["recommendation", "anomal", "spike", "rds", "relational", "aurora", "database"]) and intent_info.get("service") != "AmazonRDS" and not is_multi_service_request
+            ) and not any(w in low for w in ["recommendation", "anomal", "spike", "rds", "relational", "aurora", "database"]) and intent_info.get("service") != "AmazonRDS" and not is_multi_service_request and not is_lease_type_request
 
             if not is_ec2_instance_query and is_followup:
                 prev_is_ec2 = any("aws_ec2_cost_and_usage" in a.lower() or "instance type breakdown" in a.lower() for a in prior_assistant_msgs[-1:]) or \
                               any(w in prior_cost_low for w in ["instance type", "instance breakdown", "ec2 usage by instance"])
-                if prev_is_ec2 and not any(w in low for w in ["customer", "tenant", "anomal", "recommendation", "gp2", "rds", "s3", "bigquery", "azure"]) and not is_multi_service_request:
+                if prev_is_ec2 and not any(w in low for w in ["customer", "tenant", "anomal", "recommendation", "gp2", "rds", "s3", "bigquery", "azure", "lease"]) and not is_multi_service_request and not is_lease_type_request:
                     is_ec2_instance_query = True
 
             if is_ec2_instance_query and mcp:
-                is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
-                is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
+                is_ytd = bool(re.search(r'\b(?:ytd|year[- ]to[- ]date|this\s*year)\b', low))
+                is_qtd = bool(re.search(r'\b(?:qtd|quarter[- ]to[- ]date|this\s*quarter)\b', low))
                 if not is_ytd and not is_qtd and is_followup:
                     hist_text = " ".join(prior_cost_low.split() + [a.lower() for a in prior_assistant_msgs[-2:]])
-                    if any(w in hist_text for w in ["ytd", "year to date", "this year"]):
+                    if re.search(r'\b(?:ytd|year[- ]to[- ]date|this\s*year)\b', hist_text):
                         is_ytd = True
-                    elif any(w in hist_text for w in ["qtd", "quarter to date", "this quarter"]):
+                    elif re.search(r'\b(?:qtd|quarter[- ]to[- ]date|this\s*quarter)\b', hist_text):
                         is_qtd = True
 
                 is_exclude_other = is_exclude_other_requested(low) or is_exclude_other_requested(intent_info.get("corrected_query", ""))
@@ -7454,7 +7859,11 @@ class AIClient:
                         "provider_col": "provider",
                         "triggers": [
                             "by service subcategory", "by subcategory", "by sub-category", "per subcategory",
-                            "service subcategories", "subcategory breakdown", "breakdown by subcategory"
+                            "service subcategories", "subcategory breakdown", "breakdown by subcategory",
+                            "by sub service", "per sub service", "sub-service", "sub service", "granular service",
+                            "service component", "meter category", "meter subcategory", "by meter",
+                            "component breakdown", "sub services", "granular services", "by meter category",
+                            "by meter subcategory"
                         ]
                     },
                     {
@@ -7467,7 +7876,8 @@ class AIClient:
                         "triggers": [
                             "by service category", "by service_category", "by category", "per category",
                             "service categories", "category breakdown", "breakdown by category", "per service category",
-                            "by service categories"
+                            "by service categories", "by macro service", "macro service", "service family",
+                            "by service family", "by domain", "domain breakdown", "service domain", "cloud domain"
                         ]
                     },
                     {
@@ -7479,7 +7889,9 @@ class AIClient:
                         "provider_col": "provider",
                         "triggers": [
                             "by pricing category", "by pricing model", "by pricing", "per pricing category",
-                            "pricing categories", "pricing category breakdown", "breakdown by pricing", "by pricing type"
+                            "pricing categories", "pricing category breakdown", "breakdown by pricing", "by pricing type",
+                            "by commercial model", "commercial model", "by contract type", "contract type",
+                            "by commitment type", "commitment type", "by charge type", "charge type breakdown"
                         ]
                     },
                     {
@@ -7491,7 +7903,10 @@ class AIClient:
                         "provider_col": "provider",
                         "triggers": [
                             "by billing account", "per billing account", "billing account id", "payer account",
-                            "master account", "billing accounts", "breakdown by billing account", "billing account breakdown"
+                            "master account", "billing accounts", "breakdown by billing account", "billing account breakdown",
+                            "root account", "management account", "parent account", "by payer", "by master",
+                            "billing container", "by payer account", "by management account", "by root account",
+                            "payer id", "master account id", "root account id", "payer accounts", "master accounts"
                         ]
                     },
                     {
@@ -7503,7 +7918,9 @@ class AIClient:
                         "provider_col": "provider",
                         "triggers": [
                             "by region", "per region", "by region id", "region breakdown", "breakdown by region",
-                            "by location", "per location", "regional breakdown"
+                            "by location", "per location", "regional breakdown", "by datacenter", "by data center",
+                            "datacenter breakdown", "by geography", "by geo", "geographic breakdown", "geo breakdown",
+                            "by zone", "by availability zone", "cloud region", "by cloud region", "locations breakdown"
                         ]
                     },
                     {
@@ -7515,7 +7932,9 @@ class AIClient:
                         "provider_col": "provider",
                         "triggers": [
                             "by resource", "per resource", "by resource id", "resource breakdown", "breakdown by resource",
-                            "resource-level", "top resources", "by individual resource"
+                            "resource-level", "top resources", "by individual resource", "by resource name",
+                            "resource name", "by arn", "per resource id", "individual resources", "by instance id",
+                            "by asset", "asset breakdown"
                         ]
                     },
                     {
@@ -7529,7 +7948,10 @@ class AIClient:
                             "by account", "per account", "account name", "account names", "account-level",
                             "sub account", "subaccount", "sub-account", "breakdown by account", "account breakdown",
                             "each account", "by project", "per project", "by subscription", "per subscription",
-                            "project breakdown", "subscription breakdown"
+                            "project breakdown", "subscription breakdown", "member account", "linked account",
+                            "usage account", "cloud account", "by member account", "by linked account",
+                            "by usage account", "by cloud account", "subscription-level", "project-level",
+                            "per cloud account", "linked accounts", "member accounts", "usage accounts"
                         ]
                     },
                     # AI / Foundation Models Dataset Dimensions
@@ -7542,7 +7964,8 @@ class AIClient:
                         "provider_col": "provider",
                         "triggers": [
                             "by model provider", "per model provider", "model provider breakdown", "breakdown by model provider",
-                            "ai provider", "by ai provider", "ai provider breakdown"
+                            "ai provider", "by ai provider", "ai provider breakdown", "ai vendor", "by ai vendor",
+                            "llm vendor", "model vendor", "ai company"
                         ]
                     },
                     {
@@ -7556,7 +7979,8 @@ class AIClient:
                             "by model", "per model", "by ai model", "by llm", "model breakdown", "breakdown by model",
                             "ai model breakdown", "llm breakdown", "foundation model", "by foundation model", "models breakdown",
                             "by model name", "per model name", "model name", "breakdown by model name", "break down by model name",
-                            "break down by model", "break it down by model name", "break it down by model"
+                            "break down by model", "break it down by model name", "break it down by model",
+                            "foundation models", "by llm model", "llm models", "language model", "language models"
                         ]
                     },
                     {
@@ -7567,7 +7991,8 @@ class AIClient:
                         "metric": "EffectiveCost",
                         "provider_col": "provider",
                         "triggers": [
-                            "by modality", "per modality", "modality breakdown", "breakdown by modality"
+                            "by modality", "per modality", "modality breakdown", "breakdown by modality",
+                            "media type", "by media type", "input modality", "text vs multimodal", "multimodal breakdown"
                         ]
                     },
                     {
@@ -7578,7 +8003,8 @@ class AIClient:
                         "metric": "EffectiveCost",
                         "provider_col": "provider",
                         "triggers": [
-                            "by execution type", "per execution type", "execution type breakdown", "breakdown by execution type"
+                            "by execution type", "per execution type", "execution type breakdown", "breakdown by execution type",
+                            "inference type", "by inference type", "batch vs streaming", "realtime vs batch", "processing mode"
                         ]
                     },
                     {
@@ -7589,18 +8015,9 @@ class AIClient:
                         "metric": "EffectiveCost",
                         "provider_col": "provider",
                         "triggers": [
-                            "by token type", "per token type", "token type breakdown", "breakdown by token type"
-                        ]
-                    },
-                    {
-                        "id": "ai_hardware_type",
-                        "column": "HardwareType",
-                        "label": "Hardware Type",
-                        "dataset": "MULTICLOUD_AI_COST_AND_USAGE",
-                        "metric": "EffectiveCost",
-                        "provider_col": "provider",
-                        "triggers": [
-                            "by hardware type", "by hardware", "per hardware type", "hardware breakdown", "breakdown by hardware"
+                            "by token type", "per token type", "token type breakdown", "breakdown by token type",
+                            "prompt tokens", "completion tokens", "input tokens", "output tokens", "cached tokens",
+                            "tokens breakdown", "by tokens"
                         ]
                     },
                     {
@@ -7611,7 +8028,20 @@ class AIClient:
                         "metric": "EffectiveCost",
                         "provider_col": "provider",
                         "triggers": [
-                            "by hardware family", "per hardware family", "hardware family breakdown"
+                            "by hardware family", "per hardware family", "hardware family breakdown",
+                            "gpu family", "accelerator family", "h100 vs a100"
+                        ]
+                    },
+                    {
+                        "id": "ai_hardware_type",
+                        "column": "HardwareType",
+                        "label": "Hardware Type",
+                        "dataset": "MULTICLOUD_AI_COST_AND_USAGE",
+                        "metric": "EffectiveCost",
+                        "provider_col": "provider",
+                        "triggers": [
+                            "by hardware type", "by hardware", "per hardware type", "hardware breakdown", "breakdown by hardware",
+                            "accelerator type", "by accelerator", "gpu vs tpu", "accelerators"
                         ]
                     },
                     # Commitment Savings
@@ -7624,7 +8054,8 @@ class AIClient:
                         "provider_col": "Provider",
                         "triggers": [
                             "by commitment plan", "by commitment", "by commitment type", "commitment breakdown",
-                            "savings plan breakdown", "by savings plan"
+                            "savings plan breakdown", "by savings plan", "by reservation", "reservation breakdown",
+                            "by ri", "ri breakdown", "savings plans breakdown", "reserved instances"
                         ]
                     },
                     # Operational Emissions
@@ -7637,7 +8068,8 @@ class AIClient:
                         "provider_col": "ProviderName",
                         "unit": "MT CO2e",
                         "triggers": [
-                            "by country", "emissions by country", "carbon by country"
+                            "by country", "emissions by country", "carbon by country", "emissions by geography",
+                            "carbon by geography", "by datacenter country"
                         ]
                     }
                 ]
@@ -7918,11 +8350,15 @@ class AIClient:
                             return (
                                 f"### 🤖 CloudHealth Spend Analysis: {scope_disp} Cost by {dim_label} — {svc_scope_label}\n\n"
                                 f"No active AI model spend data was returned from `{dataset}` for {svc_scope_label}.\n\n"
+                                f"> 💡 **FinOps Diagnostic Tips**:\n"
+                                f"> 1. **Billing Ingestion Latency**: Cloud providers typically settle billing telemetry with a 24–48 hour delay. Try querying the prior closed month (e.g. 'last month') if analyzing current MTD.\n"
+                                f"> 2. **Account / Filter Scope**: If filtering by a specific subaccount, customer, or service, verify that resources were actively provisioned during this timeframe.\n"
+                                f"> 3. **Dataset Ingestion**: Check whether `{dataset}` is active and configured in your CloudHealth FlexReports tenant.\n\n"
                                 f"*Source: `{dataset}` via CloudHealth FlexReports.*"
                             )
                         return (
                             f"### 📊 CloudHealth Spend Analysis: {scope_disp} Cost by {dim_label} — {svc_scope_label}\n\n"
-                            f"No spend data was returned from `{dataset}` for {dim_label} in {svc_scope_label}.\n\n"
+                            f"{_format_empty_data_notice(dataset, dim_label, svc_scope_label)}\n\n"
                             f"*Source: `{dataset}` via CloudHealth FlexReports.*"
                         )
 
@@ -7959,6 +8395,7 @@ class AIClient:
                                     svc_cost = float(r.get("cost") or 0.0)
                                 if svc_cost > 0.0:
                                     used_fallback = True
+                                    get_memory().record_sql_fix(svc_sql, f"Zero records for open period {current_ym}", f"{svc_sql} [timeRange: {last_ym}]")
                             except Exception:
                                 pass
                     else:
@@ -8225,15 +8662,14 @@ class AIClient:
                                     azure_rows.append((r.get("provider") or "Azure", s, c))
                             if azure_rows:
                                 used_fallback = True
+                                get_memory().record_sql_fix(svc_sql, f"Zero records for open period {current_ym}", f"{svc_sql} [timeRange: {last_ym}]")
                         except Exception as e:
                             logger.warning(f"[Azure Service Fallback Query] {e}")
 
                     if not azure_rows:
                         return (
                             f"### ☁️ CloudHealth Spend Analysis: Azure\n\n"
-                            f"No live Azure billing data was returned for `{svc_scope_label}`. This usually means there "
-                            f"was no Azure spend in this period, or the connected CloudHealth account/scope doesn't "
-                            f"have visibility into it.\n\n"
+                            f"{_format_empty_data_notice('MULTICLOUD_FOCUS_COST_AND_USAGE', 'Azure Services', svc_scope_label)}\n\n"
                             f"*Source: MULTICLOUD_FOCUS_COST_AND_USAGE via CloudHealth FlexReports.*"
                         )
 
@@ -8301,15 +8737,14 @@ class AIClient:
                                     gcp_rows.append((r.get("provider") or "GCP", s, c))
                             if gcp_rows:
                                 used_fallback = True
+                                get_memory().record_sql_fix(svc_sql, f"Zero records for open period {current_ym}", f"{svc_sql} [timeRange: {last_ym}]")
                         except Exception as e:
                             logger.warning(f"[GCP Service Fallback Query] {e}")
 
                     if not gcp_rows:
                         return (
                             f"### ☁️ CloudHealth Spend Analysis: GCP\n\n"
-                            f"No live Google Cloud billing data was returned for `{svc_scope_label}`. This usually means "
-                            f"there was no GCP spend in this period, or the connected CloudHealth account/scope doesn't "
-                            f"have visibility into it.\n\n"
+                            f"{_format_empty_data_notice('MULTICLOUD_FOCUS_COST_AND_USAGE', 'Google Cloud Services', svc_scope_label)}\n\n"
                             f"*Source: MULTICLOUD_FOCUS_COST_AND_USAGE via CloudHealth FlexReports.*"
                         )
 
@@ -8418,15 +8853,14 @@ class AIClient:
                                     aws_rows.append(("AWS", s, c))
                             if aws_rows:
                                 used_fallback = True
+                                get_memory().record_sql_fix(svc_sql, f"Zero records for open period {current_ym}", f"{svc_sql} [timeRange: {last_ym}]")
                         except Exception as e:
                             logger.warning(f"[AWS Service Fallback Query] {e}")
 
                     if not aws_rows:
                         return (
                             f"### ☁️ CloudHealth Spend Analysis: AWS\n\n"
-                            f"No live AWS billing data was returned for `{svc_scope_label}`. This usually means there "
-                            f"was no AWS spend in this period, or the connected CloudHealth account/scope doesn't have "
-                            f"visibility into it.\n\n"
+                            f"{_format_empty_data_notice('MULTICLOUD_FOCUS_COST_AND_USAGE', 'AWS Services', svc_scope_label)}\n\n"
                             f"*Source: MULTICLOUD_FOCUS_COST_AND_USAGE via CloudHealth FlexReports.*"
                         )
 
@@ -8556,15 +8990,18 @@ class AIClient:
                                         multi_rows.append((p, s, c))
                                 if multi_rows:
                                     used_fallback = True
+                                    get_memory().record_sql_fix(
+                                        "SELECT provider, ServiceName, SUM(EffectiveCost) FROM MULTICLOUD_FOCUS_COST_AND_USAGE",
+                                        f"Zero records for open period {current_ym}",
+                                        f"SELECT provider, ServiceName, SUM(EffectiveCost) FROM MULTICLOUD_FOCUS_COST_AND_USAGE [timeRange: {last_ym}]"
+                                    )
                             except Exception as e:
                                 logger.warning(f"[MultiCloud Fallback Query] {e}")
 
                         if not multi_rows:
                             return (
                                 f"### ☁️ CloudHealth Multi-Cloud Spend Analysis\n\n"
-                                f"No live billing data was returned across any connected cloud provider for `{svc_scope_label}`. "
-                                f"This usually means there was no spend in this period, or the connected CloudHealth "
-                                f"account/scope doesn't have visibility into it.\n\n"
+                                f"{_format_empty_data_notice('MULTICLOUD_FOCUS_COST_AND_USAGE', 'Multi-Cloud Services', svc_scope_label)}\n\n"
                                 f"*Source: MULTICLOUD_FOCUS_COST_AND_USAGE via CloudHealth FlexReports.*"
                             )
 
