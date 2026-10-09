@@ -1775,6 +1775,37 @@ def test_mtd_forecast_generation():
     assert res_cont is not None
 
 
+def test_multimonth_service_mom_and_single_chart():
+    from cleo_agent import AIClient
+    import json
+    class MultiMonthMockMCP:
+        def call_tool(self, name, args):
+            csv_data = (
+                "month,provider,service,cost\n"
+                "2026-07,Google Cloud,Compute Engine,2500000.0\n"
+                "2026-07,Azure,Virtual Machines,1500000.0\n"
+                "2026-08,Google Cloud,Compute Engine,3000000.0\n"
+                "2026-08,Azure,Virtual Machines,1400000.0\n"
+                "2026-09,Google Cloud,Compute Engine,2700000.0\n"
+                "2026-09,Azure,Virtual Machines,1600000.0\n"
+            )
+            return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+
+    client = AIClient("direct", {}, [])
+    res = client._generate_impl([
+        {"role": "user", "content": "give me the top cloud services for last 3 months and provide MOM as well"}
+    ], mcp=MultiMonthMockMCP())
+
+    assert "MoM Change" in res
+    assert "Jul 2026" in res
+    assert "Aug 2026" in res
+    assert "Sep 2026" in res
+    assert "Compute Engine" in res
+    assert "-$300,000.00 (-10.0%)" in res
+    assert res.count("```chart") == 1
+    assert '"type": "line"' in res
+
+
 if __name__ == "__main__":
     test_mtd_forecast_generation()
     test_unconfigure_and_clear_token()
@@ -1814,6 +1845,7 @@ if __name__ == "__main__":
     test_build_llm_schema_context_validity()
     test_no_insights_requested_predicate_and_stripping()
     test_no_insights_needed_agent_execution()
+    test_multimonth_service_mom_and_single_chart()
     print("All unit tests passed successfully!")
 
 
