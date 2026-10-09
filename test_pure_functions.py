@@ -1497,7 +1497,75 @@ def test_no_insights_needed_agent_execution():
     assert "FinOps" not in res_without
 
 
+def test_multiturn_context_passing_and_disambiguation():
+    import json
+    from cleo_query import _detect_contextual_continuation
+    from cleo_agent import AIClient
+
+    cust_map = {"Acme Corp": "12345", "Globex Inc": "67890"}
+
+    # 1. Deterministic continuation inheritance across multiple turns
+    messages = [
+        {"role": "user", "content": "Show EC2 spend for Acme Corp in June 2026"},
+        {"role": "assistant", "content": "### 📊 EC2 Cost Analysis for Acme Corp (2026-06)\n| Service | Cost |\n| EC2 | $100 |"},
+        {"role": "user", "content": "break down by instance type"},
+        {"role": "assistant", "content": "### 📊 EC2 Cost Breakdown by Instance Type\n| Type | Cost |\n| t3.micro | $50 |"},
+        {"role": "user", "content": "what about Azure?"}  # Ambiguous/terse turn 3
+    ]
+
+    cont = _detect_contextual_continuation(messages, cust_map=cust_map)
+    assert cont["is_continuation"] is True
+    # Customer should be inherited from Turn 1 even though Turn 2 didn't mention it
+    assert cont["new_customer"] == "Acme Corp"
+    assert cont["new_cloud"] == "azure"
+
+    # 2. LLM-First Intent prompt receives multi-turn history & active entities
+    captured_prompts = []
+    class MockLLMClient(AIClient):
+        def _call_active_llm(self, msgs, stats_out=None, on_token=None):
+            captured_prompts.append(msgs)
+            return json.dumps({
+                "intent": "fetch_data",
+                "cloud": "azure",
+                "service": "Virtual Machines",
+                "customer": "Acme Corp",
+                "metric_type": "cost",
+                "target_dimension": "product_InstanceType",
+                "target_ym": "2026-06",
+                "timeframe_months": 1,
+                "timeframe_days": None,
+                "min_cost": None,
+                "max_cost": None,
+                "min_impact": None,
+                "max_impact": None,
+                "min_pct": None,
+                "max_pct": None,
+                "limit": None,
+                "breakdowns": ["instance_type"],
+                "chart_types": ["bar"],
+                "include_chart": True,
+                "include_mom": True,
+                "is_new_data_fetch": True,
+                "corrected_query": "Show Azure VM spend for Acme Corp in June 2026 broken down by instance type"
+            }), None
+
+    client = MockLLMClient("gemini", {}, [])
+    client._cust_map_cache = cust_map
+    understood = client._understand_query(messages)
+
+    assert len(captured_prompts) == 1
+    llm_user_prompt = captured_prompts[0][1]["content"]
+    assert "User: Show EC2 spend for Acme Corp in June 2026" in llm_user_prompt
+    assert "Assistant: ### 📊 EC2 Cost Analysis for Acme Corp (2026-06)" in llm_user_prompt
+    assert "User: break down by instance type" in llm_user_prompt
+    assert "Current User Query: \"what about Azure?\"" in llm_user_prompt
+    assert "Active Customer: Acme Corp" in llm_user_prompt
+    assert understood["customer"] == "Acme Corp"
+    assert understood["cloud"] == "azure"
+
+
 if __name__ == "__main__":
+    test_multiturn_context_passing_and_disambiguation()
     test_parse_query_time_context()
     test_extract_requested_service()
     test_extract_requested_cloud()

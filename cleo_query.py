@@ -1250,6 +1250,14 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
             if cname.lower() in low:
                 new_customer = cname
                 break
+        if not new_customer:
+            for prev_u in reversed(prior_user_msgs):
+                for cname in cust_map.keys():
+                    if cname.lower() in prev_u.lower():
+                        new_customer = cname
+                        break
+                if new_customer:
+                    break
 
     if not new_cloud:
         for prev_u in reversed(prior_user_msgs):
@@ -1266,6 +1274,16 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
                 new_cloud = "gcp"
             elif "aws" in (last_asst_head + " " + last_asst_body):
                 new_cloud = "aws"
+
+    if not new_svc:
+        for prev_u in reversed(prior_user_msgs):
+            ps, ps_disp = extract_requested_service(prev_u)
+            if ps:
+                ps_prov = PCODE_TO_PROVIDER.get(ps)
+                if not new_cloud or new_cloud == ps_prov or new_cloud == "all":
+                    new_svc = ps
+                    new_svc_disp = ps_disp
+                break
 
     # Prior Query Type Detection
     prior_type = None

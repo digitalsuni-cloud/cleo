@@ -947,13 +947,65 @@ class AIClient:
         prior_user_msgs = [m["content"] for m in messages[:-1] if m.get("role") == "user"]
         prior_assistant_msgs = [m["content"] for m in messages[:-1] if m.get("role") == "assistant"]
 
+        # Build chronological multi-turn history (up to last 8 messages / ~4 dialogue turns)
+        # Keeps headers and key summaries concise to respect context window while preserving full intent.
         context_lines = []
-        if prior_user_msgs:
-            context_lines.append(f"Previous User Query: {prior_user_msgs[-1]}")
-        if prior_assistant_msgs:
-            first_line = prior_assistant_msgs[-1].split("\n")[0]
-            context_lines.append(f"Previous Assistant Topic: {first_line[:150]}")
+        recent_history = [m for m in messages[:-1] if m.get("role") in ("user", "assistant")][-8:]
+        for m in recent_history:
+            role = m.get("role")
+            content = (m.get("content") or "").strip()
+            if not content:
+                continue
+            if role == "user":
+                context_lines.append(f"User: {content}")
+            elif role == "assistant":
+                lines = [l.strip() for l in content.split("\n") if l.strip()]
+                header = lines[0] if lines else ""
+                subtitle = ""
+                if len(lines) > 1 and not lines[1].startswith("|") and not lines[1].startswith("```"):
+                    subtitle = f" | {lines[1][:120]}"
+                context_lines.append(f"Assistant: {header[:180]}{subtitle}")
         context_str = "\n".join(context_lines) if context_lines else "None (New Conversation)"
+
+        # Persistent conversational entities from history
+        active_entities = []
+        active_customer = cont_ctx.get("new_customer")
+        if not active_customer and cust_map:
+            for u in reversed(prior_user_msgs):
+                for cname in cust_map.keys():
+                    if cname.lower() in u.lower():
+                        active_customer = cname
+                        break
+                if active_customer:
+                    break
+        if active_customer:
+            active_entities.append(f"- Active Customer: {active_customer}")
+
+        active_cloud = cont_ctx.get("new_cloud")
+        if not active_cloud:
+            for u in reversed(prior_user_msgs):
+                c = extract_requested_cloud(u)
+                if c:
+                    active_cloud = c
+                    break
+        if active_cloud:
+            active_entities.append(f"- Active Cloud Provider: {active_cloud}")
+
+        active_svc = cont_ctx.get("new_service")
+        if not active_svc:
+            for u in reversed(prior_user_msgs):
+                s, _ = extract_requested_service(u)
+                if s:
+                    active_svc = s
+                    break
+        if active_svc:
+            active_entities.append(f"- Active Service: {active_svc}")
+
+        active_period = cont_ctx.get("inherited_target_ym") or cont_ctx.get("inherited_target_period_title")
+        if active_period:
+            active_entities.append(f"- Active Target Period: {active_period}")
+
+        entities_str = ("Active Conversational Entities (Inherit if not explicitly overridden by user):\n" + "\n".join(active_entities) + "\n\n") if active_entities else ""
 
         cal = get_realtime_calendar_info()
         mem_ctx = get_memory().build_context_block(last_msg)
@@ -1044,6 +1096,11 @@ class AIClient:
             "   - Cost Anomalies & Spikes: When user asks about cost anomalies, spikes, unusual spend, or 'why is X high', 'explain this spike', 'what drove the increase in Y', set intent='anomalies' and is_new_data_fetch=true. By default anomalies must target Active status unless user explicitly requests Inactive ones.\n"
             "11. GENERAL CHAT & AGENT/MODEL IDENTITY: Set intent to 'general_chat' and is_new_data_fetch to false if the user asks conversational questions, greetings, jokes, general knowledge, or questions about the AI model, engine, or assistant identity (e.g. 'what llm we are using right now?', 'who are you', 'what can you do', 'hello', 'tell me a joke', 'what model is this?').\n"
             "12. NUMERIC FILTERS & DRILL-DOWNS ('more than $50', 'impact cost > 100', 'over $500', 'under $20', 'between 50 and 200'): When the user specifies a cost, spend, or impact threshold, extract 'min_cost', 'max_cost', 'min_impact', and/or 'max_impact' as numeric values. If the user says 'impact cost more than 50$' or 'cost impact over $100', set min_impact=50.0 (or 100.0) and intent='anomalies'. If this query is a follow-up refinement on a prior table (e.g., following an anomaly report with 'show me the impact cost more than 50$'), inherit the prior query type (intent='anomalies', is_new_data_fetch=true), inherit the cloud (e.g. 'all', 'aws', 'gcp', 'azure'), and set 'min_impact'=50.0.\n"
+            "13. DISAMBIGUATION & CONTEXT RESOLUTION FOR UNCLEAR OR TERSE QUERIES:\n"
+            "   When the current user query is unclear, ambiguous, terse, or a conversational follow-up (e.g. 'what about storage?', 'why did it spike?', 'break down by instance type', 'show me that in a table', 'how about customer Acme?', 'explain this', 'give me more details', 'is this normal?', 'compare with the previous one'):\n"
+            "   - Use the Recent Context and Active Conversational Entities to resolve what 'it', 'this', 'that', or 'the other' refers to.\n"
+            "   - Inherit the active customer, cloud provider, service, or timeframe from the conversation history unless the user explicitly switches them.\n"
+            "   - In 'corrected_query', write out the fully disambiguated, self-contained FinOps question with all conversational references resolved.\n"
         )
 
         cust_list_snippet = f"Known Channel Customers: {', '.join(list(cust_map.keys())[:25])}\n\n" if cust_map else ""
@@ -1053,6 +1110,7 @@ class AIClient:
 
         user_prompt = (
             f"Recent Context:\n{context_str}\n\n"
+            f"{entities_str}"
             f"{cont_line}"
             f"{cust_list_snippet}"
             f"Current User Query: \"{last_msg}\"\n\n"
@@ -2231,7 +2289,8 @@ class AIClient:
                     )
                 }
                 user_msg = {"role": "user", "content": last_msg}
-                llm_resp, err = self._call_active_llm([sys_msg, user_msg])
+                prior_chat = [m for m in messages[:-1] if m.get("role") in ("user", "assistant")][-8:]
+                llm_resp, err = self._call_active_llm([sys_msg] + prior_chat + [user_msg])
                 if llm_resp:
                     return llm_resp
                 if err:
