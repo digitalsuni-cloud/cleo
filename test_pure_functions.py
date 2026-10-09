@@ -1073,14 +1073,153 @@ def test_cleo_enhancements_suite():
     assert "demo-aws-bedrock" in acc_disp
 
 
+def test_extract_cost_threshold():
+    from cleo_query import extract_cost_threshold
+
+    # "more than 50$"
+    res1 = extract_cost_threshold("show me the impact cost more than 50$")
+    assert res1["min"] == 50.0
+    assert res1["operator"] == ">"
+
+    # "cost impact > $100"
+    res2 = extract_cost_threshold("cost impact > $100")
+    assert res2["min"] == 100.0
+    assert res2["operator"] == ">"
+
+    # "under $20"
+    res3 = extract_cost_threshold("show anomalies under $20")
+    assert res3["max"] == 20.0
+    assert res3["operator"] == "<"
+
+    # "between $50 and $200"
+    res4 = extract_cost_threshold("filter between $50 and $200")
+    assert res4["min"] == 50.0
+    assert res4["max"] == 200.0
+    assert res4["operator"] == "between"
+
+    # "$50+"
+    res5 = extract_cost_threshold("anomalies with impact $50+")
+    assert res5["min"] == 50.0
+    assert res5["operator"] == ">="
+
+    # "at least $75.50"
+    res6 = extract_cost_threshold("cost impact at least $75.50")
+    assert res6["min"] == 75.50
+    assert res6["operator"] == ">="
+
+
+def test_continuation_with_cost_threshold_drilldown():
+    from cleo_query import _detect_contextual_continuation, _deterministic_understand_query
+
+    # Conversation history: user asked for multi-cloud anomalies, Cleo returned table
+    history = [
+        {"role": "user", "content": "Show my top cost anomalies across all clouds for this month"},
+        {
+            "role": "assistant",
+            "content": (
+                "### 🚨 CloudHealth Cost Anomaly Detection: Top 12 Active Anomalies (2026-10)\n\n"
+                "- Total Identified Anomaly Impact: +$2,834.57 across 12 anomalies\n"
+                "| # | Cloud | Service / Asset | Status | Cost Impact |"
+            ),
+        },
+        {"role": "user", "content": "show me the impact cost more than 50$"},
+    ]
+
+    cont = _detect_contextual_continuation(history)
+    assert cont["is_continuation"] is True
+    assert cont["prior_query_type"] == "anomalies"
+    assert cont["min_impact"] == 50.0
+    assert cont["new_cloud"] == "all"
+    assert "cost impact > $50.00" in cont["expanded_query"]
+
+    und = _deterministic_understand_query(history)
+    assert und["intent"] == "anomalies"
+    assert und["is_new_data_fetch"] is True
+    assert und["min_impact"] == 50.0
+    assert und["cloud"] == "all"
+
+
+def test_anomaly_threshold_execution_and_presentation():
+    import json
+    from cleo_agent import AIClient
+
+    class MockMCP:
+        def __init__(self):
+            self.calls = []
+
+        def call_tool(self, name, args):
+            self.calls.append((name, args))
+            sql = args.get("queryInput", {}).get("sqlStatement", "")
+            if "AWS_COST_ANOMALY" in sql:
+                if "CostImpact >= 50" in sql:
+                    csv_data = '"service","cost_impact","impact_pct","impact_type","status","duration_days","region","account_id","day","month"\n'
+                else:
+                    csv_data = (
+                        '"service","cost_impact","impact_pct","impact_type","status","duration_days","region","account_id","day","month"\n'
+                        '"AmazonPinpoint","21.36","702.6","Spike","ACTIVE","0","sa-east-1","964862064788","2026-10-07","2026-10"\n'
+                    )
+            elif "GCP_COST_ANOMALY" in sql:
+                csv_data = (
+                    '"service","cost_impact","impact_pct","impact_type","status","duration_days","region","account_id","day","month"\n'
+                    '"NetApp Volumes","746.03","125.4","Spike","ACTIVE","0","us-central1","gcp-project-1","2026-10-06","2026-10"\n'
+                    '"Vertex AI","719.15","85.2","Spike","ACTIVE","0","us-central1","gcp-project-1","2026-10-05","2026-10"\n'
+                )
+            elif "AZURE_COST_ANOMALY" in sql:
+                if "CostImpact >= 50" in sql:
+                    csv_data = '"service","cost_impact","impact_pct","impact_type","status","duration_days","region","account_id","day","month"\n'
+                else:
+                    csv_data = (
+                        '"service","cost_impact","impact_pct","impact_type","status","duration_days","region","account_id","day","month"\n'
+                        '"Data Factory","22.13","45.0","Spike","ACTIVE","0","eastus","sub-1","2026-10-04","2026-10"\n'
+                    )
+            else:
+                csv_data = ""
+            return {"content": [{"type": "text", "text": json.dumps({"csv": csv_data})}]}
+
+    mock_mcp = MockMCP()
+    client = AIClient("direct", {}, [])
+
+    chat_history = [
+        {"role": "user", "content": "Show my top cost anomalies across all clouds for this month"},
+        {
+            "role": "assistant",
+            "content": (
+                "### 🚨 CloudHealth Cost Anomaly Detection: Top 12 Active Anomalies (2026-10)\n\n"
+                "- Total Identified Anomaly Impact: +$2,834.57 across 12 anomalies\n"
+                "| # | Cloud | Service / Asset | Status | Cost Impact |\n"
+                "| 1 | 🟠 AWS | `AmazonPinpoint` | 🔴 **ACTIVE** | **+$21.36** |\n"
+            ),
+        },
+        {"role": "user", "content": "show me the impact cost more than 50$"},
+    ]
+
+    res = client.generate(chat_history, mcp=mock_mcp)
+
+    # 1. Verify SQL executed contained CostImpact >= 50.0
+    anom_calls = [c for c in mock_mcp.calls if c[0] == "execute_datasource_query"]
+    assert len(anom_calls) > 0, "Expected execute_datasource_query calls"
+    for _, call_args in anom_calls:
+        sql_stmt = call_args["queryInput"]["sqlStatement"]
+        assert "CostImpact >= 50" in sql_stmt, f"Expected CostImpact >= 50 in SQL statement: {sql_stmt}"
+
+    # 2. Verify table title reflects threshold
+    assert "Cost Impact > $50.00" in res
+
+    # 3. Verify presented rows contain only items > $50 (NetApp Volumes, Vertex AI) and no AWS items (< $50)
+    assert "NetApp Volumes" in res
+    assert "Vertex AI" in res
+    assert "AmazonPinpoint" not in res
+    assert "$746.03" in res
+    assert "$719.15" in res
+
+
 if __name__ == "__main__":
-    test_cleo_enhancements_suite()
-    test_column_synonyms_and_expanded_context()
-    # Self-run check
     test_parse_query_time_context()
     test_extract_requested_service()
     test_extract_requested_cloud()
     test_detect_anomaly_status_filter()
+    test_extract_cost_threshold()
+    test_continuation_with_cost_threshold_drilldown()
     test_csv_to_markdown()
     test_clean_chart_title()
     test_classify_service_usage_type()

@@ -645,6 +645,55 @@ def detect_anomaly_status_filter(query_text: str) -> Optional[str]:
         return "INACTIVE"
     return "ACTIVE"
 
+def extract_cost_threshold(query_text: str) -> dict:
+    """
+    Extracts numeric thresholds / comparisons (e.g. 'more than $50', 'impact cost > 50',
+    'over $100', 'between 50 and 200', 'under $20', 'cost impact at least $50') from text.
+    Returns dict with keys: 'min': float|None, 'max': float|None, 'operator': str|None.
+    """
+    if not query_text:
+        return {}
+    low = query_text.lower()
+    res = {}
+
+    # 1. Between X and Y
+    m_between = re.search(
+        r'\bbetween\s+\$?([0-9]+(?:\.[0-9]+)?)\$?\s+(?:and|to|-)\s+\$?([0-9]+(?:\.[0-9]+)?)\$?\b',
+        low
+    )
+    if m_between:
+        res["min"] = float(m_between.group(1))
+        res["max"] = float(m_between.group(2))
+        res["operator"] = "between"
+        return res
+
+    # 2. Min / Greater than / More than / Over / Above / Exceeding / At least / Higher than
+    m_min = re.search(
+        r'(?:\b(?:more\s+than|greater\s+than|above|over|exceeding|higher\s+than|at\s+least|min(?:imum)?)\b|>=|>)\s*\$?([0-9]+(?:\.[0-9]+)?)\$?',
+        low
+    )
+    if m_min:
+        res["min"] = float(m_min.group(1))
+        res["operator"] = ">=" if (">=" in m_min.group(0) or "at least" in m_min.group(0) or "min" in m_min.group(0)) else ">"
+
+    # Also check suffix forms like "$50 or more", "50$ or higher", "$50+", "more than 50$"
+    if "min" not in res:
+        m_min_suff = re.search(r'\$?([0-9]+(?:\.[0-9]+)?)\$?\s*(?:\+|(?:or\s+more|or\s+higher|and\s+above)\b)', low)
+        if m_min_suff:
+            res["min"] = float(m_min_suff.group(1))
+            res["operator"] = ">="
+
+    # 3. Max / Less than / Under / Below / At most / Smaller than / Lower than
+    m_max = re.search(
+        r'(?:\b(?:less\s+than|under|below|smaller\s+than|at\s+most|max(?:imum)?|lower\s+than)\b|<=|<)\s*\$?([0-9]+(?:\.[0-9]+)?)\$?',
+        low
+    )
+    if m_max:
+        res["max"] = float(m_max.group(1))
+        res["operator"] = "<=" if ("<=" in m_max.group(0) or "at most" in m_max.group(0) or "max" in m_max.group(0)) else "<"
+
+    return res
+
 def parse_query_time_context(query: str) -> dict:
     """
     Extracts time context, target month, limit, and sort direction from user prompt.
@@ -911,7 +960,12 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         ):
             is_short_pivot = True
 
-    if not (has_similar_term or is_short_pivot):
+    thresh = extract_cost_threshold(low)
+    has_threshold_refinement = bool(thresh) and (
+        any(w in low for w in ["impact", "cost", "spend", "variance", "more", "less", "over", "under", "above", "below", "show", "filter", "only", "where", "with", "than", "$", "dollar"])
+    )
+
+    if not (has_similar_term or is_short_pivot or has_threshold_refinement):
         return {"is_continuation": False}
 
     prior_user_msgs = [m.get("content", "") for m in messages[:-1] if m.get("role") == "user"]
@@ -935,6 +989,22 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
             if cname.lower() in low:
                 new_customer = cname
                 break
+
+    if not new_cloud:
+        for prev_u in reversed(prior_user_msgs):
+            c = extract_requested_cloud(prev_u)
+            if c:
+                new_cloud = c
+                break
+        if not new_cloud:
+            if "across all clouds" in (last_asst_head + " " + last_asst_body) or "multi-cloud" in (last_asst_head + " " + last_asst_body):
+                new_cloud = "all"
+            elif "azure" in (last_asst_head + " " + last_asst_body):
+                new_cloud = "azure"
+            elif "gcp" in (last_asst_head + " " + last_asst_body):
+                new_cloud = "gcp"
+            elif "aws" in (last_asst_head + " " + last_asst_body):
+                new_cloud = "aws"
 
     # Prior Query Type Detection
     prior_type = None
@@ -985,7 +1055,9 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         "anomaly detection" in last_asst_head or
         "anomalies" in last_asst_head or
         "cost anomalies" in last_asst_body or
-        any(w in last_user_low for w in ["anomal", "cost spike", "spend spike", "unusual spend"])
+        "identified anomaly impact" in last_asst_body or
+        any(w in last_user_low for w in ["anomal", "cost spike", "spend spike", "unusual spend"]) or
+        (has_threshold_refinement and any(w in (last_asst_head + " " + last_asst_body) for w in ["anomaly", "anomalies", "cost impact"]))
     ):
         prior_type = "anomalies"
 
@@ -1080,7 +1152,7 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         return {"is_continuation": False}
 
     # Synthesize expanded query representation
-    prov_disp = "Azure" if new_cloud == "azure" else ("GCP" if new_cloud == "gcp" else ("AWS" if new_cloud == "aws" else (new_svc_disp or "Cloud")))
+    prov_disp = "all clouds" if new_cloud == "all" else ("Azure" if new_cloud == "azure" else ("GCP" if new_cloud == "gcp" else ("AWS" if new_cloud == "aws" else (new_svc_disp or "Cloud"))))
     if prior_type == "forecast":
         yr_label = inherited_period_title or f"FY {inherited_target_year or 2027}"
         expanded_query = f"give me the forecast for {prov_disp} cost for {yr_label} and break it down monthly"
@@ -1088,7 +1160,12 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         expanded_query = f"give me the monthly spend trend and breakdown for {prov_disp} for the last {inherited_timeframe_months or 6} months"
     elif prior_type == "anomalies":
         status_word = "inactive " if ("inactive" in low or "inactive" in last_user_low) else ""
-        expanded_query = f"show top {status_word}cost anomalies detected for {prov_disp}"
+        thresh_phrase = ""
+        if thresh.get("min") is not None:
+            thresh_phrase = f" with cost impact > ${thresh['min']:,.2f}"
+        elif thresh.get("max") is not None:
+            thresh_phrase = f" with cost impact < ${thresh['max']:,.2f}"
+        expanded_query = f"show top {status_word}cost anomalies detected for {prov_disp}{thresh_phrase}".strip()
     elif prior_type == "region_breakdown":
         expanded_query = f"show {prov_disp} spend breakdown by region"
     elif prior_type == "service_breakdown":
@@ -1119,6 +1196,11 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         "new_service": new_svc,
         "new_service_disp": new_svc_disp,
         "new_customer": new_customer,
+        "min_cost": thresh.get("min"),
+        "max_cost": thresh.get("max"),
+        "min_impact": thresh.get("min") if (prior_type == "anomalies" or "impact" in low) else None,
+        "max_impact": thresh.get("max") if (prior_type == "anomalies" or "impact" in low) else None,
+        "operator": thresh.get("operator"),
         "expanded_query": expanded_query
     }
 
@@ -1332,7 +1414,8 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     ])
     is_anomaly = any(w in low for w in [
         "anomal", "spike", "unusual spend", "unexpected cost",
-        "inactive ones", "the inactive ones", "active ones", "the active ones"
+        "inactive ones", "the inactive ones", "active ones", "the active ones",
+        "impact cost", "cost impact"
     ]) or (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "anomalies")
 
     is_user_query = bool(re.search(
@@ -1568,6 +1651,12 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     if cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") == "forecast":
         target_ym = f"{cont_ctx['inherited_target_year']}-01"
 
+    thresh_det = extract_cost_threshold(last_msg)
+    det_min_cost = thresh_det.get("min") if thresh_det.get("min") is not None else cont_ctx.get("min_cost")
+    det_max_cost = thresh_det.get("max") if thresh_det.get("max") is not None else cont_ctx.get("max_cost")
+    det_min_impact = thresh_det.get("min") if (is_anomaly or "impact" in low) else cont_ctx.get("min_impact")
+    det_max_impact = thresh_det.get("max") if (is_anomaly or "impact" in low) else cont_ctx.get("max_impact")
+
     result = {
         "intent": intent,
         "cloud": cloud,
@@ -1584,6 +1673,10 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "include_chart": include_chart,
         "include_mom": include_mom,
         "is_new_data_fetch": is_new_data_fetch,
+        "min_cost": det_min_cost,
+        "max_cost": det_max_cost,
+        "min_impact": det_min_impact,
+        "max_impact": det_max_impact,
         "anomaly_status": detect_anomaly_status_filter(last_msg) if is_anomaly else None,
         "corrected_query": cont_ctx.get("expanded_query") or last_msg
     }
