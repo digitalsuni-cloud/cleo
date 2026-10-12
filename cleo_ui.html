@@ -2691,7 +2691,7 @@
         </svg>
       </button>
       
-      <div class="brand-link" onclick="goToLandingPage()" role="button" tabindex="0" title="Return to Cleo Landing Page" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();goToLandingPage();}">
+      <div class="brand-link" onclick="goToLandingPage()" role="button" tabindex="0" title="Go to Home Page / Return to Cleo Landing Page" aria-label="Go to Home Page" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();goToLandingPage();}">
         <div class="brand-logo-wrap" title="Cleo FinOps Agent">
           <svg class="cleo-logo-svg" width="30" height="30" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
             <defs>
@@ -2920,17 +2920,17 @@
             Directly connected to live CloudHealth FlexReports, tenant CRNs, and consumption billing datasets. Analyze infrastructure spend, projected run-rates, customer anomalies, and waste reclamation.
           </p>
           <div class="welcome-grid">
-            <div class="welcome-card" onclick="sendPrompt('Show our top cloud services across AWS, Azure, and GCP this month')">
+            <div class="welcome-card" onclick="sendPrompt('Show our top cloud services across AWS, Azure, and GCP this month with MoM variance')">
               <div class="welcome-card-title">Top Cloud Services (All Clouds)</div>
               <div class="welcome-card-desc">Ranked monthly spend across AWS, Azure, and GCP with MoM variance.</div>
             </div>
-            <div class="welcome-card" id="card-channel-customers" onclick="sendPrompt('Find channel customers and show multi-cloud spend this month')">
+            <div class="welcome-card" id="card-channel-customers" style="display: none;" onclick="sendPrompt('Find channel customers and show multi-cloud spend this month')">
               <div class="welcome-card-title">Channel Customers</div>
               <div class="welcome-card-desc">Partner customer spend breakdown across cloud infrastructure.</div>
             </div>
-            <div class="welcome-card" id="card-service-comparison" onclick="sendPrompt('Compare previous month service level cost with the current month projected cost across all clouds')">
-              <div class="welcome-card-title" id="card-comparison-title">Service Spend Comparison</div>
-              <div class="welcome-card-desc" id="card-comparison-desc">Service-by-service run-rate forecast and variance breakdown.</div>
+            <div class="welcome-card" id="card-service-comparison" onclick="sendPrompt('Compare previous month service level cost for Lundbeck with current month projected cost across all clouds')">
+              <div class="welcome-card-title" id="card-comparison-title">Lundbeck Service Comparison</div>
+              <div class="welcome-card-desc" id="card-comparison-desc">Service run-rate forecast and variance breakdown for Lundbeck.</div>
             </div>
             <div class="welcome-card" onclick="sendPrompt('What are our top cost optimization recommendations across all cloud providers?')">
               <div class="welcome-card-title">Waste Reclamation</div>
@@ -2942,15 +2942,15 @@
 
       <!-- Quick Chips Bar (Multi-Cloud: AWS, Azure, GCP) -->
       <div class="chips-row">
-        <div class="chip" data-detail="Show our top cloud services across AWS, Azure, and GCP this month" onclick="sendPrompt('Show our top cloud services across AWS, Azure, and GCP this month')">
+        <div class="chip" data-detail="Show our top cloud services across AWS, Azure, and GCP this month with MoM variance" onclick="sendPrompt('Show our top cloud services across AWS, Azure, and GCP this month with MoM variance')">
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
           <span>All Clouds Spend</span>
         </div>
-        <div class="chip" data-detail="Show our top Azure services and spend breakdown" onclick="sendPrompt('Show our top Azure services and spend breakdown')">
+        <div class="chip" data-detail="Show our top Azure services this month with MoM variance" onclick="sendPrompt('Show our top Azure services this month with MoM variance')">
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M4 20h16L15 4h-4L8 14l-4 6z"></path></svg>
           <span>Azure Spend</span>
         </div>
-        <div class="chip" data-detail="Show our top Google Cloud GCP services and spend breakdown" onclick="sendPrompt('Show our top Google Cloud GCP services and spend breakdown')">
+        <div class="chip" data-detail="Show our top GCP services this month with MoM variance" onclick="sendPrompt('Show our top GCP services this month with MoM variance')">
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
           <span>GCP Spend</span>
         </div>
@@ -2963,7 +2963,7 @@
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
           <span>Cost Anomalies</span>
         </div>
-        <div class="chip" id="chip-channel-customers" data-detail="Find channel customers and show multi-cloud spend" onclick="sendPrompt('Find channel customers and show multi-cloud spend')">
+        <div class="chip" id="chip-channel-customers" style="display: none;" data-detail="Find channel customers and show multi-cloud spend" onclick="sendPrompt('Find channel customers and show multi-cloud spend')">
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
           <span>Channel Customers</span>
         </div>
@@ -3409,6 +3409,20 @@
   </div>
 
   <script>
+    if (typeof window.hasChannelCustomersTool === 'undefined') {
+      try {
+        window.hasChannelCustomersTool = localStorage.getItem('cleo_has_channel_customers') === '1';
+      } catch (e) {
+        window.hasChannelCustomersTool = false;
+      }
+    }
+    if (window.hasChannelCustomersTool) {
+      const initChip = document.getElementById('chip-channel-customers');
+      if (initChip) initChip.style.display = '';
+      const initCard = document.getElementById('card-channel-customers');
+      if (initCard) initCard.style.display = '';
+    }
+
     function generateGUID() {
       if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
         return crypto.randomUUID();
@@ -3422,30 +3436,49 @@
 
     function getRequestedSessionIdFromURL() {
       const path = window.location.pathname || '';
+      if (/^\/(?:chat\/)?newchat\/?$/i.test(path)) {
+        return 'new';
+      }
       const match = path.match(/^\/chat\/([a-zA-Z0-9_-]+)/);
-      if (match && match[1]) return match[1];
+      if (match && match[1]) {
+        if (match[1].toLowerCase() === 'newchat' || match[1].toLowerCase() === 'new') {
+          return 'new';
+        }
+        return match[1];
+      }
 
       const params = new URLSearchParams(window.location.search);
       const querySid = params.get('chat') || params.get('session') || params.get('sid');
-      if (querySid) return querySid;
+      if (querySid) {
+        if (querySid.toLowerCase() === 'newchat' || querySid.toLowerCase() === 'new') {
+          return 'new';
+        }
+        return querySid;
+      }
 
       const hash = window.location.hash || '';
       const hashMatch = hash.match(/^#\/?(?:chat\/)?([a-zA-Z0-9_-]+)/);
-      if (hashMatch && hashMatch[1]) return hashMatch[1];
+      if (hashMatch && hashMatch[1]) {
+        if (hashMatch[1].toLowerCase() === 'newchat' || hashMatch[1].toLowerCase() === 'new') {
+          return 'new';
+        }
+        return hashMatch[1];
+      }
 
       return null;
     }
 
     function updateURLForSession(sid) {
       try {
-        if (sid && sid !== 'new') {
+        if (sid && sid !== 'new' && sid.toLowerCase() !== 'newchat') {
           const targetPath = `/chat/${sid}`;
           if (window.location.pathname !== targetPath) {
             window.history.pushState({ sessionId: sid }, '', targetPath);
           }
         } else {
-          if (window.location.pathname !== '/') {
-            window.history.pushState({ sessionId: 'new' }, '', '/');
+          const targetPath = '/newChat';
+          if (window.location.pathname !== targetPath) {
+            window.history.pushState({ sessionId: 'new' }, '', targetPath);
           }
         }
       } catch (e) {
@@ -3774,10 +3807,10 @@
         const urlSid = getRequestedSessionIdFromURL();
         const savedId = localStorage.getItem('cleo_session_id');
 
-        if (urlSid) {
+        if (urlSid && urlSid !== 'new') {
           switchSession(urlSid, false);
-        } else if (savedId === 'new') {
-          // User intentionally started a new chat, stay on welcome hero
+        } else if (urlSid === 'new' || savedId === 'new') {
+          // User intentionally started or requested a new chat, stay on welcome hero
         } else if (savedId && data.sessions.some(s => s.id === savedId)) {
           if (!currentSessionId || currentSessionId !== savedId) {
             switchSession(savedId, false);
@@ -3947,6 +3980,57 @@
       }
     }
 
+    function getWelcomeHeroHTML() {
+      const topCust = (window.channelCustomers && window.channelCustomers.length > 0)
+        ? (window.channelCustomers.find(c => c.name === 'Lundbeck') ? 'Lundbeck' : window.channelCustomers[0].name)
+        : 'Lundbeck';
+      const compTitle = topCust ? `${topCust} Service Comparison` : 'Service Spend Comparison';
+      const compDesc = topCust ? `Service run-rate forecast and variance breakdown for ${topCust}.` : 'Service-by-service run-rate forecast and variance breakdown.';
+      const compPrompt = topCust
+        ? `Compare previous month service level cost for ${topCust} with current month projected cost across all clouds`
+        : 'Compare previous month service level cost with the current month projected cost across all clouds';
+
+      const channelCardStyle = window.hasChannelCustomersTool ? '' : 'style="display: none;"';
+
+      return `
+        <div class="welcome-hero">
+          <div class="welcome-hero-header">
+            <svg width="28" height="28" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <polygon points="24,4 42,14 24,24 6,14" fill="#38bdf8" />
+              <polygon points="6,14 24,24 24,44 6,34" fill="#818cf8" />
+              <polygon points="42,14 42,34 24,44 24,24" fill="#34d399" />
+              <circle cx="24" cy="24" r="4" fill="#ffffff" />
+            </svg>
+            <div>
+              <div class="welcome-hero-title">Cleo FinOps Command Center <span class="brand-beta" style="vertical-align: middle; margin-left: 6px;">BETA</span></div>
+              <div style="font-size:0.75rem; color:#38bdf8; font-weight:500;">CloudHealth Autonomous Intelligence & Waste Reclamation</div>
+            </div>
+          </div>
+          <p class="welcome-hero-desc">
+            Directly connected to live CloudHealth FlexReports, tenant CRNs, and consumption billing datasets. Analyze infrastructure spend, projected run-rates, customer anomalies, and waste reclamation.
+          </p>
+          <div class="welcome-grid">
+            <div class="welcome-card" onclick="sendPrompt('Show our top cloud services across AWS, Azure, and GCP this month with MoM variance')">
+              <div class="welcome-card-title">Top Cloud Services (All Clouds)</div>
+              <div class="welcome-card-desc">Ranked monthly spend across AWS, Azure, and GCP with MoM variance.</div>
+            </div>
+            <div class="welcome-card" id="card-channel-customers" ${channelCardStyle} onclick="sendPrompt('Find channel customers and show multi-cloud spend this month')">
+              <div class="welcome-card-title">Channel Customers</div>
+              <div class="welcome-card-desc">Partner customer spend breakdown across cloud infrastructure.</div>
+            </div>
+            <div class="welcome-card" id="card-service-comparison" onclick="sendPrompt('${compPrompt}')">
+              <div class="welcome-card-title" id="card-comparison-title">${compTitle}</div>
+              <div class="welcome-card-desc" id="card-comparison-desc">${compDesc}</div>
+            </div>
+            <div class="welcome-card" onclick="sendPrompt('What are our top cost optimization recommendations across all cloud providers?')">
+              <div class="welcome-card-title">Waste Reclamation</div>
+              <div class="welcome-card-desc">Actionable savings opportunities across AWS, Azure, and GCP.</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     function goToLandingPage() {
       newSession(true);
     }
@@ -3963,26 +4047,19 @@
       document.querySelectorAll('.history-item').forEach(el => el.classList.remove('active'));
 
       const stream = document.getElementById('chat-stream');
-      stream.innerHTML = `
-        <div class="welcome-hero">
-          <div class="welcome-hero-header">
-            <svg width="32" height="32" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <polygon points="24,4 42,14 24,24 6,14" fill="#38bdf8" />
-              <polygon points="6,14 24,24 24,44 6,34" fill="#818cf8" />
-              <polygon points="42,14 42,34 24,44 24,24" fill="#34d399" />
-              <circle cx="24" cy="24" r="5" fill="#ffffff" />
-            </svg>
-            <div>
-              <div class="welcome-hero-title">New Conversation Started</div>
-              <div style="font-size:0.76rem; color:#38bdf8; font-weight:600;">Autonomous FinOps Intelligence Active</div>
-            </div>
-          </div>
-          <p class="welcome-hero-desc">
-            How can I help you analyze your CloudHealth costs or optimize cloud spend today?
-          </p>
-        </div>
-      `;
-      document.getElementById('prompt-input').focus();
+      if (stream) {
+        stream.innerHTML = getWelcomeHeroHTML();
+        stream.scrollTop = 0;
+      }
+      updatePinButtonState();
+      fetchChannelCustomers();
+
+      const promptInput = document.getElementById('prompt-input');
+      if (promptInput) {
+        promptInput.value = '';
+        if (typeof updateInputHeight === 'function') updateInputHeight();
+        promptInput.focus();
+      }
     }
 
     async function deleteHistory(event, sid) {
@@ -5095,6 +5172,9 @@
       // generateFollowUpChips() (the post-response "Suggested:" chips) can apply the same rule.
       const hasChannelCustomers = Array.isArray(tools) && tools.some(t => t.name === 'list_channel_customers');
       window.hasChannelCustomersTool = hasChannelCustomers;
+      try {
+        localStorage.setItem('cleo_has_channel_customers', hasChannelCustomers ? '1' : '0');
+      } catch (e) {}
       const channelCustomersChip = document.getElementById('chip-channel-customers');
       if (channelCustomersChip) channelCustomersChip.style.display = hasChannelCustomers ? '' : 'none';
       const channelCustomersCard = document.getElementById('card-channel-customers');
@@ -7413,6 +7493,7 @@
         if (!currentSessionId || currentSessionId === 'new') {
           currentSessionId = generateGUID();
           localStorage.setItem('cleo_session_id', currentSessionId);
+          updateURLForSession(currentSessionId);
         }
         const payloadSessionId = currentSessionId;
         const startTime = performance.now();
@@ -7751,8 +7832,12 @@
 
     // Direct URL navigation: load requested chat immediately
     const initialUrlSid = getRequestedSessionIdFromURL();
-    if (initialUrlSid) {
+    if (initialUrlSid && initialUrlSid !== 'new') {
       switchSession(initialUrlSid, false);
+    } else if (initialUrlSid === 'new') {
+      newSession(false);
+    } else if (window.location.pathname === '/' || window.location.pathname === '') {
+      updateURLForSession('new');
     }
 
     // Support browser Back/Forward navigation between chats

@@ -3054,15 +3054,37 @@ def _auto_update_on_startup():
 
 # ── GUI Dashboard ─────────────────────────────────────────────────────────────
 
-@app.get("/", response_class=HTMLResponse)
-@app.get("/chat", response_class=HTMLResponse)
+@app.get("/")
+@app.get("/chat")
+def redirect_to_new_chat(request: Request):
+    q = str(request.url.query)
+    target = f"/newChat?{q}" if q else "/newChat"
+    return RedirectResponse(url=target, status_code=307)
+
+@app.get("/newChat", response_class=HTMLResponse)
+@app.get("/newchat", response_class=HTMLResponse)
+@app.get("/chat/newChat", response_class=HTMLResponse)
+@app.get("/chat/newchat", response_class=HTMLResponse)
 @app.get("/chat/{session_id}", response_class=HTMLResponse)
 def serve_gui(session_id: Optional[str] = None):
     base_dir = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
     ui_path = os.path.join(base_dir, "cleo_ui.html")
     if os.path.exists(ui_path):
         with open(ui_path, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
+            content = f.read()
+        has_channel = bool(any(t.get("name") == "list_channel_customers" for t in _tools))
+        if has_channel:
+            content = content.replace(
+                'id="card-channel-customers" style="display: none;"',
+                'id="card-channel-customers"'
+            ).replace(
+                'id="chip-channel-customers" style="display: none;"',
+                'id="chip-channel-customers"'
+            )
+        script_inject = f'<script>window.hasChannelCustomersTool = {"true" if has_channel else "false"};</script>'
+        if '</head>' in content:
+            content = content.replace('</head>', f'{script_inject}\n</head>', 1)
+        return HTMLResponse(content=content)
     return HTMLResponse(content="<h1>Cleo UI template not found</h1>", status_code=500)
 
 if __name__ == "__main__":

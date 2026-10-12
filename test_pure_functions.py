@@ -1806,6 +1806,459 @@ def test_multimonth_service_mom_and_single_chart():
     assert '"type": "line"' in res
 
 
+def test_cloud_support_charges_ytd_mom():
+    from cleo_agent import AIClient
+    import json
+    class SupportMockMCP:
+        def call_tool(self, name, args):
+            csv_data = (
+                "month,provider,service,billed_cost,cost\n"
+                "2026-01,Google Cloud,Support,119148.92,119148.92\n"
+                "2026-01,AWS,AWSSupportEnterprise,124.28,124.28\n"
+                "2026-02,Google Cloud,Support,88833.10,88833.10\n"
+                "2026-02,AWS,AWSSupportEnterprise,101.20,101.20\n"
+                "2026-03,Google Cloud,Support,129697.10,129697.10\n"
+                "2026-03,AWS,AWSSupportEnterprise,114.11,114.11\n"
+            )
+            return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+
+    client = AIClient("direct", {}, [])
+    res = client._generate_impl([
+        {"role": "user", "content": "give me the ytd data for support charges with MoM"}
+    ], mcp=SupportMockMCP())
+
+    assert "CloudHealth Support Charges Spend Analysis" in res
+    assert "Google Cloud" in res
+    assert "AWS" in res
+    assert "MoM Change" in res
+    assert "Combined Support Spend" in res
+    assert res.count("```chart") == 1
+    assert '"type": "line"' in res
+
+
+def test_emr_and_networking_mappings_and_intent():
+    from cleo_query import _deterministic_understand_query, extract_requested_service
+
+    test_cases = [
+        ("give me the ytd data for emr", "ElasticMapReduce", "aws"),
+        ("give me the ytd data for networking", "Networking", "all"),
+        ("give me the ytd data for savings plans", "ComputeSavingsPlans", "aws"),
+        ("give me the ytd data for azure reservations", "Azure Reservations", "azure"),
+        ("give me the ytd data for marketplace spend", "Marketplace", "all"),
+        ("give me the ytd data for storage accounts", "Storage Accounts", "azure"),
+        ("provide mtd numbers for kafka", "AmazonMSK", "aws"),
+        ("gcp networking spend", "Networking", "gcp"),
+        ("bare metal solution spend", "Bare Metal Solution", "gcp"),
+        ("aws support", "AWSSupport", "aws"),
+        ("aws business support", "AWSSupportBusiness", "aws"),
+        ("aws developer support", "AWSSupportDeveloper", "aws"),
+        ("aws enterprise support", "AWSSupportEnterprise", "aws"),
+        ("enterprise on-ramp support", "AWSSupportEnterpriseOnRamp", "aws"),
+    ]
+    for q, expected_pcode, expected_prov in test_cases:
+        u = _deterministic_understand_query([{"role": "user", "content": q}])
+        assert u["intent"] in ("fetch_data", "finops_recommendations"), f"Failed intent for '{q}': {u['intent']}"
+        svc = extract_requested_service(q)
+        assert svc[0] == expected_pcode, f"Failed pcode for '{q}': expected {expected_pcode}, got {svc[0]}"
+        assert getattr(svc, "provider", None) == expected_prov, f"Failed provider for '{q}': expected {expected_prov}, got {getattr(svc, 'provider', None)}"
+
+
+def test_multicloud_service_major_inquiry_execution():
+    from cleo_agent import AIClient
+    import json
+
+    class NetworkingMockMCP:
+        def __init__(self):
+            self.last_sql = ""
+
+        def call_tool(self, name, args):
+            self.last_sql = args.get("queryInput", {}).get("sqlStatement", "")
+            csv_data = (
+                "time_val,usage_type,operation,usage_qty,cost\n"
+                "2026-08,Networking,Bytes,1000000,185400.50\n"
+                "2026-09,Networking,Bytes,1100000,214130.26\n"
+            )
+            return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+
+    client = AIClient("direct", {}, [])
+    mock_mcp = NetworkingMockMCP()
+    res = client._generate_impl([
+        {"role": "user", "content": "give me the data for networking"}
+    ], mcp=mock_mcp)
+
+    assert "MULTICLOUD_FOCUS_COST_AND_USAGE" in mock_mcp.last_sql
+    assert "provider = 'all'" not in mock_mcp.last_sql
+    assert "CloudHealth" in res
+    assert "Networking" in res
+    assert "185,400.50" in res or "214,130.26" in res
+
+
+def test_llm_data_curation_pass_and_filtering():
+    from cleo_agent import AIClient
+    from cleo_charts import filter_charts_to_requested_type
+    import json
+
+    # ── 1. Test filter_charts_to_requested_type ──
+    multi_chart_md = """### 📊 Top Services Breakdown
+
+| Service | Spend |
+|:---|:---|
+| EC2 | $1,000.00 |
+
+```chart
+{
+  "type": "bar",
+  "title": "Bar Breakdown",
+  "labels": ["EC2"],
+  "values": [1000]
+}
+```
+
+```chart
+{
+  "type": "line",
+  "title": "Trend Line",
+  "labels": ["Aug 2026", "Sep 2026"],
+  "datasets": [{"label": "EC2", "data": [900, 1000]}]
+}
+```
+
+```chart
+{
+  "type": "pie",
+  "title": "Pie Share",
+  "labels": ["EC2"],
+  "values": [1000]
+}
+```
+"""
+    # Filter to line chart only
+    filtered_line = filter_charts_to_requested_type(multi_chart_md, "only line chart is enough I think")
+    assert "Trend Line" in filtered_line
+    assert '"type": "line"' in filtered_line
+    assert "Bar Breakdown" not in filtered_line
+    assert "Pie Share" not in filtered_line
+    assert "| EC2 | $1,000.00 |" in filtered_line
+
+    # Filter to bar chart only
+    filtered_bar = filter_charts_to_requested_type(multi_chart_md, "bar chart only please")
+    assert "Bar Breakdown" in filtered_bar
+    assert "Trend Line" not in filtered_bar
+    assert "Pie Share" not in filtered_bar
+
+    # Deduplicate identical charts
+    duplicate_chart_md = """
+```chart
+{"type": "bar", "title": "A"}
+```
+```chart
+{"type": "bar", "title": "A"}
+```
+"""
+    deduped = filter_charts_to_requested_type(duplicate_chart_md, "show me the chart")
+    assert deduped.count("```chart") == 1
+
+    # ── 2. Test _is_curatable_data_response ──
+    client = AIClient("direct", {}, [])
+    assert client._is_curatable_data_response(multi_chart_md) is True
+    assert client._is_curatable_data_response("### 🧹 Cache Cleared Successfully\nAll caches purged.") is False
+    assert client._is_curatable_data_response("### 🤖 Active AI Engine & Model\nWe are using Qwen.") is False
+    assert client._is_curatable_data_response("Hello! How can I help you today?") is False
+
+    # ── 3. Test _verify_curated_response ──
+    raw_table = "### Spend\n\n| Svc | Cost |\n|:---|:---|\n| EC2 | $500 |\n\nTotal: $500"
+    good_curated = "### Curated Spend\n\n> ⚠️ Notice\n\n| Svc | Cost |\n|:---|:---|\n| EC2 | $500 |\n\nTotal: $500\n\n**💡 FinOps Insights:**\n- Optimize EC2"
+    bad_dropped_table = "### Curated Spend\n\nHere is your spend: EC2 was $500."
+    bad_refusal = "I cannot provide the requested spend data."
+    bad_chart_json = '### Spend\n\n| Svc | Cost |\n|:---|:---|\n| EC2 | $500 |\n\n```chart\n{malformed json\n```'
+
+    assert client._verify_curated_response(raw_table, good_curated, "show spend") is True
+    assert client._verify_curated_response(raw_table, bad_dropped_table, "show spend") is False
+    assert client._verify_curated_response(raw_table, bad_refusal, "show spend") is False
+    assert client._verify_curated_response(raw_table, bad_chart_json, "show spend") is False
+
+    # ── 4. Test _llm_curate_and_verify_data_response End-to-End with Mock LLM ──
+    class MockCuratingLLMClient(AIClient):
+        def __init__(self, curate_reply, should_fail=False):
+            super().__init__("ollama", {}, [])
+            self.curate_reply = curate_reply
+            self.should_fail = should_fail
+            self.call_count = 0
+
+        def _call_active_llm(self, msgs, stats_out=None, on_token=None):
+            self.call_count += 1
+            if self.should_fail:
+                return None, "Connection timeout"
+            if on_token:
+                on_token("curated_token")
+            return self.curate_reply, None
+
+    raw_2month_data = """### 📊 Top Services — Last 3 Months
+
+| Service | Jul 2026 | Aug 2026 | Total |
+|:---|:---|:---|:---|
+| EC2 | $1,000 | $1,200 | $2,200 |
+"""
+    expected_curated = """> ⚠️ **Data Coverage Notice**: You requested data for 3 months, but the CloudHealth billing dataset currently contains finalized records for 2 months (July 2026 & August 2026). September 2026 is pending ingestion.
+
+### 📊 Top Services — Last 3 Months
+
+| Service | Jul 2026 | Aug 2026 | Total |
+|:---|:---|:---|:---|
+| EC2 | $1,000 | $1,200 | $2,200 |
+
+**💡 FinOps Insights:**
+- **EC2 Growth**: EC2 increased by $200 (20.0%) month-over-month.
+"""
+    # Success case: LLM curation strips any stray coverage notice while keeping table and insights
+    curating_client = MockCuratingLLMClient(expected_curated)
+    curated_result = curating_client._llm_curate_and_verify_data_response(
+        user_query="give me the above data for last 3 months and provide MOM as well",
+        raw_response=raw_2month_data
+    )
+    assert curating_client.call_count == 1
+    assert "Data Coverage Notice" not in curated_result
+    assert "| EC2 | $1,000 | $1,200 | $2,200 |" in curated_result
+    assert "💡 FinOps Insights:" in curated_result
+
+    # Robustness case: Even if LLM returns narrative text or concise insights, the table is preserved
+    lossy_curated = "EC2 spend was $1,000 in July and $1,200 in August."
+    lossy_client = MockCuratingLLMClient(lossy_curated)
+    fallback_result = lossy_client._llm_curate_and_verify_data_response(
+        user_query="give me last 3 months",
+        raw_response=raw_2month_data
+    )
+    assert "| EC2 | $1,000 | $1,200 | $2,200 |" in fallback_result
+    assert "Data Coverage Notice" not in fallback_result
+
+    # Error case: LLM connection timeout -> table preserved, no coverage notice
+    error_client = MockCuratingLLMClient("", should_fail=True)
+    error_result = error_client._llm_curate_and_verify_data_response(
+        user_query="give me last 3 months",
+        raw_response=raw_2month_data
+    )
+    assert "| EC2 | $1,000 | $1,200 | $2,200 |" in error_result
+    assert "Data Coverage Notice" not in error_result
+
+    # Current month case: "this month" must NEVER produce a Data Coverage Notice
+    this_month_data = """### 📊 Top Cost Anomalies — This Month (Oct 2026)
+
+| Cloud | Account | Service | Impact |
+|:---|:---|:---|:---|
+| 🟠 AWS | Production | EC2 | +$1,200 |
+"""
+    month_client = MockCuratingLLMClient("- **EC2 Spike**: Investigating.")
+    month_result = month_client._llm_curate_and_verify_data_response(
+        user_query="Show top anomalies for this month",
+        raw_response=this_month_data
+    )
+    assert "Data Coverage Notice" not in month_result
+    assert "| 🟠 AWS | Production | EC2 | +$1,200 |" in month_result
+
+    # ── 5. Test AIClient.generate integration with curation pass ──
+    class MockMCP:
+        def call_tool(self, name, args):
+            csv_data = "month,provider,service,cost\n2026-07,AWS,EC2,1000\n2026-08,AWS,EC2,1200\n"
+            return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+
+    # When engine == "ollama", generate() invokes curation pass
+    client_gen = MockCuratingLLMClient(expected_curated)
+    gen_result = client_gen.generate([
+        {"role": "user", "content": "give me the above data for last 3 months and provide MOM as well"}
+    ], mcp=MockMCP())
+
+    assert "Data Coverage Notice" not in gen_result
+    assert "EC2" in gen_result
+    assert "💡 FinOps Insights:" in gen_result
+
+
+def test_top_20_categories_before_other_services_in_chart():
+    from cleo_agent import AIClient
+    import json, re
+
+    # 25 distinct services across 3 months
+    csv_lines = ["month,provider,service,cost"]
+    for idx in range(1, 26):
+        svc_name = f"Service_{idx:02d}"
+        for m in ["2026-07", "2026-08", "2026-09"]:
+            cost = 1000.0 * (26 - idx)  # Service_01 is highest cost, Service_25 is lowest
+            csv_lines.append(f"{m},Multi-Cloud,{svc_name},{cost}")
+    csv_data = "\n".join(csv_lines) + "\n"
+
+    class LargeServiceMockMCP:
+        def call_tool(self, name, args):
+            return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+
+    client = AIClient("direct", {}, [])
+    res = client._generate_impl([
+        {"role": "user", "content": "Top Multi-Cloud Services Spend Trend — Last 3 Months"}
+    ], mcp=LargeServiceMockMCP())
+
+    # Extract chart JSON
+    chart_match = re.search(r'```chart\s*\n(.*?)\n```', res, flags=re.DOTALL)
+    assert chart_match is not None, f"Expected chart in response:\n{res}"
+    chart_spec = json.loads(chart_match.group(1))
+
+    ds = chart_spec.get("datasets", [])
+    labels = [d["label"] for d in ds]
+
+    # At least 20 distinct services must be shown before "Other Services"
+    assert len(labels) == 21, f"Expected 20 top services + 1 Other Services dataset, got {len(labels)}: {labels}"
+    for idx in range(1, 21):
+        assert f"Service_{idx:02d}" in labels, f"Missing Service_{idx:02d} in chart datasets: {labels}"
+
+    assert "Other Services" in labels
+    assert labels[-1] == "Other Services"
+    # Services 21 through 25 should NOT be individual datasets
+    for idx in range(21, 26):
+        assert f"Service_{idx:02d}" not in labels
+
+
+def test_top_cloud_services_mom_variance_tables():
+    from cleo_agent import AIClient
+    import json
+
+    class MultiCloudMockMCP:
+        def call_tool(self, name, args):
+            sql = args.get("queryInput", {}).get("sqlStatement", "")
+            time_range = args.get("queryInput", {}).get("timeRange", {})
+            from_m = time_range.get("from", "")
+
+            # Single SUM(EffectiveCost) query for overall totals
+            if "SUM(EffectiveCost)" in sql and "GROUP BY" not in sql:
+                if from_m == "2026-09":
+                    return {"content": [{"text": json.dumps({"csv": "cost\n15000.0\n"})}]}
+                return {"content": [{"text": json.dumps({"csv": "cost\n18500.0\n"})}]}
+
+            if "last" in time_range:
+                csv_multi = (
+                    "month,provider,service,cost\n"
+                    "2026-09,AWS,Amazon EC2,8000.0\n"
+                    "2026-09,Azure,Virtual Machines,4000.0\n"
+                    "2026-09,Google Cloud,Compute Engine,3000.0\n"
+                    "2026-10,AWS,Amazon EC2,10000.0\n"
+                    "2026-10,Azure,Virtual Machines,5000.0\n"
+                    "2026-10,Google Cloud,Compute Engine,3500.0\n"
+                )
+                return {"content": [{"text": json.dumps({"csv": csv_multi})}]}
+
+            # Previous month query
+            if from_m == "2026-09":
+                csv_prev = (
+                    "provider,service,cost\n"
+                    "AWS,Amazon EC2,8000.0\n"
+                    "Azure,Virtual Machines,4000.0\n"
+                    "Google Cloud,Compute Engine,3000.0\n"
+                )
+                return {"content": [{"text": json.dumps({"csv": csv_prev})}]}
+
+            # Current month query
+            csv_cur = (
+                "month,provider,service,cost\n"
+                "2026-10,AWS,Amazon EC2,10000.0\n"
+                "2026-10,Azure,Virtual Machines,5000.0\n"
+                "2026-10,Google Cloud,Compute Engine,3500.0\n"
+            )
+            return {"content": [{"text": json.dumps({"csv": csv_cur})}]}
+
+    client = AIClient("direct", {}, [])
+
+    # 1. Top cloud services across AWS, Azure, and GCP this month
+    res1 = client._generate_impl([
+        {"role": "user", "content": "Show our top cloud services across AWS, Azure, and GCP this month"}
+    ], mcp=MultiCloudMockMCP())
+    assert "Previous Month" in res1
+    assert "MTD Cost" in res1
+    assert "Month-End Forecast" in res1
+    assert "MoM Variance ($)" in res1
+    assert "MoM Variance (%)" in res1
+    assert "Total Multi-Cloud Spend" in res1
+
+    # 2. Welcome card prompt with explicit "with MoM variance"
+    res2 = client._generate_impl([
+        {"role": "user", "content": "Show our top cloud services across AWS, Azure, and GCP this month with MoM variance"}
+    ], mcp=MultiCloudMockMCP())
+    assert "Previous Month" in res2
+    assert "MTD Cost" in res2
+    assert "Month-End Forecast" in res2
+    assert "MoM Variance ($)" in res2
+    assert "MoM Variance (%)" in res2
+    assert "Total Multi-Cloud Spend" in res2
+
+    # 3. Section 3a: Service spend comparison across all clouds
+    res3 = client._generate_impl([
+        {"role": "user", "content": "Compare previous month service level cost with the current month projected cost across all clouds"}
+    ], mcp=MultiCloudMockMCP())
+    assert "Previous Month" in res3
+    assert "MTD Cost" in res3
+    assert "Month-End Forecast" in res3
+    assert "MoM Variance ($)" in res3
+    assert "MoM Variance (%)" in res3
+    assert "$8,000.00" in res3
+
+    # 4. Section 3a with limit starvation: first query returns only current month, triggering dedicated query
+    class StarvedMockMCP:
+        def __init__(self):
+            self.dedicated_called = False
+
+        def call_tool(self, name, args):
+            time_range = args.get("queryInput", {}).get("timeRange", {})
+            if time_range.get("from") == "2026-09":
+                self.dedicated_called = True
+                csv_prev = "provider,service,cost\nAWS,Amazon EC2,8500.0\nAzure,Virtual Machines,4200.0\n"
+                return {"content": [{"text": json.dumps({"csv": csv_prev})}]}
+            # When timeRange is {"last": 2, ...}, simulate all 200 rows being 2026-10
+            csv_cur_only = "month,provider,service,cost\n2026-10,AWS,Amazon EC2,10000.0\n2026-10,Azure,Virtual Machines,5000.0\n"
+            return {"content": [{"text": json.dumps({"csv": csv_cur_only})}]}
+
+    starved_mcp = StarvedMockMCP()
+    res4 = client._generate_impl([
+        {"role": "user", "content": "Compare previous month service level cost with the current month projected cost across all clouds"}
+    ], mcp=starved_mcp)
+    assert starved_mcp.dedicated_called is True
+    assert "$8,500.00" in res4
+    assert "$4,200.00" in res4
+
+    # 5. Channel Customers current-month query with MoM variance
+    class CustMockMCP:
+        def call_tool(self, name, args):
+            if name in ("list_orgs", "list_channel_customers"):
+                return {"content": [{"text": json.dumps([{"name": "Acme Corp", "customerId": "crn:123"}])}]}
+            csv_data = "month,cost\n2026-09,10000.0\n2026-10,12000.0\n"
+            return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+
+    res5 = client._generate_impl([
+        {"role": "user", "content": "Find channel customers and show multi-cloud spend this month"}
+    ], mcp=CustMockMCP())
+    assert "Previous Month" in res5
+    assert "MTD Spend" in res5
+    assert "Month-End Forecast" in res5
+    assert "MoM Variance ($)" in res5
+    assert "MoM Variance (%)" in res5
+    assert "Total Channel Customer Spend" in res5
+    assert "$10,000.00" in res5
+
+    # 6. Azure Spend chip prompt with MoM variance
+    res6 = client._generate_impl([
+        {"role": "user", "content": "Show our top Azure services this month with MoM variance"}
+    ], mcp=MultiCloudMockMCP())
+    assert "Previous Month" in res6
+    assert "MTD Cost" in res6
+    assert "Month-End Forecast" in res6
+    assert "MoM Variance ($)" in res6
+    assert "MoM Variance (%)" in res6
+
+    # 7. GCP Spend chip prompt with MoM variance
+    res7 = client._generate_impl([
+        {"role": "user", "content": "Show our top GCP services this month with MoM variance"}
+    ], mcp=MultiCloudMockMCP())
+    assert "Previous Month" in res7
+    assert "MTD Cost" in res7
+    assert "Month-End Forecast" in res7
+    assert "MoM Variance ($)" in res7
+    assert "MoM Variance (%)" in res7
+
+
 if __name__ == "__main__":
     test_mtd_forecast_generation()
     test_unconfigure_and_clear_token()
@@ -1824,6 +2277,61 @@ if __name__ == "__main__":
     test_estimate_token_count()
     test_normalize_ollama_url()
     test_detect_system_info()
+def test_waterfall_chart_reformat_and_mom_parsing():
+    from cleo_charts import _detect_chart_type, _parse_table_data_from_assistant_markdown
+    from cleo_agent import AIClient
+
+    # 1. Detection of typos and variations
+    assert _detect_chart_type("give me the waterfal chart for the about mom cost") == "waterfall"
+    assert _detect_chart_type("give me the waterfal chart for the above mom cost") == "waterfall"
+    assert _detect_chart_type("show as a water fall") == "waterfall"
+    assert _detect_chart_type("variance chart please") == "waterfall"
+    assert _detect_chart_type("bridge chart of spend") == "waterfall"
+
+    # 2. Parsing MoM variance table
+    table_text = (
+        "### 📊 CloudHealth Multi-Cloud Spend Analysis: Top Services Across All Clouds — Month 2026-10\n\n"
+        "| Cloud Provider | Service Category | Previous Month (2026-09) | MTD Cost (2026-10) | Month-End Forecast (2026-10) | MoM Variance ($) | MoM Variance (%) |\n"
+        "|:---|:---|:---|:---|:---|:---|:---|\n"
+        "| Google Cloud | Compute Engine | $2,737,347.94 | $724,243.36 | **$2,041,049.46** | -$696,298.48 | -25.4% 🔻 |\n"
+        "| Azure | Virtual Machines | $1,461,714.38 | $424,561.85 | **$1,196,492.50** | -$265,221.88 | -18.1% 🔻 |\n"
+        "| AWS | Compute Savings Plans | $22,140.25 | $348,785.66 | **$982,941.41** | +$960,801.16 | +4339.6% 🔺 |\n\n"
+        "| **Total Multi-Cloud Spend** | | **$13,346,943.41** | **$3,627,790.17** | **$10,223,772.30** | **-$3,123,171.11** | **-23.4% 🔻** |\n"
+    )
+    parsed = _parse_table_data_from_assistant_markdown(table_text)
+    assert parsed is not None
+    assert parsed["is_mom_table"] is True
+    assert parsed["prev_total"] == 13346943.41
+    assert parsed["forecast_total"] == 10223772.30
+    assert parsed["variance_total"] == -3123171.11
+    assert len(parsed["mom_rows"]) == 3
+    assert parsed["mom_rows"][0]["label"] == "Google Cloud Compute Engine"
+    assert parsed["mom_rows"][0]["variance"] == -696298.48
+    assert parsed["mom_rows"][2]["label"] == "AWS Compute Savings Plans"
+    assert parsed["mom_rows"][2]["variance"] == 960801.16
+
+    # 3. Agent Section 0d reformat execution from chat history
+    class NoOpMCP:
+        def call_tool(self, name, args):
+            raise AssertionError(f"Should not call any MCP tool for pure reformat: {name}")
+
+    client = AIClient("direct", {}, [])
+    messages = [
+        {"role": "user", "content": "Show our top cloud services across AWS, Azure, and GCP this month with MoM variance"},
+        {"role": "assistant", "content": table_text},
+        {"role": "user", "content": "give me the waterfal chart for the above MoM cost"}
+    ]
+    res = client._generate_impl(messages, mcp=NoOpMCP())
+    assert "```chart" in res
+    assert '"type": "waterfall"' in res
+    assert "Previous Month (2026-09)" in res
+    assert "Month-End Forecast (2026-10)" in res
+    assert "AWS Compute Savings Plans" in res
+    assert "Google Cloud Compute Engine" in res
+    assert "Other Services Net Variance" in res
+
+
+if __name__ == "__main__":
     test_chart_predicates()
     test_prune_messages_to_context_budget()
     test_multi_month_service_breakdown_parsing()
@@ -1846,7 +2354,532 @@ if __name__ == "__main__":
     test_no_insights_requested_predicate_and_stripping()
     test_no_insights_needed_agent_execution()
     test_multimonth_service_mom_and_single_chart()
+    test_cloud_support_charges_ytd_mom()
+    test_emr_and_networking_mappings_and_intent()
+    test_multicloud_service_major_inquiry_execution()
+    test_llm_data_curation_pass_and_filtering()
+    test_top_20_categories_before_other_services_in_chart()
+    test_top_cloud_services_mom_variance_tables()
+    test_waterfall_chart_reformat_and_mom_parsing()
+    test_unique_instance_detection_and_consolidation()
+    test_unique_instance_agent_handlers()
     print("All unit tests passed successfully!")
 
+
+def test_unique_instance_detection_and_consolidation():
+    from cleo_query import is_unique_instance_request, reconcile_and_consolidate_breakdown
+
+    # 1. Detection of unique instance / resource count prompts
+    q1 = "We should be able to calculate the number of unique instances per month or day here"
+    assert is_unique_instance_request(q1) is True
+
+    q2 = "give me the resource count of ec2 instances by region for last 6months"
+    assert is_unique_instance_request(q2) is True
+
+    q3 = "how many unique instances per day"
+    assert is_unique_instance_request(q3) is True
+
+    q4 = "calculate unique instances per month or day"
+    assert is_unique_instance_request(q4) is True
+
+    q5 = "show distinct instances of ec2"
+    assert is_unique_instance_request(q5) is True
+
+    # Spend queries should not trigger unique instance mode
+    assert is_unique_instance_request("What did we spend on EC2 last month?") is False
+    assert is_unique_instance_request("Show top AWS services by cost") is False
+
+    # 2. Limit starvation consolidation logic
+    # Scenario A: No starvation, rows sum to total
+    rows_exact = [("AWS", "EC2", 80.0), ("AWS", "S3", 20.0)]
+    rec_exact, other_c, notice = reconcile_and_consolidate_breakdown(rows_exact, 100.0, limit=10)
+    assert len(rec_exact) == 2
+    assert other_c == 0.0
+    assert notice == ""
+
+    # Scenario B: Display limit truncation (tail spend omitted)
+    rows_trunc = [("AWS", f"Service_{i}", 10.0) for i in range(15)]
+    true_total = 250.0  # Top 10 sum to 100.0, remaining 150.0 is tail spend
+    rec_trunc, other_c, notice = reconcile_and_consolidate_breakdown(rows_trunc, true_total, limit=10, other_label="Other Services (Consolidated)")
+    assert len(rec_trunc) == 11
+    assert rec_trunc[-1][1] == "Other Services (Consolidated)"
+    assert rec_trunc[-1][2] == 150.0
+    assert other_c == 150.0
+    assert "Consolidation & Query Limit Notice" in notice
+    assert "$150.00" in notice
+    # Verify 100% financial reconciliation
+    assert sum(r[2] for r in rec_trunc) == true_total
+
+    # Scenario C: Dict rows consolidation
+    dict_rows = [{"service": f"Svc_{i}", "cost": 10.0} for i in range(12)]
+    rec_dict, oth_d, notice_d = reconcile_and_consolidate_breakdown(dict_rows, 200.0, limit=10)
+    assert len(rec_dict) == 11
+    assert rec_dict[-1]["service"] == "Other (Consolidated)"
+    assert rec_dict[-1]["cost"] == 100.0
+    assert sum(r["cost"] for r in rec_dict) == 200.0
+
+
+def test_unique_instance_agent_handlers():
+    import json
+    class MockUniqueMCP:
+        def call_tool(self, name, args):
+            if name != "execute_datasource_query":
+                raise ValueError(f"Unexpected tool: {name}")
+            sql = args["queryInput"]["sqlStatement"]
+            if "GROUP BY timeInterval_Month" in sql:
+                csv_data = "month,unique_instances,cost\n2026-08,3148460,308016.92\n2026-09,3284818,302298.53\n2026-10,1113382,259577.89\n"
+            elif "GROUP BY TimeInterval_Day" in sql:
+                csv_data = "day,unique_instances,cost\n2026-10-10,123379,9410.20\n2026-10-09,121239,9350.10\n"
+            elif "GROUP BY product_region" in sql:
+                csv_data = "region,unique_instances,cost\nus-east-1,16950210,1428460.10\nus-east-2,329812,17458.07\nus-west-2,49611,1452.12\n"
+            else:
+                csv_data = "col,cost\nval,100.0\n"
+            return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+
+    from cleo_agent import AIClient
+    client = AIClient("direct", {}, [])
+    
+    # 1. Test "We should be able to calculate the number of unique instances per month or day here"
+    res1 = client._generate_impl(
+        [{"role": "user", "content": "We should be able to calculate the number of unique instances per month or day here"}],
+        mcp=MockUniqueMCP()
+    )
+    assert "CloudHealth Compute Fleet Analysis: EC2 Unique Instances per Month & Daily Concurrency" in res1
+    assert "Peak Daily Active Fleet" in res1
+    assert "123,379" in res1
+    assert "Monthly Unique Active Instances Trend" in res1
+    assert "3,284,818" in res1
+    assert "Trailing Daily Active Fleet Concurrency" in res1
+    assert "Regional Fleet Distribution" in res1
+    assert "Ephemeral Churn vs Concurrent Capacity" in res1
+
+    # 2. Test "give me the resource count of ec2 instances by region for last 6months"
+    class MockRegionCountMCP:
+        def call_tool(self, name, args):
+            sql = args["queryInput"]["sqlStatement"]
+            assert "COUNT(DISTINCT lineItem_ResourceId)" in sql
+            csv_data = "region,instance_count,cost\nus-east-1,16950210,1428460.10\nus-east-2,329812,17458.07\nus-west-2,49611,1452.12\n"
+            return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+
+    res2 = client._generate_impl(
+        [{"role": "user", "content": "give me the resource count of ec2 instances by region for last 6months"}],
+        mcp=MockRegionCountMCP()
+    )
+    assert "CloudHealth Resource Count Analysis" in res2
+    assert "Unique Instances" in res2
+    assert "% of Fleet" in res2
+    assert "16,950,210" in res2
+    assert "97.8%" in res2
+    assert "$1,428,460.10" in res2
+    assert "Total Analyzed Fleet" in res2
+    assert "17,329,633" in res2
+
+
+def test_multi_service_unique_resource_profiles_and_requests():
+    from cleo_query import is_unique_instance_request, resolve_service_resource_profile
+
+    # 1. Resource request detection across all cloud services
+    assert is_unique_instance_request("calculate the number of unique instances per month or day here") is True
+    assert is_unique_instance_request("how many unique databases per month") is True
+    assert is_unique_instance_request("calculate unique s3 buckets per day") is True
+    assert is_unique_instance_request("how many unique ebs volumes") is True
+    assert is_unique_instance_request("how many unique lambda functions per month") is True
+    assert is_unique_instance_request("dynamodb tables count by month") is True
+    assert is_unique_instance_request("unique Azure VMs per month") is True
+    assert is_unique_instance_request("how many unique GCP VM instances") is True
+
+    # Negative checks (financial spend/cost queries shouldn't trigger unique resource fleet mode)
+    assert is_unique_instance_request("what is the ec2 cost for last month") is False
+    assert is_unique_instance_request("how much spend on s3") is False
+
+    # 2. AWS Profile Resolution
+    prof_rds = resolve_service_resource_profile("rds databases per month")
+    assert prof_rds["pcode"] == "AmazonRDS"
+    assert prof_rds["service_disp"] == "Amazon RDS"
+    assert prof_rds["plural_noun"] == "Database Instances"
+    assert "lineItem_ProductCode = 'AmazonRDS'" in prof_rds["cur_where"]
+
+    prof_s3 = resolve_service_resource_profile("s3 buckets count")
+    assert prof_s3["pcode"] == "AmazonS3"
+    assert prof_s3["service_disp"] == "Amazon S3"
+    assert prof_s3["plural_noun"] == "Buckets"
+
+    prof_ebs = resolve_service_resource_profile("ebs volumes count")
+    assert prof_ebs["pcode"] == "AmazonEC2_EBS"
+    assert prof_ebs["plural_noun"] == "EBS Volumes"
+
+    prof_lambda = resolve_service_resource_profile("lambda functions count")
+    assert prof_lambda["pcode"] == "AWSLambda"
+    assert prof_lambda["plural_noun"] == "Lambda Functions"
+
+    prof_dynamo = resolve_service_resource_profile("dynamodb tables count")
+    assert prof_dynamo["pcode"] == "AmazonDynamoDB"
+    assert prof_dynamo["plural_noun"] == "DynamoDB Tables"
+
+    # 3. Azure & GCP Profile Resolution
+    prof_az_vm = resolve_service_resource_profile("unique azure vms per month")
+    assert prof_az_vm["service_disp"] == "Azure Virtual Machines"
+    assert prof_az_vm["plural_noun"] == "Virtual Machines"
+
+    prof_gcp_vm = resolve_service_resource_profile("unique gcp vm instances per month")
+    assert prof_gcp_vm["service_disp"] == "Google Compute Engine"
+    assert prof_gcp_vm["plural_noun"] == "VM Instances"
+
+    prof_az_blob = resolve_service_resource_profile("azure blob storage buckets")
+    assert prof_az_blob["service_disp"] == "Azure Blob Storage"
+    assert prof_az_blob["plural_noun"] == "Storage Containers"
+
+    prof_gcp_storage = resolve_service_resource_profile("google cloud storage buckets")
+    assert prof_gcp_storage["service_disp"] == "Google Cloud Storage"
+    assert prof_gcp_storage["plural_noun"] == "Buckets"
+
+
+def test_usagetype_starvation_reconciliation():
+    from cleo_query import reconcile_and_consolidate_breakdown
+
+    # Test dict rows with usage_type, operation, description, qty, cost
+    ut_rows = [
+        {"usage_type": f"USW2-BoxUsage:{i}", "operation": "RunInstances", "description": f"Instance {i}", "qty": 100.0, "cost": 50.0}
+        for i in range(25)
+    ]
+    true_spend = 2000.0  # Top 15 sum to 750.0, true total is 2000.0, so remainder is 1250.0
+    rec_ut, oth_cost, notice = reconcile_and_consolidate_breakdown(
+        ut_rows, true_spend, limit=15, query_limit=25, other_label="Other Usage Types (Consolidated)"
+    )
+    assert len(rec_ut) == 16
+    assert rec_ut[-1]["usage_type"] == "Other Usage Types (Consolidated)"
+    assert rec_ut[-1]["cost"] == 1250.0
+    assert rec_ut[-1]["operation"] == "-"
+    assert rec_ut[-1]["qty"] == 0.0
+    assert oth_cost == 1250.0
+    assert "Consolidation & Query Limit Notice" in notice
+    assert "$1,250.00" in notice
+    assert "reached the query limit (25)" in notice
+    assert sum(r["cost"] for r in rec_ut) == true_spend
+
+
+def test_agent_multi_service_unique_fleet_and_usagetype():
+    import json
+    from cleo_agent import AIClient
+
+    # 1. RDS Unique Database Instances
+    class MockRDSUniqueMCP:
+        def __init__(self):
+            self.queries = []
+        def call_tool(self, name, args):
+            sql = args["queryInput"]["sqlStatement"]
+            self.queries.append(sql)
+            if "GROUP BY timeInterval_Month" in sql:
+                csv_data = "month,unique_instances,cost\n2026-08,42,12000.00\n2026-09,45,12500.00\n2026-10,48,13000.00\n"
+            elif "GROUP BY TimeInterval_Day" in sql:
+                csv_data = "day,unique_instances,cost\n2026-10-10,48,430.00\n2026-10-09,47,425.00\n"
+            elif "GROUP BY product_region" in sql:
+                csv_data = "region,unique_instances,cost\nus-east-1,35,9500.00\nus-west-2,13,3500.00\n"
+            else:
+                csv_data = "col,cost\nval,100.0\n"
+            return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+
+    client = AIClient("direct", {}, [])
+    mcp_rds = MockRDSUniqueMCP()
+    res_rds = client._generate_impl(
+        [{"role": "user", "content": "how many unique RDS databases per month or day here"}],
+        mcp=mcp_rds
+    )
+    assert any("lineItem_ProductCode = 'AmazonRDS'" in q for q in mcp_rds.queries)
+    assert "CloudHealth Amazon RDS Fleet Analysis: Unique Database Instances per Month & Daily Concurrency" in res_rds
+    assert "Database Instances" in res_rds
+    assert "Peak Daily Active Fleet" in res_rds
+    assert "48" in res_rds
+
+    # 2. S3 Unique Buckets
+    class MockS3UniqueMCP:
+        def __init__(self):
+            self.queries = []
+        def call_tool(self, name, args):
+            sql = args["queryInput"]["sqlStatement"]
+            self.queries.append(sql)
+            if "GROUP BY timeInterval_Month" in sql:
+                csv_data = "month,unique_instances,cost\n2026-08,120,5000.00\n2026-09,122,5100.00\n2026-10,125,5200.00\n"
+            elif "GROUP BY TimeInterval_Day" in sql:
+                csv_data = "day,unique_instances,cost\n2026-10-10,125,170.00\n2026-10-09,124,168.00\n"
+            elif "GROUP BY product_region" in sql:
+                csv_data = "region,unique_instances,cost\nus-east-1,90,3800.00\nus-west-2,35,1400.00\n"
+            else:
+                csv_data = "col,cost\nval,100.0\n"
+            return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+
+    mcp_s3 = MockS3UniqueMCP()
+    res_s3 = client._generate_impl(
+        [{"role": "user", "content": "calculate unique S3 buckets per month or day here"}],
+        mcp=mcp_s3
+    )
+    assert any("lineItem_ProductCode = 'AmazonS3'" in q for q in mcp_s3.queries)
+    assert "CloudHealth Amazon S3 Fleet Analysis: Unique Buckets per Month & Daily Concurrency" in res_s3
+    assert "Buckets" in res_s3
+
+    # 3. Usage Type breakdown with starvation and consolidation
+    class MockUTMCP:
+        def call_tool(self, name, args):
+            sql = args["queryInput"]["sqlStatement"]
+            if "SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR" in sql and "GROUP BY" not in sql:
+                # True total cost query
+                return {"content": [{"text": json.dumps({"csv": "cost\n15000.00\n"})}]}
+            elif "lineItem_UsageType AS usage_type" in sql:
+                # Granular usage items - return 100 items (query limit)
+                lines = ["usage_type,operation,description,usage_qty,cost"]
+                for i in range(100):
+                    lines.append(f"USW2-BoxUsage:t3.large-{i},RunInstances,T3 Large Instance {i},720.0,100.0")
+                return {"content": [{"text": json.dumps({"csv": "\n".join(lines)})}]}
+            return {"content": [{"text": json.dumps({"csv": "cost\n0.0\n"})}]}
+
+    mcp_ut = MockUTMCP()
+    res_ut = client._generate_impl(
+        [{"role": "user", "content": "what is RDS usage breakdown by usagetype"}],
+        mcp=mcp_ut
+    )
+    assert "Granular UsageType Breakdown" in res_ut
+    assert "Other Usage Types (Consolidated)" in res_ut
+    assert "Consolidation & Query Limit Notice" in res_ut
+    assert "$15,000.00" in res_ut
+    assert "100.0%" in res_ut
+
+
+def test_azure_vm_count_by_lease_type_and_instance_type():
+    import json
+    from cleo_agent import AIClient
+    from cleo_query import is_unique_instance_request
+
+    # 1. Verify is_unique_instance_request matches "vm count"
+    prompt = "Give me the last month Azure VM count and break it down by Lease type and instance type"
+    assert is_unique_instance_request(prompt) is True
+
+    # 2. Mock MCP for Azure AZURE_COST_USAGE lease type and instance type query
+    class MockAzureLeaseMCP:
+        def __init__(self):
+            self.queries = []
+        def call_tool(self, name, args):
+            sql = args["queryInput"]["sqlStatement"]
+            self.queries.append(sql)
+            assert "FROM AZURE_COST_USAGE" in sql
+            assert "FROM AWS_CUR" not in sql
+            assert "MeterSubCategory" in sql
+            assert "MeterName" in sql
+            assert "PricingModel" in sql
+            assert "COUNT(DISTINCT ResourceId)" in sql
+
+            csv_data = (
+                "month,pricing_category,meter_subcategory,meter_name,vm_count,cost,usage_amount\n"
+                "2026-09,OnDemand,Dsv5 Series,D16s v5,83,47833.82,60220.6\n"
+                "2026-09,Reservation,Standard_M128s VM,Compute Hours,13,455691.44,52722.0\n"
+                "2026-09,OnDemand,Standard_M128s VM,Compute Hours,13,455691.44,52722.0\n"
+                "2026-09,Spot,DSv2 Series VM,DS4 v2 Spot,48324,4283.68,42836.7\n"
+            )
+            return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+
+    mcp = MockAzureLeaseMCP()
+    client = AIClient("direct", {}, [])
+    res = client._generate_impl([{"role": "user", "content": prompt}], mcp=mcp)
+
+    assert "AZURE_COST_USAGE" in res
+    assert "AWS_CUR" not in res
+    assert "Azure Virtual Machines" in res
+    assert "On-Demand (Pay-As-You-Go)" in res
+    assert "Azure Reservations / Savings Plans" in res
+    assert "Spot VMs" in res
+    assert "D16s v5 (Dsv5 Series)" in res
+    assert "Standard_M128s VM" in res
+    assert "DS4 v2 Spot (DSv2 Series VM)" in res
+    assert "Active VMs" in res
+    assert "Azure Hybrid Benefit" in res
+    assert "*Source: AZURE_COST_USAGE via CloudHealth FlexReports.*" in res
+
+
+def test_azure_and_gcp_instance_type_not_hijacked_by_aws_ec2_or_rds():
+    import json
+    from cleo_agent import AIClient
+
+    class MockMultiCloudMCP:
+        def __init__(self):
+            self.queries = []
+        def call_tool(self, name, args):
+            if name == "execute_datasource_query":
+                sql = args["queryInput"]["sqlStatement"]
+                self.queries.append(sql)
+                csv_data = "month,provider,dimension,val\n2026-09,Cloud,Type_A,500.00\n"
+                return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+            return {"content": [{"text": json.dumps({"csv": ""})}]}
+
+    client = AIClient("direct", {}, [])
+
+    # 1. Azure VM by instance type should query MULTICLOUD_FOCUS_COST_AND_USAGE or AZURE_FOCUS_COST_AND_USAGE, NEVER AWS_EC2_COST_AND_USAGE
+    mcp_az = MockMultiCloudMCP()
+    res_az = client._generate_impl([{"role": "user", "content": "Give me Azure VM spend by instance type"}], mcp=mcp_az)
+    assert any("provider = 'Azure'" in q for q in mcp_az.queries)
+    assert not any("AWS_EC2_COST_AND_USAGE" in q for q in mcp_az.queries)
+    assert not any("FROM AWS_CUR" in q for q in mcp_az.queries)
+    assert "EC2" not in res_az or "EC2" in "AWS_EC2_COST_AND_USAGE"
+
+    # 2. GCP Compute Engine by instance type should NEVER query AWS_EC2_COST_AND_USAGE
+    mcp_gcp = MockMultiCloudMCP()
+    res_gcp = client._generate_impl([{"role": "user", "content": "Give me GCP Compute Engine spend by instance type"}], mcp=mcp_gcp)
+    assert any("provider IN ('GCP', 'Google Cloud')" in q for q in mcp_gcp.queries)
+    assert not any("AWS_EC2_COST_AND_USAGE" in q for q in mcp_gcp.queries)
+    assert not any("FROM AWS_CUR" in q for q in mcp_gcp.queries)
+
+
+def test_newchat_routes_and_ui():
+    """Verify that cleo_server redirects / to /newChat and serves cleo_ui for /newChat, /newchat, /chat/newChat, and /chat/newchat."""
+    import os
+    from starlette.testclient import TestClient
+    from cleo_server import app
+
+    client = TestClient(app)
+
+    # 1. Verify / and /chat redirect to /newChat
+    for root_path in ["/", "/chat"]:
+        resp_redirect = client.get(root_path, follow_redirects=False)
+        assert resp_redirect.status_code == 307
+        assert resp_redirect.headers.get("location") == "/newChat"
+
+        resp_followed = client.get(root_path, follow_redirects=True)
+        assert resp_followed.status_code == 200
+        assert "<!DOCTYPE html>" in resp_followed.text or "<html" in resp_followed.text
+
+    # 2. Verify direct /newChat endpoints
+    for path in ["/newChat", "/newchat", "/chat/newChat", "/chat/newchat"]:
+        resp = client.get(path)
+        assert resp.status_code == 200, f"Expected 200 for {path}, got {resp.status_code}"
+        assert "<!DOCTYPE html>" in resp.text or "<html" in resp.text
+
+    # Verify cleo_ui.html contains /newChat path handling in updateURLForSession
+    ui_path = os.path.join(os.path.dirname(__file__), "cleo_ui.html")
+    with open(ui_path, "r", encoding="utf-8") as f:
+        ui_content = f.read()
+
+    assert "targetPath = '/newChat'" in ui_content
+    assert "newchat" in ui_content
+
+
+def test_home_page_landing_hero_and_navigation():
+    """Verify that Cleo UI defines and renders the full Cleo FinOps Command Center landing page on home page navigation."""
+    import os
+
+    ui_path = os.path.join(os.path.dirname(__file__), "cleo_ui.html")
+    with open(ui_path, "r", encoding="utf-8") as f:
+        ui = f.read()
+
+    # 1. Verify brand-link has goToLandingPage navigation
+    assert 'onclick="goToLandingPage()"' in ui
+    assert 'function goToLandingPage()' in ui
+
+    # 2. Verify getWelcomeHeroHTML is defined with Command Center title, desc, and cards
+    assert 'function getWelcomeHeroHTML()' in ui
+    assert 'Cleo FinOps Command Center' in ui
+    assert 'CloudHealth Autonomous Intelligence & Waste Reclamation' in ui
+    assert 'Directly connected to live CloudHealth FlexReports' in ui
+
+    # 3. Verify all 4 action cards exist
+    assert 'Top Cloud Services (All Clouds)' in ui
+    assert 'id="card-channel-customers"' in ui
+    assert 'Channel Customers' in ui
+    assert 'id="card-service-comparison"' in ui
+    assert 'Lundbeck Service Comparison' in ui
+    assert 'Waste Reclamation' in ui
+
+    # 4. Verify newSession sets stream.innerHTML using getWelcomeHeroHTML()
+    assert 'stream.innerHTML = getWelcomeHeroHTML();' in ui
+
+
+def test_coverage_type_instance_count_routing():
+    """Verify that 'give me the RDS instance count by coverage type' routes to coverage / lease breakdown with On-Demand, RI, and Savings Plans."""
+    from cleo_query import _deterministic_understand_query
+    from cleo_agent import AIClient
+
+    # 1. Deterministic intent classification
+    intent = _deterministic_understand_query([{"role": "user", "content": "give me the RDS instance count by coverage type"}])
+    assert intent.get("service") == "AmazonRDS"
+    assert "lease_type" in (intent.get("breakdowns") or [])
+    assert intent.get("target_dimension") == "LeaseType"
+    assert intent.get("metric_type") == "quantity"
+
+    # 2. Mock MCP returning realistic AWS_CUR coverage rows
+    mock_csv = (
+        '"timeInterval_Month","pricing_term","lineItem_LineItemType","product_instanceType","vm_count","cost","usage_amount"\n'
+        '"2026-10","OnDemand","Usage","db.m5.large","104","5245.48","1000.0"\n'
+        '"2026-10","Reserved","DiscountedUsage","db.r6g.2xlarge","171","0.0","2000.0"\n'
+        '"2026-10","Reserved","RIFee","","1","7558.81","0.0"\n'
+        '"2026-10","OnDemand","SavingsPlanCoveredUsage","db.r7g.2xlarge","40","3011.61","500.0"\n'
+    )
+
+    class MockCoverageMCP:
+        def __init__(self):
+            self.queries = []
+
+        def call_tool(self, name, args):
+            sql = args.get("queryInput", {}).get("sqlStatement", "")
+            self.queries.append(sql)
+            import json
+            return {"content": [{"text": json.dumps({"csv": mock_csv})}]}
+
+    mcp = MockCoverageMCP()
+    client = AIClient("direct", {}, [])
+    resp = client._generate_impl([{"role": "user", "content": "give me the RDS instance count by coverage type"}], mcp=mcp)
+
+    # 3. Verify query targeted AWS_CUR with pricing_term and lineItem_LineItemType
+    assert any("FROM AWS_CUR" in q for q in mcp.queries)
+    assert any("pricing_term" in q for q in mcp.queries)
+    assert any("lineItem_LineItemType" in q for q in mcp.queries)
+    assert any("AmazonRDS" in q for q in mcp.queries)
+
+    # 4. Verify markdown response output contains coverage breakdown and counts
+    assert "Coverage Type" in resp or "Lease Type" in resp
+    assert "On-Demand" in resp
+    assert "Reserved Instances (RI)" in resp
+    assert "Savings Plans" in resp
+    assert "Commitment Coverage" in resp
+    assert "171" in resp
+    assert "104" in resp
+    assert "40" in resp
+
+
+def test_channel_customers_card_visibility_direct_vs_partner():
+    """Verify that Channel Customers card and chip are hidden from the first paint for direct customers, and visible for partner accounts."""
+    import cleo_server
+    from starlette.testclient import TestClient
+
+    # 1. Direct customer scenario (_tools without list_channel_customers)
+    original_tools = list(cleo_server._tools)
+    try:
+        cleo_server._tools = [
+            {"name": "list_standard_datasources"},
+            {"name": "list_orgs"},
+            {"name": "execute_datasource_query"}
+        ]
+        client = TestClient(cleo_server.app)
+        resp = client.get("/newChat")
+        assert resp.status_code == 200
+        html = resp.text
+        # Must inject window.hasChannelCustomersTool = false
+        assert "window.hasChannelCustomersTool = false;" in html
+        # card-channel-customers and chip-channel-customers must be hidden from initial HTML
+        assert 'id="card-channel-customers" style="display: none;"' in html
+        assert 'id="chip-channel-customers" style="display: none;"' in html
+
+        # 2. Partner account scenario (_tools with list_channel_customers)
+        cleo_server._tools = [
+            {"name": "list_standard_datasources"},
+            {"name": "list_channel_customers"},
+            {"name": "execute_datasource_query"}
+        ]
+        resp_partner = client.get("/newChat")
+        assert resp_partner.status_code == 200
+        html_partner = resp_partner.text
+        # Must inject window.hasChannelCustomersTool = true
+        assert "window.hasChannelCustomersTool = true;" in html_partner
+        # card-channel-customers and chip-channel-customers must NOT have display: none
+        assert 'id="card-channel-customers" style="display: none;"' not in html_partner
+        assert 'id="chip-channel-customers" style="display: none;"' not in html_partner
+    finally:
+        cleo_server._tools = original_tools
 
 

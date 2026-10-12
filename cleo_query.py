@@ -105,20 +105,23 @@ COLUMN_SYNONYMS: Dict[str, Dict[str, Any]] = {
         "label": "Pricing Category / Model",
         "synonyms": [
             "pricing category", "pricing model", "commercial model", "contract type",
-            "pricing type", "charge model", "pricing categories", "pricing breakdown"
+            "pricing type", "charge model", "pricing categories", "pricing breakdown",
+            "coverage type", "coverage", "by coverage", "by coverage type", "commitment coverage",
+            "coverage model", "coverage models", "coverage breakdown"
         ],
         "description": "FOCUS commercial model (On-Demand, Committed, Dynamic, Spot)"
     },
     "pricing_term": {
         "label": "AWS Pricing Term",
-        "synonyms": ["pricing term", "lease type", "purchase option", "lease model", "ondemand", "reservation"],
+        "synonyms": ["pricing term", "lease type", "purchase option", "lease model", "ondemand", "reservation", "coverage type", "coverage", "by coverage", "commitment coverage"],
         "description": "AWS pricing commitment term (OnDemand, Reserved)"
     },
     "lineItem_LineItemType": {
         "label": "AWS Line Item Charge Type",
         "synonyms": [
             "line item type", "charge type", "fee type", "lease type",
-            "savings plan", "spot", "discount", "tax", "credit", "refund"
+            "savings plan", "spot", "discount", "tax", "credit", "refund",
+            "coverage type", "coverage"
         ],
         "description": "AWS CUR line item charge type (Usage, Fee, Credit, DiscountedUsage, SavingsPlanCoveredUsage, SpotUsage)"
     },
@@ -397,6 +400,37 @@ CLOUD_SERVICES_MAP = {
     "awsglue": ("AWSGlue", "Glue", "aws"),
     "athena": ("AmazonAthena", "Athena", "aws"),
     "amazonathena": ("AmazonAthena", "Athena", "aws"),
+    "aws support": ("AWSSupport", "AWS Support", "aws"),
+    "awssupport": ("AWSSupport", "AWS Support", "aws"),
+    "amazon support": ("AWSSupport", "AWS Support", "aws"),
+    "amazonsupport": ("AWSSupport", "AWS Support", "aws"),
+    "aws enterprise support": ("AWSSupportEnterprise", "AWS Enterprise Support", "aws"),
+    "awssupportenterprise": ("AWSSupportEnterprise", "AWS Enterprise Support", "aws"),
+    "aws business support": ("AWSSupportBusiness", "AWS Business Support", "aws"),
+    "business support": ("AWSSupportBusiness", "AWS Business Support", "aws"),
+    "awssupportbusiness": ("AWSSupportBusiness", "AWS Business Support", "aws"),
+    "aws developer support": ("AWSSupportDeveloper", "AWS Developer Support", "aws"),
+    "developer support": ("AWSSupportDeveloper", "AWS Developer Support", "aws"),
+    "awssupportdeveloper": ("AWSSupportDeveloper", "AWS Developer Support", "aws"),
+    "aws enterprise on-ramp": ("AWSSupportEnterpriseOnRamp", "AWS Enterprise On-Ramp Support", "aws"),
+    "enterprise on-ramp support": ("AWSSupportEnterpriseOnRamp", "AWS Enterprise On-Ramp Support", "aws"),
+    "enterprise onramp": ("AWSSupportEnterpriseOnRamp", "AWS Enterprise On-Ramp Support", "aws"),
+    "awssupportenterpriseonramp": ("AWSSupportEnterpriseOnRamp", "AWS Enterprise On-Ramp Support", "aws"),
+    "emr": ("ElasticMapReduce", "Amazon EMR", "aws"),
+    "elasticmapreduce": ("ElasticMapReduce", "Amazon EMR", "aws"),
+    "elastic map reduce": ("ElasticMapReduce", "Amazon EMR", "aws"),
+    "amazon emr": ("ElasticMapReduce", "Amazon EMR", "aws"),
+    "computesavingsplans": ("ComputeSavingsPlans", "Compute Savings Plans", "aws"),
+    "compute savings plans": ("ComputeSavingsPlans", "Compute Savings Plans", "aws"),
+    "compute savings plan": ("ComputeSavingsPlans", "Compute Savings Plans", "aws"),
+    "savings plans": ("ComputeSavingsPlans", "Compute Savings Plans", "aws"),
+    "savings plan": ("ComputeSavingsPlans", "Compute Savings Plans", "aws"),
+    "aws savings plans": ("ComputeSavingsPlans", "Compute Savings Plans", "aws"),
+    "aws backup": ("AWSBackup", "AWS Backup", "aws"),
+    "awsbackup": ("AWSBackup", "AWS Backup", "aws"),
+    "amazon msk": ("AmazonMSK", "Amazon MSK", "aws"),
+    "msk": ("AmazonMSK", "Amazon MSK", "aws"),
+    "kafka": ("AmazonMSK", "Apache Kafka", "aws"),
 
     # ── Azure ──
     "azure vm": ("Virtual Machines", "Azure Virtual Machines", "azure"),
@@ -471,6 +505,13 @@ CLOUD_SERVICES_MAP = {
     "azure db for postgresql": ("Azure DB for PostgreSQL", "Azure DB for PostgreSQL", "azure"),
     "azure cache for redis": ("Azure Cache for Redis", "Azure Cache for Redis", "azure"),
     "azure redis": ("Azure Cache for Redis", "Azure Cache for Redis", "azure"),
+    "azure support": ("Support", "Azure Support", "azure"),
+    "azure support plans": ("Support", "Azure Support", "azure"),
+    "azure reservations": ("Azure Reservations", "Azure Reservations", "azure"),
+    "azure reservation": ("Azure Reservations", "Azure Reservations", "azure"),
+    "storage accounts": ("Storage Accounts", "Azure Storage Accounts", "azure"),
+    "azure storage accounts": ("Storage Accounts", "Azure Storage Accounts", "azure"),
+    "azure marketplace": ("Azure Marketplace", "Azure Marketplace", "azure"),
 
     # ── Google Cloud (GCP) ──
     "bigquery": ("BigQuery", "BigQuery", "gcp"),
@@ -522,8 +563,34 @@ CLOUD_SERVICES_MAP = {
     "filestore": ("Cloud Filestore", "Cloud Filestore", "gcp"),
     "backup and dr": ("Backup and DR Service", "Backup and DR Service", "gcp"),
     "backup and dr service": ("Backup and DR Service", "Backup and DR Service", "gcp"),
+    "gcp support": ("Support", "GCP Support", "gcp"),
+    "google cloud support": ("Support", "GCP Support", "gcp"),
+    "google support": ("Support", "GCP Support", "gcp"),
+    "gcp networking": ("Networking", "GCP Networking", "gcp"),
+    "google cloud networking": ("Networking", "GCP Networking", "gcp"),
+    "google networking": ("Networking", "GCP Networking", "gcp"),
+    "bare metal": ("Bare Metal Solution", "Bare Metal Solution", "gcp"),
+    "bare metal solution": ("Bare Metal Solution", "Bare Metal Solution", "gcp"),
+    "managed service for apache kafka": ("Managed Service for Apache Kafka", "Managed Service for Apache Kafka", "gcp"),
 
-
+    # ── Multi-Cloud, Networking, Marketplace & Enterprise Support ──
+    "networking": ("Networking", "Cloud Networking", "all"),
+    "cloud networking": ("Networking", "Cloud Networking", "all"),
+    "marketplace": ("Marketplace", "Marketplace", "all"),
+    "cloud marketplace": ("Marketplace", "Marketplace", "all"),
+    "third party software": ("Marketplace", "Third-Party Software", "all"),
+    "third party marketplace": ("Marketplace", "Marketplace", "all"),
+    "support": ("Support", "Cloud Support", "all"),
+    "support charges": ("Support", "Support Charges", "all"),
+    "support charge": ("Support", "Support Charges", "all"),
+    "support cost": ("Support", "Support Charges", "all"),
+    "support costs": ("Support", "Support Charges", "all"),
+    "support spend": ("Support", "Support Charges", "all"),
+    "support fees": ("Support", "Support Charges", "all"),
+    "support fee": ("Support", "Support Charges", "all"),
+    "support plans": ("Support", "Support Plans", "all"),
+    "cloud support": ("Support", "Cloud Support", "all"),
+    "enterprise support": ("AWSSupportEnterprise", "Enterprise Support", "all"),
 }
 
 # Backward-compatibility alias
@@ -541,6 +608,20 @@ def _friendly_service_name(pcode: str) -> str:
     Machines). AWS Marketplace line items instead carry an opaque lowercase+digit product
     code (e.g. '7zgyu5r4uonlsrnaq20qq63eo') with no reliable way to resolve the real product
     name from CloudHealth's billing data, so label it honestly rather than guessing."""
+    if pcode == "AWSSupportEnterprise":
+        return "AWS Enterprise Support"
+    if pcode == "AWSSupportBusiness":
+        return "AWS Business Support"
+    if pcode == "AWSSupportDeveloper":
+        return "AWS Developer Support"
+    if pcode == "AWSSupportEnterpriseOnRamp":
+        return "AWS Enterprise On-Ramp Support"
+    if pcode == "AWSSupport":
+        return "AWS Support"
+    if pcode == "ElasticMapReduce":
+        return "Amazon EMR"
+    if pcode == "ComputeSavingsPlans":
+        return "Compute Savings Plans"
     if pcode and pcode == pcode.lower() and any(c.isdigit() for c in pcode) and len(pcode) >= 15:
         return "AWS Marketplace (Third-Party Product)"
     return pcode
@@ -563,6 +644,323 @@ def _fetch_total_cost(mcp, sql: str, granularity: str, time_range: dict, crn: st
     except Exception as e:
         logger.warning(f"[True Total Query] {e}")
     return 0.0
+
+def _fetch_total_resource_count(mcp, sql: str, granularity: str, time_range: dict, crn: str = None) -> int:
+    """Runs an unconstrained COUNT(DISTINCT ...) query to get the true total count of distinct resources."""
+    try:
+        params = {
+            "queryInput": {"sqlStatement": sql, "dataGranularity": granularity, "limit": 1, "timeRange": time_range},
+            "requestInfo": {"sourceType": "API", "caller": "mcp"}
+        }
+        if crn:
+            params["channelCustomerId"] = crn
+        res = mcp.call_tool("execute_datasource_query", params)
+        raw_csv = json.loads(res["content"][0]["text"]).get("csv", "")
+        for r in csv.DictReader(io.StringIO(raw_csv)):
+            for k in ["resource_count", "unique_instances", "instance_count", "count", "instances", "cnt"]:
+                if r.get(k) is not None:
+                    return int(float(r[k]))
+            first_val = next(iter(r.values()), None)
+            if first_val is not None:
+                return int(float(first_val))
+    except Exception as e:
+        logger.warning(f"[True Resource Count Query] {e}")
+    return 0
+
+def is_unique_instance_request(query_text: str) -> bool:
+    """Detects if query asks for unique instance/resource counts (EC2 instances, RDS databases, S3 buckets, EBS volumes, Lambda functions, etc.)."""
+    low = (query_text or "").lower()
+    resource_nouns = [
+        "instance", "instances", "ec2", "vm", "vms",
+        "database", "databases", "rds", "db", "dbs", "cluster", "clusters",
+        "bucket", "buckets", "s3",
+        "volume", "volumes", "ebs", "snapshot", "snapshots",
+        "function", "functions", "lambda",
+        "table", "tables", "dynamodb",
+        "resource", "resources", "fleet"
+    ]
+    if any(w in low for w in ["unique", "distinct"]) and any(w in low for w in resource_nouns):
+        return True
+    if "resource count" in low and any(w in low for w in resource_nouns):
+        return True
+    if any(w in low for w in ["per month", "per day", "by month", "by day", "per month or day", "by month or day", "monthly or daily", "per month or per day"]) and any(w in low for w in resource_nouns):
+        return True
+    if ("count of" in low or "number of" in low or "how many" in low) and any(w in low for w in resource_nouns) and not any(w in low for w in ["how many dollars", "how many $", "how much $", "how much cost", "how much spend"]):
+        return True
+    if any(f"{noun} count" in low or f"{noun}s count" in low for noun in ["instance", "database", "bucket", "volume", "function", "table", "resource", "vm", "server", "node"]) and not any(w in low for w in ["cost", "spend", "$", "price", "bill"]):
+        return True
+    return False
+
+def resolve_service_resource_profile(low: str, requested_service: str = None) -> dict:
+    """
+    Returns service resource metadata for dynamic unique instance/resource fleet calculations:
+    pcode, service_disp, singular_noun, plural_noun, icon, cur_where, focus_filter, insights_type.
+    Adapts dynamically across AWS, Azure, and GCP.
+    """
+    req_s = str(requested_service or "")
+    is_azure = "azure" in low or any(w in req_s.lower() for w in ["azure", "microsoft"])
+    is_gcp = "gcp" in low or "google" in low or any(w in req_s.lower() for w in ["gcp", "google"])
+
+    # 1. Relational & Operational Databases
+    if req_s == "AmazonRDS" or any(w in low for w in ["rds", "relational database", "aurora", "database", "databases", "cloud sql", "azure sql"]):
+        if is_azure:
+            return {
+                "pcode": "Azure SQL Database",
+                "service_disp": "Azure SQL Database",
+                "singular_noun": "Database",
+                "plural_noun": "Databases",
+                "icon": "🗄️",
+                "cur_where": "WHERE lineItem_ProductCode = 'AmazonRDS' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+                "focus_filter": "ServiceCategory = 'Database'",
+                "insights_type": "rds"
+            }
+        if is_gcp:
+            return {
+                "pcode": "Google Cloud SQL",
+                "service_disp": "Google Cloud SQL",
+                "singular_noun": "Database Instance",
+                "plural_noun": "Database Instances",
+                "icon": "🗄️",
+                "cur_where": "WHERE lineItem_ProductCode = 'AmazonRDS' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+                "focus_filter": "ServiceCategory = 'Database'",
+                "insights_type": "rds"
+            }
+        return {
+            "pcode": "AmazonRDS",
+            "service_disp": "Amazon RDS",
+            "singular_noun": "Database Instance",
+            "plural_noun": "Database Instances",
+            "icon": "🗄️",
+            "cur_where": "WHERE lineItem_ProductCode = 'AmazonRDS' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+            "focus_filter": "ServiceCategory = 'Database'",
+            "insights_type": "rds"
+        }
+
+    # 2. Object & Blob Storage
+    if req_s == "AmazonS3" or any(w in low for w in ["s3", "storage bucket", "buckets", "bucket", "blob", "blobs", "gcs"]):
+        if is_azure:
+            return {
+                "pcode": "Azure Blob Storage",
+                "service_disp": "Azure Blob Storage",
+                "singular_noun": "Storage Container",
+                "plural_noun": "Storage Containers",
+                "icon": "🪣",
+                "cur_where": "WHERE lineItem_ProductCode = 'AmazonS3' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+                "focus_filter": "ServiceCategory = 'Storage'",
+                "insights_type": "s3"
+            }
+        if is_gcp:
+            return {
+                "pcode": "Google Cloud Storage",
+                "service_disp": "Google Cloud Storage",
+                "singular_noun": "Bucket",
+                "plural_noun": "Buckets",
+                "icon": "🪣",
+                "cur_where": "WHERE lineItem_ProductCode = 'AmazonS3' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+                "focus_filter": "ServiceCategory = 'Storage'",
+                "insights_type": "s3"
+            }
+        return {
+            "pcode": "AmazonS3",
+            "service_disp": "Amazon S3",
+            "singular_noun": "Bucket",
+            "plural_noun": "Buckets",
+            "icon": "🪣",
+            "cur_where": "WHERE lineItem_ProductCode = 'AmazonS3' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+            "focus_filter": "ServiceCategory = 'Storage'",
+            "insights_type": "s3"
+        }
+
+    # 3. Block Storage Volumes & Disks
+    if req_s == "AmazonEC2_EBS" or any(w in low for w in ["ebs", "volume", "volumes", "disk", "disks", "persistent disk"]):
+        if is_azure:
+            return {
+                "pcode": "Azure Managed Disks",
+                "service_disp": "Azure Managed Disks",
+                "singular_noun": "Managed Disk",
+                "plural_noun": "Managed Disks",
+                "icon": "💾",
+                "cur_where": "WHERE lineItem_ProductCode = 'AmazonEC2' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+                "focus_filter": "ServiceCategory = 'Storage'",
+                "insights_type": "ebs"
+            }
+        if is_gcp:
+            return {
+                "pcode": "Google Persistent Disk",
+                "service_disp": "Google Persistent Disk",
+                "singular_noun": "Persistent Disk",
+                "plural_noun": "Persistent Disks",
+                "icon": "💾",
+                "cur_where": "WHERE lineItem_ProductCode = 'AmazonEC2' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+                "focus_filter": "ServiceCategory = 'Storage'",
+                "insights_type": "ebs"
+            }
+        return {
+            "pcode": "AmazonEC2_EBS",
+            "service_disp": "Amazon EBS",
+            "singular_noun": "EBS Volume",
+            "plural_noun": "EBS Volumes",
+            "icon": "💾",
+            "cur_where": (
+                "WHERE lineItem_ProductCode = 'AmazonEC2' AND ("
+                "(product_volumeType IS NOT NULL AND product_volumeType != '') OR "
+                "lineItem_UsageType LIKE '%Volume%' OR lineItem_UsageType LIKE '%gp%' OR lineItem_UsageType LIKE '%EBS%') AND "
+                "lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''"
+            ),
+            "focus_filter": "ServiceCategory = 'Storage'",
+            "insights_type": "ebs"
+        }
+
+    # 4. Serverless Event-driven Functions
+    if req_s == "AWSLambda" or any(w in low for w in ["lambda", "serverless function", "functions", "function", "azure function", "cloud function"]):
+        if is_azure:
+            return {
+                "pcode": "Azure Functions",
+                "service_disp": "Azure Functions",
+                "singular_noun": "Function",
+                "plural_noun": "Functions",
+                "icon": "⚡",
+                "cur_where": "WHERE lineItem_ProductCode = 'AWSLambda' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+                "focus_filter": "ServiceCategory = 'Compute'",
+                "insights_type": "lambda"
+            }
+        if is_gcp:
+            return {
+                "pcode": "Google Cloud Functions",
+                "service_disp": "Google Cloud Functions",
+                "singular_noun": "Cloud Function",
+                "plural_noun": "Cloud Functions",
+                "icon": "⚡",
+                "cur_where": "WHERE lineItem_ProductCode = 'AWSLambda' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+                "focus_filter": "ServiceCategory = 'Compute'",
+                "insights_type": "lambda"
+            }
+        return {
+            "pcode": "AWSLambda",
+            "service_disp": "AWS Lambda",
+            "singular_noun": "Lambda Function",
+            "plural_noun": "Lambda Functions",
+            "icon": "⚡",
+            "cur_where": "WHERE lineItem_ProductCode = 'AWSLambda' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+            "focus_filter": "ServiceCategory = 'Compute'",
+            "insights_type": "lambda"
+        }
+
+    # 5. NoSQL Key-Value Tables
+    if req_s == "AmazonDynamoDB" or any(w in low for w in ["dynamodb", "dynamo", "table", "tables", "cosmos"]):
+        return {
+            "pcode": "AmazonDynamoDB",
+            "service_disp": "Amazon DynamoDB",
+            "singular_noun": "DynamoDB Table",
+            "plural_noun": "DynamoDB Tables",
+            "icon": "⚡",
+            "cur_where": "WHERE lineItem_ProductCode = 'AmazonDynamoDB' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+            "focus_filter": "ServiceCategory = 'Database'",
+            "insights_type": "dynamodb"
+        }
+
+    # Default: Virtual Machines / Compute Fleet
+    if is_azure:
+        return {
+            "pcode": "Azure Virtual Machines",
+            "service_disp": "Azure Virtual Machines",
+            "singular_noun": "Virtual Machine",
+            "plural_noun": "Virtual Machines",
+            "icon": "🖥️",
+            "cur_where": "WHERE lineItem_ProductCode = 'AmazonEC2' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+            "focus_filter": "ServiceCategory = 'Compute'",
+            "insights_type": "ec2"
+        }
+    if is_gcp:
+        return {
+            "pcode": "Google Compute Engine",
+            "service_disp": "Google Compute Engine",
+            "singular_noun": "VM Instance",
+            "plural_noun": "VM Instances",
+            "icon": "🖥️",
+            "cur_where": "WHERE lineItem_ProductCode = 'AmazonEC2' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+            "focus_filter": "ServiceCategory = 'Compute'",
+            "insights_type": "ec2"
+        }
+    return {
+        "pcode": "AmazonEC2",
+        "service_disp": "Amazon EC2",
+        "singular_noun": "Instance",
+        "plural_noun": "Instances",
+        "icon": "🖥️",
+        "cur_where": "WHERE lineItem_ProductCode = 'AmazonEC2' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+        "focus_filter": "ServiceCategory = 'Compute'",
+        "insights_type": "ec2"
+    }
+
+def reconcile_and_consolidate_breakdown(
+    rows: list,
+    true_total: float,
+    limit: int = 15,
+    query_limit: int = 100,
+    other_label: str = "Other (Consolidated)"
+) -> tuple[list, float, str]:
+    """
+    Detects if breakdown rows omit tail spend due to display limits or query limit starvation.
+    Consolidates the unallocated remainder into an 'Other' row so displayed rows sum to 100% of true_total.
+    Returns (reconciled_rows, other_spend, consolidation_notice).
+    """
+    if not rows:
+        return rows, 0.0, ""
+    
+    def _get_cost(r):
+        if isinstance(r, dict):
+            return float(r.get("cost") or r.get("val") or r.get("spend") or 0.0)
+        return float(r[2] if len(r) >= 3 else r[1])
+
+    top_rows = list(rows[:limit])
+    sum_top = sum(_get_cost(r) for r in top_rows)
+    other_cost = max(0.0, true_total - sum_top) if true_total > 0 else 0.0
+    is_starved = len(rows) >= query_limit
+
+    if other_cost > 0.50:
+        if isinstance(top_rows[0], dict):
+            other_row = dict(top_rows[0])
+            for k in [
+                "service", "dimension", "name", "ServiceName", "ServiceCategory",
+                "usage_type", "type", "item", "lineItem_UsageType"
+            ]:
+                if k in other_row:
+                    other_row[k] = other_label
+            for k in ["operation", "lineItem_Operation"]:
+                if k in other_row:
+                    other_row[k] = "-"
+            for k in ["description", "lineItem_LineItemDescription"]:
+                if k in other_row:
+                    other_row[k] = "Aggregated long-tail usage types and charges"
+            for k in ["qty", "usage_qty"]:
+                if k in other_row:
+                    other_row[k] = 0.0
+            for k in ["cost", "val", "spend", "lineItem_UnblendedCost", "EffectiveCost", "BilledCost"]:
+                if k in other_row:
+                    other_row[k] = other_cost
+            top_rows.append(other_row)
+        elif len(top_rows[0]) >= 3:
+            p_val = top_rows[0][0] if not is_starved else "All Clouds"
+            top_rows.append((p_val, other_label, other_cost))
+        else:
+            top_rows.append((other_label, other_cost))
+
+        pct_top = (sum_top / true_total * 100) if true_total else 0.0
+        pct_other = (other_cost / true_total * 100) if true_total else 0.0
+        starve_txt = f" Dataset contains additional granular records that reached the query limit ({query_limit})." if is_starved else ""
+        notice = (
+            f"> ℹ️ **Consolidation & Query Limit Notice**: Displaying top {len(rows[:limit])} drivers (${sum_top:,.2f}, {pct_top:.1f}% of spend).{starve_txt} "
+            f"Remaining ${other_cost:,.2f} ({pct_other:.1f}%) is consolidated into **{other_label}** to ensure 100% financial reconciliation with total cloud spend (${true_total:,.2f}).\n\n"
+        )
+        return top_rows, other_cost, notice
+
+    if is_starved:
+        notice = f"> ℹ️ **Query Limit Notice**: Dataset reached the query limit of {query_limit} rows. Top drivers represent 100% of analyzed spend.\n\n"
+        return top_rows, 0.0, notice
+
+    return top_rows, 0.0, ""
+
 
 def extract_all_requested_services(query_text: str) -> list[ServiceMatch]:
     """Extracts all cloud service identifiers, display labels, and providers mentioned in query text, respecting negations and resets."""
@@ -1684,7 +2082,8 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     if any(w in low for w in [
         "lease type", "leasetype", "by lease", "lease breakdown", "lease types",
         "purchase option", "purchaseoption", "pricing model", "ondemand", "reservation",
-        "savingsplan", "savings plan", "spot"
+        "savingsplan", "savings plan", "spot",
+        "coverage type", "coveragetype", "by coverage", "coverage breakdown", "commitment coverage", "coverage"
     ]):
         breakdowns.append("lease_type")
     if any(w in low for w in ["instancetype", "instance type", "instance size", "instance"]):
@@ -1712,26 +2111,33 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         chart_types.append("bar")
     if "line" in low:
         chart_types.append("line")
-    if "waterfall" in low:
+    if any(w in low for w in ["waterfall", "waterfal", "water fall", "watrefall", "bridge chart", "variance chart"]) or bool(re.search(r'\bwaterfal+s?\b|\bwater\s+fall\b', low)):
         chart_types.append("waterfall")
 
     # Strict check for pure reformat without new service/data
     has_fetch_verb = any(w in low for w in [
-        "get me", "fetch", "query", "find me", "show me", "show our", "show us", "show", "list", "display",
+        "get me", "give me", "provide me", "provide", "share", "pull", "fetch", "query", "find me", "show me", "show our", "show us", "show", "list", "display",
         "usage for", "spend for", "break it down", "break down", "top services", "top service", "cloud services", "cloud service"
-    ]) or bool(re.search(r'\b(?:find|list|query|fetch)\b', low))
+    ]) or bool(re.search(r'\b(?:find|list|query|fetch|give|provide)\b', low))
     has_explicit_data_subject = bool(service) or bool(customer) or bool(m_months) or bool(m_days)
 
     is_pure_reformat = (
-        bool(re.search(r'\b(?:chart|plot|graph|visualize)\s+(?:of\s+)?(?:it|this|that|above|the\s+above|same\s+data|previous\s+data)\b', low) or
-        re.search(r'\b(?:show|render|draw|display)\s+(?:it|this|that|above)\s+(?:as\s+a\s+|in\s+a\s+)?(?:chart|graph|plot|pie|donut|bar|area)\b', low) or
+        bool(re.search(r'\b(?:chart|plot|graph|visualize)\s+(?:of|for|from)?\s*(?:it|this|that|above|the\s+above|same\s+data|previous\s+data)\b', low)) or
+        bool(re.search(r'\b(?:show|render|draw|display)\s+(?:it|this|that|above)\s+(?:as\s+a\s+|in\s+a\s+)?(?:chart|graph|plot|pie|donut|bar|area|waterfall)\b', low)) or
+        any(p in low for p in [
+            "pie chart of", "area chart of", "bar chart of", "waterfall chart of", "waterfall chart for",
+            "pie chart for the above", "area chart for the above", "bar chart for the above", "waterfall chart for the above", "waterfal chart for the above",
+            "pie chart of the above", "area chart of the above", "bar chart of the above", "waterfall chart of the above", "waterfal chart of the above",
+            "waterfall for the above", "waterfal for the above"
+        ]) or
         any(low.strip() == p for p in [
-            "pie chart", "donut chart", "doughnut chart", "bar chart", "waterfall chart", "area chart",
+            "pie chart", "donut chart", "doughnut chart", "bar chart", "waterfall chart", "waterfall", "waterfal", "area chart",
             "pie chart please", "as a pie chart", "give me the pie chart of it", "give me the pie chart of the above data",
             "area chart please", "as an area chart", "give me the area chart of it", "give me the area chart of the above data",
-            "chart it", "plot it", "graph it", "show as pie", "show as donut", "show in pie", "show as a pie chart", "show as area"
-        ])) and not (has_explicit_data_subject or has_fetch_verb)
-    )
+            "waterfall chart please", "as a waterfall", "as a waterfall chart",
+            "chart it", "plot it", "graph it", "show as pie", "show as donut", "show in pie", "show as a pie chart", "show as area", "show as waterfall"
+        ])
+    ) and not has_explicit_data_subject
 
     is_history_qa = any(w in low for w in [
         "which customer", "what customer", "which service", "what service", "which month", "what month",
@@ -1776,8 +2182,9 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "cost", "spend", "spending", "billed", "effective", "cloud", "aws", "azure", "gcp",
         "service", "services", "account", "accounts", "breakdown", "anomaly", "anomalies",
         "recommendation", "usage", "tenant", "customer", "mcp", "forecast", "all clouds",
-        "category", "subcategory", "pricing", "model", "resource", "region", "modality"
-    ])
+        "category", "subcategory", "pricing", "model", "resource", "region", "modality",
+        "s3", "ec2", "rds", "lambda", "ebs", "dynamodb", "instances", "instance", "fleet"
+    ]) or is_unique_instance_request(low)
     is_math = not has_finops_signal and (
         bool(re.search(r'\d+\s*[\+\-\*\/x×÷\^%]\s*\d+', low_no_dates)) or
         bool(re.search(r'\b(?:calculate|calc|math)\b', low))
@@ -1804,7 +2211,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     elif is_anomaly:
         intent = "anomalies"
         is_new_data_fetch = True
-    elif service or customer or has_fetch_verb or any(w in low for w in ["spend", "cost", "usage", "billed", "hours", "breakdown", "service", "services"]) or cont_ctx.get("is_continuation"):
+    elif service or customer or has_fetch_verb or is_unique_instance_request(low) or any(w in low for w in ["spend", "cost", "usage", "billed", "hours", "breakdown", "service", "services", "data", "telemetry", "figures", "numbers", "ytd", "mtd", "qtd"]) or cont_ctx.get("is_continuation"):
         intent = "fetch_data"
         is_new_data_fetch = True
     else:
@@ -1814,6 +2221,8 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     # Metric type detection: quantity vs cost
     quantity_triggers = [
         "number of", "how many", "count of", "quantity", "quantities",
+        "resource count", "resource counts", "unique instance", "unique instances",
+        "unique vm", "unique vms", "distinct instance", "distinct instances",
         "instance count", "instances count", "vm count", "server count",
         "hours", "runtime", "instance hours", "vm hours", "compute hours",
         "vcpus", "vcpu", "cores", "units", "consumed quantity", "usage amount", "usage quantity",
@@ -1821,7 +2230,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "gb used", "gigabytes", "tb used", "terabytes",
         "invocations", "executions", "requests"
     ]
-    is_quantity = any(t in low for t in quantity_triggers) or bool(re.search(r'\bcounts?\b', low))
+    is_quantity = any(t in low for t in quantity_triggers) or bool(re.search(r'\bcounts?\b', low)) or is_unique_instance_request(low)
     if "instances" in low and not any(w in low for w in ["cost", "spend", "spending", "billed", "dollar", "$", "price", "bill"]):
         is_quantity = True
     metric_type = "quantity" if is_quantity else "cost"
@@ -1867,7 +2276,8 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "by purchase option", "purchase option", "purchase options", "purchase option breakdown",
         "capacity type", "by capacity type", "by commercial model", "commercial model",
         "by contract type", "contract type", "by commitment type", "commitment type",
-        "by charge type", "charge type breakdown"
+        "by charge type", "charge type breakdown",
+        "by coverage type", "by coverage", "coverage type", "coveragetype", "coverage breakdown", "commitment coverage", "coverage types", "coverage model", "coverage models"
     ]) or (any(w in low for w in ["ondemand", "on-demand", "reservation", "savings plan", "savingsplan", "spot"]) and any(w in low for w in ["breakdown", "break down", "split", "by", "usage", "cost", "spend", "lease", "above", "rds", "ec2"])):
         breakdowns.append("lease_type")
         target_dimension = "LeaseType"
@@ -1947,7 +2357,10 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     if any(w in low for w in ["by instance type", "instancetype", "by vm size", "vm size", "by machine type", "machine type", "instance size", "by instance size", "node type"]):
         breakdowns.append("instance_type")
         if not target_dimension:
-            target_dimension = "product_InstanceType"
+            if cloud in ("azure", "gcp"):
+                target_dimension = "ServiceSubcategory"
+            else:
+                target_dimension = "product_InstanceType"
 
     if not target_dimension and not (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") in ("forecast", "monthly_trend")):
         if service == "AmazonEC2":
@@ -1968,7 +2381,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
                 breakdowns.append("volume_type")
         elif service == "AWSLambda":
             target_dimension = "lineItem_Operation"
-        elif cloud in ("azure", "gcp") or (service and service in ("Azure", "GCP")):
+        elif (cloud in ("azure", "gcp") or (service and service in ("Azure", "GCP"))) and not any(w in low for w in ["top ", "service", "services", "most expensive"]):
             target_dimension = "ServiceSubcategory"
             if "service_subcategory" not in breakdowns:
                 breakdowns.append("service_subcategory")

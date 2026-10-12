@@ -498,6 +498,10 @@ from cleo_charts import (
     is_exclude_other_requested,
     is_other_category_name,
     prune_mom_columns_from_markdown,
+    filter_charts_to_requested_type,
+    detect_data_timeframe_deficit,
+    ensure_markdown_table_spacing,
+    sanitize_chart_blocks,
     _detect_chart_type,
     _detect_wants_variance,
     _build_mom_variance_chart,
@@ -663,15 +667,28 @@ def build_system_prompt(tools: list[dict], engine_label: str = None) -> str:
         "   - Always present financial figures in crisp markdown tables with dollar signs ($), commas, and percentage changes where applicable.\n"
         "   - Highlight cost drivers, trends, and actionable FinOps optimization opportunities.\n"
         "6. MULTI-CLOUD BEST DEFAULT DIMENSIONS & QUANTITY VS COST INTELLIGENCE:\n"
-        "   - QUANTITY VS COST DISAMBIGUATION: When user asks for operational, volume, or capacity metrics (e.g. 'number of ec2 instances', 'how many VMs', 'count of databases', 'storage volume in GB', 'instance hours', 'invocations', 'units', 'consumed quantity', 'usage amount', 'usage quantity'), prioritize quantity measures (SUM(Instances), SUM(PricingQuantity), SUM(lineItem_UsageAmount), SUM(Instance_Hours), SUM(Quantity)) over financial spend.\n"
+        "   - QUANTITY VS COST DISAMBIGUATION: When user asks for operational, volume, or capacity metrics (e.g. 'number of ec2 instances', 'how many VMs', 'count of databases', 'storage volume in GB', 'instance hours', 'invocations', 'units', 'consumed quantity', 'usage amount', 'usage quantity'), prioritize quantity measures (COUNT(DISTINCT lineItem_ResourceId), COUNT(DISTINCT ResourceId), SUM(Instances), SUM(PricingQuantity), SUM(lineItem_UsageAmount), SUM(Instance_Hours), SUM(Quantity)) over financial spend.\n"
+        "   - UNIQUE RUNNING INSTANCE & FLEET COUNTING (MONTHLY & DAILY):\n"
+        "     * To calculate unique running EC2 instances per month, day, or region, query AWS_CUR using COUNT(DISTINCT lineItem_ResourceId) AS instance_count:\n"
+        "       - Monthly Unique Instances: SELECT timeInterval_Month AS month, COUNT(DISTINCT lineItem_ResourceId) AS instance_count, SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR WHERE lineItem_ProductCode = 'AmazonEC2' GROUP BY timeInterval_Month ORDER BY month DESC\n"
+        "       - Daily Unique Instances: SELECT TimeInterval_Day AS day, COUNT(DISTINCT lineItem_ResourceId) AS instance_count, SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR WHERE lineItem_ProductCode = 'AmazonEC2' GROUP BY TimeInterval_Day ORDER BY day DESC\n"
+        "       - Regional Fleet Distribution: SELECT product_region AS region, COUNT(DISTINCT lineItem_ResourceId) AS instance_count, SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR WHERE lineItem_ProductCode = 'AmazonEC2' GROUP BY product_region ORDER BY instance_count DESC\n"
+        "     * For Azure / GCP / Multi-Cloud FOCUS datasets: Query COUNT(DISTINCT ResourceId) AS instance_count in MULTICLOUD_FOCUS_COST_AND_USAGE (or AZURE_FOCUS / GCP_FOCUS) where ServiceCategory = 'Compute'.\n"
+        "     * NEVER return pure dollar spend without calculating the actual instance counts when operational resource counts, unique instances, or instance counts are requested.\n"
+        "   - QUERY LIMIT STARVATION & DATA CONSOLIDATION DOCTRINE:\n"
+        "     * When executing breakdown queries, if returned rows reach or exceed the query limit, or if high-cardinality tail records are truncated:\n"
+        "       1. Reconcile against unconstrained totals (SELECT SUM(...) without high-cardinality grouping dimensions) to obtain the true 100% financial total.\n"
+        "       2. Consolidate unallocated tail spend into an 'Other (Consolidated)' category so the sum of individual rows equals 100% of the true spend.\n"
+        "       3. Disclose to the user whenever data is partial or consolidated due to query limits (e.g. stating top N drivers represent $X (Y%), with remaining $Z (W%) in Other).\n"
+        "       4. For multi-period trend or MoM queries, never allow query limits to starve prior periods to $0.00; query periods independently or aggregate at coarser granularity.\n"
         "   - BEST DEFAULT DIMENSIONS MATRIX (NEVER DEFAULT TO REGION UNLESS EXPLICITLY REQUESTED):\n"
-        "     * AWS EC2: Default dimension is 'product_InstanceType' (synonyms: instance type, vm size, machine type, flavor, node type). Quantity = SUM(Instances), SUM(Instance_Hours).\n"
-        "     * AWS RDS: Default dimension is 'InstanceType' & Database Engine (synonyms: rds instance type, db size, db instance). Quantity = SUM(Instances).\n"
+        "     * AWS EC2: Default dimension is 'product_InstanceType' (synonyms: instance type, vm size, machine type, flavor, node type). Quantity = COUNT(DISTINCT lineItem_ResourceId), SUM(Instances), SUM(Instance_Hours).\n"
+        "     * AWS RDS: Default dimension is 'InstanceType' & Database Engine (synonyms: rds instance type, db size, db instance). Quantity = COUNT(DISTINCT lineItem_ResourceId), SUM(Instances).\n"
         "     * AWS S3: Default dimension is 'product_storageClass' (synonyms: storage class, storage tier, s3 tier, lifecycle tier: Standard, Intelligent-Tiering, Glacier). Quantity = SUM(lineItem_UsageAmount) (GB-Mo).\n"
         "     * AWS EBS: Default dimension is 'product_volumeType' (synonyms: volume type, ebs type, disk type, gp2, gp3, io1, io2). Quantity = SUM(lineItem_UsageAmount) (GB-Mo).\n"
         "     * AWS Lambda: Default dimension is 'lineItem_Operation' (synonyms: operation, api operation, action, invocations, duration). Quantity = SUM(lineItem_UsageAmount).\n"
-        "     * Azure Compute/Storage/DB: Default dimension is 'ServiceSubcategory' from AZURE_FOCUS_COST_AND_USAGE (synonyms: meter category, meter subcategory, sub service). Quantity = SUM(PricingQuantity) (Hours / GB-Mo).\n"
-        "     * GCP Compute/Storage/DB: Default dimension is 'ServiceSubcategory' from GCP_FOCUS_COST_AND_USAGE. Quantity = SUM(PricingQuantity) (Hours / GB-Mo).\n"
+        "     * Azure Compute/Storage/DB: Default dimension is 'ServiceSubcategory' from AZURE_FOCUS_COST_AND_USAGE (synonyms: meter category, meter subcategory, sub service). Quantity = SUM(PricingQuantity) (Hours / GB-Mo), COUNT(DISTINCT ResourceId).\n"
+        "     * GCP Compute/Storage/DB: Default dimension is 'ServiceSubcategory' from GCP_FOCUS_COST_AND_USAGE. Quantity = SUM(PricingQuantity) (Hours / GB-Mo), COUNT(DISTINCT ResourceId).\n"
         "   - NEVER substitute Region or Location for service-specific dimensions unless the user explicitly used words like 'region', 'regional', or 'location'.\n"
         "7. COMPREHENSIVE MULTI-CLOUD & FOCUS 1.2 DIMENSIONAL TAXONOMY (NATURAL LANGUAGE SYNONYMS):\n"
         "   - SubaccountId: Member / Usage Account ID or Project Name across AWS, Azure, GCP. In MULTICLOUD_FOCUS_COST_AND_USAGE, represents AWS Account IDs, GCP Projects, or Azure Subscriptions. Synonyms: 'account', 'subaccount', 'sub-account', 'member account', 'linked account', 'usage account', 'project', 'subscription', 'cloud account', 'account id', 'account name'. Use for 'by account', 'account names', 'per project', 'by subscription', 'member accounts'.\n"
@@ -738,6 +755,10 @@ from cleo_query import (
     extract_limit_adjustment,
     _detect_contextual_continuation,
     _deterministic_understand_query,
+    is_unique_instance_request,
+    reconcile_and_consolidate_breakdown,
+    _fetch_total_resource_count,
+    resolve_service_resource_profile,
 )
 
 class AIClient:
@@ -1046,7 +1067,7 @@ class AIClient:
             '  "max_pct": number or null,\n'
             '  "limit": integer or null,\n'
             '  "breakdowns": ["instance_type", "engine_type", "storage_class", "volume_type", "service_subcategory", "service_category", "pricing_category", "lease_type", "account", "billing_account", "region", "location", "service", "customer", "resource", "model", "model_provider", "modality", "execution_type", "token_type", "hardware_type", "hardware_family", "commitment_plan", "country"],\n'
-            '  "chart_types": ["line"] | ["bar"] | [] (pick 0 or 1 chart type: "line" for time trends, "bar" for categories),\n'
+            '  "chart_types": ["line"] | ["bar"] | ["waterfall"] | ["pie"] | ["doughnut"] | ["area"] | [] (pick 0 or 1 chart type: "waterfall" for variance / bridge / MoM changes, "line" for time trends, "bar" for categories, "pie" / "doughnut" for shares),\n'
             '  "include_chart": boolean,\n'
             '  "include_mom": boolean,\n'
             '  "is_new_data_fetch": boolean,\n'
@@ -1056,7 +1077,7 @@ class AIClient:
             "1. GENERAL FINOPS ADVISORY (NO DATA FETCH): Set intent to 'general_finops_advisory' and is_new_data_fetch to false if the user asks a conceptual FinOps, architectural, best practice, or educational question (e.g. 'What is the difference between EffectiveCost and BilledCost?', 'How to optimize NAT gateways?', 'Explain FinOps framework phases', 'Savings Plans vs RIs', 'What is FOCUS?', 'FinOps best practices on egress'). These questions DO NOT require pulling data from CloudHealth.\n"
             "2. DATA FETCH & COMPARISON: Set intent to 'fetch_data' and is_new_data_fetch to true if the user asks to see, show, fetch, get, compare, analyze, or chart their costs, usage, spend, run-rate, or data from cloud providers (AWS, Azure, GCP), even if their prompt has typos (e.g. 'shw me jne 2026 cst for awz').\n"
             "   - CRITICAL: Any request asking to compare costs, calculate projected costs, compare previous month with current month, or asking about a specific customer / organization / tenant (e.g. 'ABC Coffee Mugs', 'Lundbeck') MUST ALWAYS be classified as 'fetch_data' with is_new_data_fetch=true! NEVER classify customer spend queries or cost comparisons as general advisory.\n"
-            "3. TYPO CORRECTION & NORMALIZATION: In corrected_query, fix all spelling mistakes, typos in services (e.g. 'awz' -> 'AWS', 'rds' -> 'RDS', 'jne' -> 'June'), and clarify the sentence. In 'cloud', normalize to 'aws', 'azure', 'gcp', or 'all'. In 'service', normalize to canonical names like 'AmazonEC2', 'AmazonRDS', 'AmazonS3'. If multiple services are requested (e.g. 'RDS and S3'), list them all in 'services': ['AmazonRDS', 'AmazonS3'] and set 'service': 'AmazonRDS'. If the query asks about AI models, LLMs, foundation models, token costs, or multi-cloud AI spend, set 'service' to null (do NOT set AmazonRDS or other infrastructure services unless explicitly named). In 'target_ym', extract normalized 'YYYY-MM' (e.g. '2026-06').\n"
+            "3. TYPO CORRECTION & NORMALIZATION: In corrected_query, fix all spelling mistakes, typos in services (e.g. 'awz' -> 'AWS', 'rds' -> 'RDS', 'jne' -> 'June'), and clarify the sentence. In 'cloud', normalize to 'aws', 'azure', 'gcp', or 'all'. In 'service', normalize to canonical names like 'AmazonEC2', 'AmazonRDS', 'AmazonS3', 'Support', 'AWSSupportEnterprise'. For cloud support charges across clouds or general support, set 'service': 'Support', 'services': ['Support'], target_dimension='ServiceName'. For AWS support specifically, use 'AWSSupportEnterprise'. NEVER invent hallucinated service names like 'AmazonSupport' or 'GCPSupport'. If multiple services are requested (e.g. 'RDS and S3'), list them all in 'services': ['AmazonRDS', 'AmazonS3'] and set 'service': 'AmazonRDS'. If the query asks about AI models, LLMs, foundation models, token costs, or multi-cloud AI spend, set 'service' to null (do NOT set AmazonRDS or other infrastructure services unless explicitly named). In 'target_ym', extract normalized 'YYYY-MM' (e.g. '2026-06').\n"
             "4. METRIC TYPE (QUANTITY VS COST): Set metric_type='quantity' if user asks for volume, count, operational capacity, or physical usage (e.g. 'number of ec2 instances', 'how many vms', 'instance hours', 'storage used in GB', 'how many invocations', 'count of databases'). Set metric_type='cost' (default) if user asks for financial spend, dollars, cost, or bill.\n"
             "5. MULTI-CLOUD BEST DEFAULT DIMENSIONS: When grouping dimension is not specified by the user:\n"
             "   - For Amazon EC2: target_dimension='product_InstanceType', breakdowns=['instance_type']\n"
@@ -1065,12 +1086,13 @@ class AIClient:
             "   - For Amazon EBS: target_dimension='product_volumeType', breakdowns=['volume_type']\n"
             "   - For AWS Lambda: target_dimension='lineItem_Operation'\n"
             "   - For Azure & GCP: target_dimension='ServiceSubcategory', breakdowns=['service_subcategory']\n"
+            "   - For Cloud Support Charges: target_dimension='ServiceName', breakdowns=['service'], service='Support' (analyzed via MULTICLOUD_FOCUS_COST_AND_USAGE across AWS and GCP)\n"
             "   - For AI / Foundation Models: target_dimension='Model', breakdowns=['model'] (set service=null unless Bedrock is explicitly named)\n"
             "   - For Multi-Cloud / Top Services: target_dimension='ServiceName', breakdowns=['service']\n"
             "   - CRITICAL: NEVER default to 'region' or 'location' unless the user explicitly requested region or location! Only include 'region' if user explicitly asked to break down by region.\n"
-            "6. REFORMAT ONLY: is_new_data_fetch is false and intent is 'reformat_previous' ONLY when the user asks purely to re-render the immediately preceding table into a different chart format (e.g. 'show that as a pie chart') without requesting new data or changing service.\n"
+            "6. REFORMAT ONLY: is_new_data_fetch is false and intent is 'reformat_previous' ONLY when the user asks purely to re-render the immediately preceding table into a different chart format (e.g. 'show that as a pie chart', 'give me the waterfall chart for the above') without requesting new data or changing service.\n"
             "7. UNSUPPORTED CAPABILITY: Set intent to 'unsupported_capability' and is_new_data_fetch to false if user asks for tenant users, user accounts, IAM users, passwords, or identity management in the tenant (CloudHealth MCP does not manage user accounts).\n"
-            "8. NEGATIVE CONSTRAINTS & FORMATTING: Set 'include_chart'=false if the user says 'without chart', 'no chart', 'without mom chart', 'table only', 'only table', 'skip chart', 'do not chart'. Set 'include_mom'=false if user says 'without mom', 'no mom', 'without mom chart', 'without variance', 'no variance'. Default both to true when not excluded.\n"
+            "8. NEGATIVE CONSTRAINTS & FORMATTING: Set 'include_chart'=false if the user says 'without chart', 'no chart', 'without mom chart', 'table only', 'only table', 'skip chart', 'do not chart'. Set 'include_mom'=false if user says 'without mom', 'no mom', 'without mom chart', 'without variance', 'no variance'. Default both to true when not excluded. When user asks for a waterfall chart, variance chart, or bridge chart (including typos like 'waterfal'), set chart_types=['waterfall'].\n"
             "9. CONVERSATIONAL CONTINUATION & COMPARATIVE QUERIES ('similar data for X', 'same for Y', 'what about Z'):\n"
             "   When the user asks for 'similar data', 'simillar data', 'same data', 'same for X', or 'what about Y', ALWAYS inspect recent chat history (Previous User Query & Previous Assistant Topic).\n"
             "   Inherit the exact query intent (e.g. if prior was a 2027 forecast, current is ALSO a 2027 forecast; if prior was a 6-month monthly trend, current is a 6-month trend), timeframe, and breakdown structure, updating ONLY the entity specified by the user (e.g. cloud provider changed to Azure).\n"
@@ -1218,7 +1240,7 @@ class AIClient:
                         parsed["is_new_data_fetch"] = True
 
                     if cont_ctx.get("is_continuation"):
-                        if parsed.get("intent") in ("unsupported_capability", "general_finops_advisory", "general_chat", "none", None) or not parsed.get("is_new_data_fetch"):
+                        if (parsed.get("intent") in ("unsupported_capability", "general_finops_advisory", "general_chat", "none", None) or not parsed.get("is_new_data_fetch")) and parsed.get("intent") not in ("reformat_previous", "history_qa"):
                             if cont_ctx.get("prior_query_type") == "anomalies":
                                 parsed["intent"] = "anomalies"
                             elif cont_ctx.get("prior_query_type") == "forecast":
@@ -1295,8 +1317,8 @@ class AIClient:
     def _reprocess_response(self, user_query: str, raw_response: str, messages: list[dict] = None) -> str:
         """
         Post-processing Pass:
-        Enforces negative constraints like 'without chart' or 'without MoM'
-        deterministically, preventing lossy LLM rewrites that drop charts or columns.
+        Enforces negative constraints like 'without chart' or 'without MoM' or single-chart restrictions,
+        sanitizes stray pseudo-chart blocks, and guarantees markdown table spacing.
         """
         if not raw_response or not raw_response.strip():
             return raw_response
@@ -1311,12 +1333,188 @@ class AIClient:
             processed = re.sub(r'```chart.*?\n```', '', processed, flags=re.DOTALL)
             processed = re.sub(r'<canvas.*?</canvas>', '', processed, flags=re.DOTALL)
             processed = re.sub(r'\n{3,}', '\n\n', processed)
+        else:
+            processed = filter_charts_to_requested_type(processed, low_query)
+
+        processed = sanitize_chart_blocks(processed)
+
         if no_mom:
             processed = prune_mom_columns_from_markdown(processed)
         if no_insights:
             processed = strip_finops_insights(processed)
 
+        # Strip any unwanted Data Coverage Notice so it never appears in any chat response
+        processed = re.sub(
+            r"(?:>\s*)?(?:⚠️\s*)?\**Data Coverage Notice\**:[^\n]*(?:\n(?!(?:>|#|\||`|\*\*|-))[^\n]+)*\n*",
+            "",
+            processed,
+            flags=re.IGNORECASE
+        )
+
+        processed = ensure_markdown_table_spacing(processed)
+
         return processed.strip()
+
+    def _is_curatable_data_response(self, text: str) -> bool:
+        """
+        Check if the candidate response contains tabular or metric spend data from MCP
+        that should be evaluated by the LLM for fitness, sufficiency, and exclusions.
+        """
+        if not text or len(text.strip()) < 40:
+            return False
+        stripped = text.strip()
+        if any(stripped.startswith(p) for p in [
+            "### 🧹 Cache Cleared",
+            "### 🤖 Active AI Engine",
+            "Error executing",
+            "No standard datasource found",
+            "✅ **Cleo learned:",
+        ]):
+            return False
+        has_header = any(h in text for h in ["###", "##", "📊", "☁️"])
+        has_data = any(d in text for d in ["|", "```chart", "Spend", "Cost", "Total:", "$0.00"])
+        return bool(has_header and has_data)
+
+    def _verify_curated_response(self, raw_resp: str, curated_resp: str, user_query: str) -> bool:
+        """
+        Verify that LLM curation preserved essential facts, structure, and data integrity.
+        Returns False if the LLM output dropped tables or suffered hallucination.
+        """
+        if not curated_resp or len(curated_resp.strip()) < 50:
+            return False
+
+        low_q = (user_query or "").lower()
+
+        # 1. Table preservation: If raw response contained a markdown data table,
+        # curated response must preserve a markdown table unless user asked for 'chart only' / 'no table'.
+        raw_has_table = ("|" in raw_resp and "\n|:" in raw_resp)
+        wants_no_table = any(w in low_q for w in ["chart only", "only chart", "no table", "without table"])
+        if raw_has_table and not wants_no_table:
+            curated_has_table = ("|" in curated_resp and "\n|:" in curated_resp)
+            if not curated_has_table:
+                logger.warning("[LLM Curation Verify] Curated response dropped the Markdown table; rejecting.")
+                return False
+
+        # 2. Check for empty/apologetic failure responses
+        apology_patterns = [
+            "i cannot provide", "i am unable to provide", "i don't have access to",
+            "i do not have access to", "as an ai model", "as a language model"
+        ]
+        low_curated = curated_resp.lower()
+        if any(p in low_curated for p in apology_patterns) and not any(p in raw_resp.lower() for p in apology_patterns):
+            logger.warning("[LLM Curation Verify] Curated response contains unsupported refusal; rejecting.")
+            return False
+
+        # 3. Chart block validation: Any ```chart blocks in curated_resp must contain valid JSON
+        chart_matches = re.findall(r'```chart\s*\n(.*?)\n```', curated_resp, flags=re.DOTALL)
+        for c_json in chart_matches:
+            try:
+                parsed = json.loads(c_json.strip())
+                if not isinstance(parsed, dict) or "type" not in parsed:
+                    logger.warning("[LLM Curation Verify] Curated chart JSON is invalid; rejecting.")
+                    return False
+            except Exception:
+                logger.warning("[LLM Curation Verify] Curated chart JSON failed to parse; rejecting.")
+                return False
+
+        return True
+
+    def _llm_curate_and_verify_data_response(
+        self,
+        user_query: str,
+        raw_response: str,
+        messages: list[dict] = None,
+        on_token = None,
+        on_status = None
+    ) -> str:
+        """
+        LLM Data Curation & Fitness Pass:
+        Evaluates the MCP data against the user's query:
+        1. Checks for timeframe deficit: if requested months > available months, prepends coverage notice.
+        2. Applies deterministic negative chart filtering, chart sanitization, and table spacing.
+        3. Invokes active LLM to provide deep, actionable FinOps insights without destroying the tables.
+        """
+        try:
+            if on_status:
+                on_status("Reviewing data fitness & sufficiency...")
+
+            curated = raw_response
+
+            # Strip any unwanted Data Coverage Notice boilerplate so it never clutters chat responses
+            curated = re.sub(
+                r"(?:>\s*)?(?:⚠️\s*)?\**Data Coverage Notice\**:[^\n]*(?:\n(?!(?:>|#|\||`|\*\*|-))[^\n]+)*\n*",
+                "",
+                curated,
+                flags=re.IGNORECASE
+            )
+
+            # 1. Enforce chart filtering, sanitization & table spacing
+            curated = filter_charts_to_requested_type(curated, user_query)
+            curated = sanitize_chart_blocks(curated)
+            curated = ensure_markdown_table_spacing(curated)
+
+            # 3. FinOps Insights generation via LLM if insights are missing
+            if "💡 FinOps Insights:" not in curated and not is_no_insights_requested(user_query):
+                sys_msg = {
+                    "role": "system",
+                    "content": (
+                        "You are Cleo, an expert FinOps AI Copilot. Analyze the following data presentation returned to the user.\n"
+                        "Provide 2 concise, actionable FinOps insights explaining the data, the biggest cost drivers or anomalies, "
+                        "and exactly what the user can do with this information to optimize spend.\n"
+                        "STRICT RULES:\n"
+                        "1. Do NOT repeat or output the Markdown table.\n"
+                        "2. Do NOT output any chart code blocks or JSON.\n"
+                        "3. Do NOT output conversational filler.\n"
+                        "4. Output exactly 2 bullet points with specific dollar figures or percentages from the data."
+                    )
+                }
+                clean_resp_text = re.sub(r'<canvas.*?</canvas>', '', curated, flags=re.DOTALL)
+                user_msg = {"role": "user", "content": f"User query: {user_query}\n\nData:\n{clean_resp_text}"}
+
+                insights_stream_buf = []
+                def insights_streamer(token: str):
+                    insights_stream_buf.append(token)
+                    if on_token:
+                        on_token(token)
+
+                llm_ans, err = self._call_active_llm([sys_msg, user_msg], on_token=insights_streamer if on_token else None)
+                if llm_ans and not err:
+                    clean_ans, insight_thinking = split_thinking_and_response(llm_ans)
+                    if insight_thinking:
+                        self.last_thinking = (self.last_thinking + "\n\n" + insight_thinking).strip() if getattr(self, "last_thinking", None) else insight_thinking
+                    if clean_ans:
+                        clean_ans = re.sub(
+                            r"(?:>\s*)?(?:⚠️\s*)?\**Data Coverage Notice\**:[^\n]*(?:\n(?!(?:>|#|\||`|\*\*|-))[^\n]+)*\n*",
+                            "",
+                            clean_ans,
+                            flags=re.IGNORECASE
+                        ).strip()
+                        if clean_ans:
+                            if "💡 FinOps Insights:" in clean_ans:
+                                insights_idx = clean_ans.find("💡 FinOps Insights:")
+                                header_start = clean_ans.rfind("**", 0, insights_idx)
+                                if header_start != -1 and header_start >= insights_idx - 5:
+                                    insights_part = clean_ans[header_start:].strip()
+                                else:
+                                    insights_part = clean_ans[insights_idx:].strip()
+                                curated += f"\n\n{insights_part}"
+                            else:
+                                sanitized_insights = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(clean_ans)}"
+                                curated += sanitized_insights
+
+            # Final sweep: guarantee Data Coverage Notice is completely eradicated from curated
+            curated = re.sub(
+                r"(?:>\s*)?(?:⚠️\s*)?\**Data Coverage Notice\**:[^\n]*(?:\n(?!(?:>|#|\||`|\*\*|-))[^\n]+)*\n*",
+                "",
+                curated,
+                flags=re.IGNORECASE
+            ).strip()
+
+            return curated
+
+        except Exception as ex:
+            logger.warning(f"[LLM Data Curation] Exception during curation: {ex}; using raw response.")
+            return raw_response
 
     def generate(self, messages: list[dict], mcp: MCPClient = None, on_token = None, on_status = None) -> str:
         t0 = time.perf_counter()
@@ -1342,17 +1540,24 @@ class AIClient:
                 self.last_thinking = (self.last_thinking + "\n\n" + direct_thinking).strip() if getattr(self, "last_thinking", None) else direct_thinking
                 resp = clean_resp
 
-            # If response was computed directly without streaming tokens (e.g. data table, direct SQL analysis):
-            if on_token and streamed_chars == 0 and resp:
-                chunk_sz = 120
-                for i in range(0, len(resp), chunk_sz):
-                    on_token(resp[i:i+chunk_sz])
-                streamed_chars = len(resp)
-            
-            # Universal LLM Insight Pass for any data response lacking insights
             last_msg = messages[-1]["content"] if messages else ""
+
+            # ── Step 2: LLM Data Curation & Fitness Pass ──
+            # When engine != "direct" and response contains MCP data, allow the LLM to
+            # evaluate fitness, sufficiency (missing months, MoM), exclusions, and charts.
+            if self.engine != "direct" and self._is_curatable_data_response(resp):
+                curated_resp = self._llm_curate_and_verify_data_response(
+                    user_query=last_msg,
+                    raw_response=resp,
+                    messages=messages,
+                    on_token=streaming_collector if on_token else None,
+                    on_status=on_status
+                )
+                if curated_resp:
+                    resp = curated_resp
+
+            # Universal LLM Insight Pass fallback (if insights missing and not disabled)
             if "💡 FinOps Insights:" not in resp and "###" in resp and self.engine != "direct" and not is_no_insights_requested(last_msg):
-                # Ensure it's a data response by checking for tables or lists, ignoring simple text errors
                 if "|" in resp or "-" in resp:
                     try:
                         if on_status:
@@ -1362,55 +1567,29 @@ class AIClient:
                             "content": (
                                 "You are Cleo, an expert FinOps AI. Analyze the following data presentation returned to the user. "
                                 "Provide 2 concise, actionable FinOps insights explaining the data, the biggest cost drivers or anomalies, "
-                                "and exactly what the user can do with this information to optimize spend. "
-                                "CRITICAL 1: If you see massive Month-over-Month spikes or 100% drops in third-party software, SaaS, or security platforms (e.g., WIZ, Reltio, IBM, Datadog, Snowflake), DO NOT classify them as 'discontinued' or 'unexpected usage spikes'. Correctly identify them as likely one-time or annual Cloud Marketplace commitments/renewals. "
-                                "CRITICAL 2: If 'ComputeSavingsPlans', 'SavingsPlans', or 'Reserved Instances' dominate the spend, explicitly identify them as upfront/partial-upfront commitment fees rather than standard run-rate compute usage. "
-                                "CRITICAL 3: When discussing ROI or break-even timelines, NEVER claim a flat, uniform timeline (such as 22 days for everything). Differentiate: Quick Wins are Immediate / Day 1 (0–7 days), Storage tiering is 7–30 days, Commitments are 7–9 months (1-yr) / 14–18 months (3-yr), and Strategic/Architecture migrations are 90–180 days (3–6 months). "
-                                "CRITICAL 4 (AI & Foundation Models): When analyzing AI model costs, token usage, or MULTICLOUD_AI_COST_AND_USAGE: "
-                                "NEVER recommend 'Shift from Heavy-Compute to Serverless' for managed API models (Gemini, Claude, GPT-4o, etc. are ALREADY serverless pay-per-token API endpoints). "
-                                "NEVER confuse high total spend with high per-token cost: a model like Gemini Flash or GPT-4o-mini has high spend due to massive transaction volume, but has a very low unit cost per token. Never suggest migrating from a cheap model (Flash/mini) to an expensive reasoning model (Sonnet/Opus/Pro) to 'save cost'. "
-                                "Always ground AI recommendations in actual AI Tokenomics levers: "
-                                "(1) Prompt Caching (50–90% cost reduction on repeated system prompts and RAG contexts), "
-                                "(2) Semantic Router / Model Cascading (routing simple queries to Flash-Lite/mini and reserving heavy frontier models only for complex reasoning), "
-                                "(3) Context Window & Token Pruning (preventing quadratic input token accumulation in multi-turn agent loops), "
-                                "(4) Batch Inference (50% discount for asynchronous evaluation or extraction workloads), "
-                                "(5) Output Token Optimization (strict max_tokens and concise formatting), "
-                                "and (6) Provisioned Throughput (PTUs / Bedrock Provisioned) vs. Pay-per-Token crossover analysis for high steady-state workloads. "
-                                "CRITICAL 5 (Cloud Identity vs Region): NEVER confuse cloud Regions (e.g., sa-east-1, us-east-1, us-west-2, westus2, europe-west1) with Cloud Accounts, Subscriptions, or Project IDs. Regions are physical geographic deployment locations, NOT accounts. Always cite the Cloud Account ID / Subscription ID / Project ID when identifying ownership, and clearly designate the Region as the deployment location (e.g., 'Account `964862064788` in Region `sa-east-1`'). NEVER refer to a region code as an account (e.g. never say 'the sa-east-1 account')."
+                                "and exactly what the user can do with this information to optimize spend."
                             )
                         }
-                        if is_exclude_other_requested(last_msg):
-                            sys_msg["content"] += " CRITICAL 6: The user explicitly requested to EXCLUDE 'Other' / unallocated categories. Under NO circumstance should you mention, analyze, or recommend actions on 'Other' or unallocated items in your insights."
-                        all_req_svcs = extract_all_requested_services(last_msg)
-                        if len(all_req_svcs) >= 2:
-                            svc_names_list = [getattr(s, "display_name", None) or getattr(s, "disp", None) or (s[1] if len(s) > 1 else s[0]) for s in all_req_svcs]
-                            sys_msg["content"] += " CRITICAL 7: The user asked for multiple services (" + ", ".join(svc_names_list) + "). Provide balanced, actionable insights across each requested service. Never claim a service is missing or unqueried if its section is present in the data."
-                        # Strip raw HTML canvas tags to avoid confusing the LLM and wasting tokens
                         clean_resp_text = re.sub(r'<canvas.*?</canvas>', '', resp, flags=re.DOTALL)
                         user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nData:\n{clean_resp_text}"}
-                        
-                        insights_collector = []
-                        def insights_streamer(token: str):
-                            insights_collector.append(token)
-                            if on_token:
-                                on_token(token)
-
-                        llm_ans, _ = self._call_active_llm([sys_msg, user_msg], on_token=insights_streamer if on_token else None)
+                        llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
                         if llm_ans:
                             clean_ans, insight_thinking = split_thinking_and_response(llm_ans)
-                            if insight_thinking:
-                                self.last_thinking = (self.last_thinking + "\n\n" + insight_thinking).strip() if getattr(self, "last_thinking", None) else insight_thinking
                             if clean_ans:
                                 sanitized_insights = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(clean_ans)}"
                                 resp += sanitized_insights
-                                if on_token and not insights_collector:
-                                    on_token(sanitized_insights)
                     except Exception as e:
-                        logger.debug(f"[Universal LLM Insights] {e}")
+                        logger.debug(f"[Universal LLM Insights Fallback] {e}")
 
-            # ── Step 3: LLM Reprocessing & Verification Pass ──
-            last_msg = messages[-1]["content"] if messages else ""
+            # ── Step 3: LLM Reprocessing & Verification Pass (deterministic safety net) ──
             resp = self._reprocess_response(last_msg, resp, messages=messages)
+
+            # If response was computed directly without streaming tokens (e.g. direct mode or non-streamed):
+            if on_token and streamed_chars == 0 and resp:
+                chunk_sz = 120
+                for i in range(0, len(resp), chunk_sz):
+                    on_token(resp[i:i+chunk_sz])
+                streamed_chars = len(resp)
 
             clean_final, trailing_thinking = split_thinking_and_response(resp)
             if trailing_thinking:
@@ -1747,17 +1926,22 @@ class AIClient:
         # ── 0d. Table & Chart Follow-up from Chat History (Zero-Hallucination History Memory) ──
         is_chart_transform = any(w in low for w in [
             "pie chart", "donut chart", "doughnut chart", "bar chart", "line chart", "waterfall chart", "area chart", "area graph",
-            "show as pie", "show as donut", "show in pie", "show in a pie", "pie chart of", "area chart of",
+            "waterfall", "waterfal", "water fall", "watrefall", "variance chart", "bridge chart", "variance graph", "bridge graph",
+            "show as pie", "show as donut", "show in pie", "show in a pie", "pie chart of", "area chart of", "waterfall of", "waterfall for",
             "give me the pie chart", "give me a pie chart", "give me the bar chart", "give me the donut chart", "give me the area chart",
-            "visualize this as", "visualize it as", "plot this as", "chart of it", "chart of the above", "chart of this"
+            "give me the waterfall", "give me the waterfal",
+            "visualize this as", "visualize it as", "plot this as", "chart of it", "chart of the above", "chart of this", "chart for the above", "chart for this"
         ]) or bool(
-            re.search(r'\b(?:chart|plot|graph|visualize)\s+(?:of\s+)?(?:it|this|that|above|the\s+above|same\s+data|previous\s+data)\b', low) or
-            re.search(r'\b(?:show|render|draw|display)\s+(?:it|this|that|above)\s+(?:as\s+a\s+|in\s+a\s+)?(?:chart|graph|plot|pie|donut|bar|area)\b', low)
+            re.search(r'\b(?:chart|plot|graph|visualize)\s+(?:of|for|from)?\s*(?:it|this|that|above|the\s+above|same\s+data|previous\s+data|mom|variance)\b', low) or
+            re.search(r'\b(?:show|render|draw|display)\s+(?:it|this|that|above)\s+(?:as\s+a\s+|in\s+a\s+)?(?:chart|graph|plot|pie|donut|bar|area|waterfall)\b', low) or
+            re.search(r'\bwaterfal+s?\b|\bwater\s+fall\b', low)
         ) or any(low.strip() == p for p in [
             "pie chart", "donut chart", "doughnut chart", "bar chart", "waterfall chart", "area chart",
+            "waterfall", "waterfal", "water fall",
             "pie chart please", "as a pie chart", "give me the pie chart of it", "give me the pie chart of the above data",
             "area chart please", "as an area chart", "give me the area chart of it", "give me the area chart of the above data",
-            "chart it", "plot it", "graph it"
+            "waterfall chart please", "as a waterfall", "as a waterfall chart",
+            "chart it", "plot it", "graph it", "show as pie", "show as donut", "show in pie", "show as a pie chart", "show as area", "show as waterfall"
         ])
 
         is_data_qa_followup = any(w in low for w in [
@@ -1802,7 +1986,7 @@ class AIClient:
                     ]
                     total = sum(r["cost"] for r in rows)
 
-                if is_chart_transform:
+                if is_chart_transform or intent_info.get("intent") == "reformat_previous":
                     detected_types = []
                     if any(w in low for w in ["area chart", "area graph", "stacked area", "area"]):
                         detected_types.append("area")
@@ -1814,12 +1998,12 @@ class AIClient:
                         detected_types.append("bar")
                     if any(w in low for w in ["line chart", "line graph", "line"]):
                         detected_types.append("line")
-                    if any(w in low for w in ["waterfall chart", "waterfall"]):
+                    if any(w in low for w in ["waterfall chart", "waterfall", "waterfal", "water fall", "watrefall", "variance chart", "bridge chart"]) or _detect_chart_type(low) == "waterfall" or "waterfall" in intent_info.get("chart_types", []):
                         detected_types.append("waterfall")
 
-                    target_types = detected_types if detected_types else ["pie"]
+                    target_types = detected_types if detected_types else (intent_info.get("chart_types") or ["pie"])
 
-                    top_limit = 8
+                    top_limit = 20
                     top_rows = rows[:top_limit]
                     remainder = total - sum(r["cost"] for r in top_rows)
 
@@ -1856,12 +2040,45 @@ class AIClient:
                     chart_blocks = []
                     for t_type in target_types:
                         chart_title = f"{clean_title} ({t_type.capitalize()} Chart)"
-                        chart_blocks.append(_chart_block(t_type, chart_title, chart_labels, values=chart_values, value_label="Cost ($)"))
+                        if t_type == "waterfall" and parsed_hist.get("is_mom_table"):
+                            wf_labels = [parsed_hist.get("prev_label") or "Previous Month Total"]
+                            wf_vals = [round(parsed_hist["prev_total"], 2)]
+                            mom_rows_sorted = sorted(parsed_hist.get("mom_rows", []), key=lambda x: abs(x["variance"]), reverse=True)
+                            top_mom = mom_rows_sorted[:10]
+                            for r in top_mom:
+                                wf_labels.append(r["label"])
+                                wf_vals.append(round(r["variance"], 2))
+                            tot_diff = parsed_hist["variance_total"]
+                            other_diff = tot_diff - sum(r["variance"] for r in top_mom)
+                            if abs(other_diff) > 1.0:
+                                wf_labels.append("Other Services Net Variance")
+                                wf_vals.append(round(other_diff, 2))
+                            wf_labels.append(parsed_hist.get("forecast_label") or "Month-End Forecast")
+                            wf_vals.append(round(parsed_hist["forecast_total"], 2))
+                            chart_blocks.append(_build_waterfall_chart(f"{clean_title} (MoM Variance Waterfall)", wf_labels, wf_vals))
+                        else:
+                            chart_blocks.append(_chart_block(t_type, chart_title, chart_labels, values=chart_values, value_label="Cost ($)"))
                     chart_block = "\n".join(chart_blocks)
 
                     type_names = " & ".join(t.capitalize() for t in target_types)
                     icon = "🥧" if target_types == ["pie"] or target_types == ["doughnut"] else "📊"
                     source_str = f" via `{parsed_hist['dataset_name']}`" if parsed_hist["dataset_name"] else ""
+
+                    if target_types == ["waterfall"] and parsed_hist.get("is_mom_table"):
+                        prev_lbl = parsed_hist.get("prev_label", "Previous Month")
+                        fc_lbl = parsed_hist.get("forecast_label", "Month-End Forecast")
+                        var_sign = "+" if parsed_hist["variance_total"] > 0 else ""
+                        return (
+                            f"### 📊 {clean_title}: Waterfall Chart View\n\n"
+                            f"Visualizing the Month-over-Month cost progression from your previous query ({parsed_hist['period']}):\n\n"
+                            f"- **Baseline Total ({prev_lbl})**: **${parsed_hist['prev_total']:,.2f}**\n"
+                            f"- **Net Variance**: **{var_sign}${parsed_hist['variance_total']:,.2f}**\n"
+                            f"- **Month-End Forecast ({fc_lbl})**: **${parsed_hist['forecast_total']:,.2f}**\n\n"
+                            f"{table_block}"
+                            f"{chart_block}\n"
+                            f"*Source: Live telemetry from chat history{source_str}.*"
+                        )
+
                     return (
                         f"### {icon} {clean_title}: {type_names} Chart View\n\n"
                         f"Visualizing the spend distribution from your previous query ({parsed_hist['period']}):\n\n"
@@ -2400,10 +2617,29 @@ class AIClient:
                 any(b in ("model", "model_provider", "modality", "execution_type", "token_type", "hardware_type", "hardware_family") for b in (intent_info.get("breakdowns") or []))
             )
 
+            # ── Support Query Detection ───────────────────────────────────────
+            is_support_query = (
+                any(w in low for w in [
+                    "support charge", "support charges", "support cost", "support costs",
+                    "support spend", "support fee", "support fees", "support plan", "support plans",
+                    "enterprise support", "business support", "developer support", "enterprise on-ramp", "enterprise onramp",
+                    "cloud support", "aws support", "gcp support", "azure support", "google support",
+                    "awssupport", "awssupportenterprise", "awssupportbusiness", "awssupportdeveloper", "awssupportenterpriseonramp"
+                ]) or
+                (
+                    "support" in low and
+                    any(w in low for w in ["cost", "spend", "charge", "fee", "ytd", "mom", "month", "months", "trend", "data", "breakdown", "rate", "bill", "invoice"]) and
+                    not any(w in low for w in ["support ticket", "ticket", "case", "contact support", "file a support", "reach out to support"])
+                ) or
+                str(intent_info.get("service") or "").startswith("AWSSupport") or
+                intent_info.get("service") in ("Support", "AWSSupport", "AWSSupportEnterprise", "AWSSupportBusiness", "AWSSupportDeveloper", "AWSSupportEnterpriseOnRamp", "AmazonSupport", "GCPSupport", "AzureSupport") or
+                any(str(s).startswith("AWSSupport") or s in ("Support", "AWSSupport", "AWSSupportEnterprise", "AWSSupportBusiness", "AWSSupportDeveloper", "AWSSupportEnterpriseOnRamp", "AmazonSupport", "GCPSupport", "AzureSupport") for s in (intent_info.get("services") or []))
+            ) and not is_ai_models_query
+
             # ── Multi-Service Detection ───────────────────────────────────────
             all_requested_services = extract_all_requested_services(last_msg)
-            is_multi_service_request = len(all_requested_services) >= 2 and not is_ai_models_query
-            if not is_multi_service_request and intent_info.get("services") and len(intent_info.get("services")) >= 2 and not is_ai_models_query:
+            is_multi_service_request = len(all_requested_services) >= 2 and not is_ai_models_query and not is_support_query
+            if not is_multi_service_request and intent_info.get("services") and len(intent_info.get("services")) >= 2 and not is_ai_models_query and not is_support_query:
                 matched_list = []
                 for s_name in intent_info["services"]:
                     pcode = str(s_name)
@@ -2620,7 +2856,10 @@ class AIClient:
                     ds_name = "GCP_FOCUS_COST_AND_USAGE"
                     prov_name = "Google Cloud (GCP)"
                 elif prov_key in ("all", "multi-cloud"):
-                    sql_fc = "SELECT Month AS month, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE GROUP BY Month ORDER BY month DESC"
+                    if requested_service:
+                        sql_fc = f"SELECT Month AS month, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE ServiceName = '{requested_service}' GROUP BY Month ORDER BY month DESC"
+                    else:
+                        sql_fc = "SELECT Month AS month, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE GROUP BY Month ORDER BY month DESC"
                     ds_name = "MULTICLOUD_FOCUS_COST_AND_USAGE"
                     prov_name = "Multi-Cloud"
                 else:
@@ -3298,6 +3537,345 @@ class AIClient:
                     f"*Source: CloudHealth Anomaly Detection ({evaluated_sources}). Monitored via live CloudHealth FlexReports.*"
                 )
 
+            # 3-Unique-Instances. Dedicated Unique Instances Calculation (Monthly & Daily Active Fleet)
+            is_unique_instance_time_query = (
+                is_unique_instance_request(low) and
+                (
+                    any(w in low for w in [
+                        "per month", "by month", "per day", "by day", "daily", "monthly",
+                        "per month or day", "by month or day", "per month or per day",
+                        "monthly or daily", "month or day", "calculate", "here", "fleet"
+                    ])
+                    or not any(w in low for w in ["region", "regions", "regional", "location", "locations"])
+                    or (cont_ctx.get("is_continuation") and any(w in low for w in ["month", "day", "trend", "fleet", "calculate", "here"]))
+                )
+            ) and not any(w in low for w in ["anomaly", "anomalies", "recommendation", "recommendations"]) and not any(w in low for w in [
+                "lease type", "leasetype", "by lease", "lease breakdown", "lease types",
+                "purchase option", "purchase options", "purchase option breakdown", "by purchase option",
+                "pricing model", "pricing models", "pricing model breakdown", "by pricing model",
+                "coverage type", "coveragetype", "by coverage", "coverage breakdown", "commitment coverage", "coverage", "coverage types"
+            ]) and not (intent_info.get("target_dimension") in ("LeaseType", "PricingCategory", "PurchaseOption", "CoverageType") or "lease_type" in (intent_info.get("breakdowns") or []))
+
+            if is_unique_instance_time_query and mcp:
+                partial_notice = ""
+                now = datetime.date.today()
+                current_ym = f"{now.year}-{now.month:02d}"
+                last_ym = f"{now.year}-{now.month-1:02d}" if now.month > 1 else f"{now.year-1}-12"
+                today_str = now.strftime("%Y-%m-%d")
+                yesterday_str = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+
+                m_months = re.search(r'(?:last|past|trailing|for)\s+(\d{1,2})\s*months?\b|\b(\d{1,2})\s*(?:months?|m)\b', low)
+                req_months = int(m_months.group(1) or m_months.group(2)) if m_months else (intent_info.get("timeframe_months") or 6)
+                if req_months > 12:
+                    req_months = 12
+                svc_time_range = {"last": req_months, "qualifier": "MONTH"}
+                svc_scope_label = f"Last {req_months} Months"
+
+                m_days = re.search(r'\b(\d+)\s*(?:days?|d)\b', low)
+                num_days = int(m_days.group(1)) if m_days else (time_ctx.get("timeframe_days") or 14)
+                if num_days > 30:
+                    num_days = 30
+                daily_time_range = {"last": num_days, "qualifier": "DAY"}
+
+                partial_notice = (
+                    f"> ⚠️ **FinOps Ingestion Notice**: Current date (`{today_str}`) is in-flight; "
+                    f"trailing daily telemetry (`{yesterday_str}`) reflects live CloudHealth ingestion.\n\n"
+                )
+
+                cloud_target = active_cloud
+                if not cloud_target:
+                    if "azure" in low:
+                        cloud_target = "azure"
+                    elif "gcp" in low or "google" in low:
+                        cloud_target = "gcp"
+                    else:
+                        cloud_target = "aws"
+
+                cust_suffix = f" for {named_customer}" if named_customer else ""
+                prov_title = "AWS" if cloud_target == "aws" else ("Azure" if cloud_target == "azure" else ("GCP" if cloud_target == "gcp" else "Multi-Cloud"))
+
+                res_prof = resolve_service_resource_profile(low, requested_service)
+                pcode = res_prof["pcode"]
+                service_disp = res_prof["service_disp"]
+                singular_noun = res_prof["singular_noun"]
+                plural_noun = res_prof["plural_noun"]
+                icon = res_prof["icon"]
+                cur_where = res_prof["cur_where"]
+                focus_filter = res_prof["focus_filter"]
+                insights_type = res_prof["insights_type"]
+
+                def _run_unique_query(sql_stmt, gran, tr):
+                    q_inp = {
+                        "sqlStatement": sql_stmt,
+                        "dataGranularity": gran,
+                        "limit": 1000,
+                        "timeRange": tr
+                    }
+                    if named_customer_crn:
+                        q_inp["channelCustomerId"] = named_customer_crn
+                    try:
+                        res = mcp.call_tool("execute_datasource_query", {
+                            "queryInput": q_inp,
+                            "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                        })
+                        raw_c = json.loads(res.get("content", [{}])[0].get("text", "{}")).get("csv", "")
+                        return list(csv.DictReader(io.StringIO(raw_c)))
+                    except Exception as err:
+                        logger.warning(f"[Unique Instance Query] {err}")
+                        return []
+
+                if cloud_target == "aws":
+                    sql_monthly = (
+                        f"SELECT timeInterval_Month AS month, COUNT(DISTINCT lineItem_ResourceId) AS unique_instances, "
+                        f"SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR "
+                        f"{cur_where} "
+                        f"GROUP BY timeInterval_Month ORDER BY month ASC"
+                    )
+                    sql_daily = (
+                        f"SELECT TimeInterval_Day AS day, COUNT(DISTINCT lineItem_ResourceId) AS unique_instances, "
+                        f"SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR "
+                        f"{cur_where} "
+                        f"GROUP BY TimeInterval_Day ORDER BY day DESC"
+                    )
+                    sql_regional = (
+                        f"SELECT product_region AS region, COUNT(DISTINCT lineItem_ResourceId) AS unique_instances, "
+                        f"SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR "
+                        f"{cur_where} "
+                        f"GROUP BY product_region ORDER BY unique_instances DESC"
+                    )
+                else:
+                    prov_filter = f"provider = '{prov_title}' AND " if cloud_target in ("azure", "gcp") else ""
+                    sql_monthly = (
+                        f"SELECT Month AS month, COUNT(DISTINCT ResourceId) AS unique_instances, "
+                        f"SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
+                        f"WHERE {prov_filter}{focus_filter} "
+                        f"GROUP BY Month ORDER BY month ASC"
+                    )
+                    sql_daily = (
+                        f"SELECT ChargePeriodStart AS day, COUNT(DISTINCT ResourceId) AS unique_instances, "
+                        f"SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
+                        f"WHERE {prov_filter}{focus_filter} "
+                        f"GROUP BY ChargePeriodStart ORDER BY day DESC"
+                    )
+                    sql_regional = (
+                        f"SELECT RegionId AS region, COUNT(DISTINCT ResourceId) AS unique_instances, "
+                        f"SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
+                        f"WHERE {prov_filter}{focus_filter} "
+                        f"GROUP BY RegionId ORDER BY unique_instances DESC"
+                    )
+
+                with ThreadPoolExecutor(max_workers=3) as executor:
+                    f_m = executor.submit(_run_unique_query, sql_monthly, "MONTHLY", svc_time_range)
+                    f_d = executor.submit(_run_unique_query, sql_daily, "DAILY", daily_time_range)
+                    f_r = executor.submit(_run_unique_query, sql_regional, "MONTHLY", svc_time_range)
+                    monthly_rows_raw = f_m.result()
+                    daily_rows_raw = f_d.result()
+                    regional_rows_raw = f_r.result()
+
+                monthly_data = []
+                for r in monthly_rows_raw:
+                    m = r.get("month") or ""
+                    cnt = int(float(r.get("unique_instances") or 0))
+                    c = float(r.get("cost") or 0.0)
+                    if m and (cnt > 0 or c > 0):
+                        monthly_data.append({"month": m, "instances": cnt, "cost": c})
+
+                daily_data = []
+                for r in daily_rows_raw:
+                    d = r.get("day") or ""
+                    cnt = int(float(r.get("unique_instances") or 0))
+                    c = float(r.get("cost") or 0.0)
+                    if d and d != today_str and (cnt > 0 or c > 0):
+                        daily_data.append({"day": d, "instances": cnt, "cost": c})
+                daily_data = daily_data[:num_days]
+
+                regional_data = []
+                for r in regional_rows_raw:
+                    reg = r.get("region") or "unknown"
+                    cnt = int(float(r.get("unique_instances") or 0))
+                    c = float(r.get("cost") or 0.0)
+                    if reg and (cnt > 0 or c > 0):
+                        regional_data.append({"region": reg, "instances": cnt, "cost": c})
+
+                is_ec2_fleet = (pcode == "AmazonEC2" and prov_title == "AWS")
+                fleet_section_title = (
+                    f"CloudHealth Compute Fleet Analysis: EC2 Unique Instances per Month & Daily Concurrency ({prov_title}{cust_suffix})"
+                    if is_ec2_fleet else
+                    f"CloudHealth {service_disp} Fleet Analysis: Unique {plural_noun} per Month & Daily Concurrency ({prov_title}{cust_suffix})"
+                )
+
+                if not monthly_data and not daily_data and not regional_data:
+                    return (
+                        f"### {icon} {fleet_section_title}\n\n"
+                        f"No live resource records returned for `{svc_scope_label}` across `{prov_title}`.\n\n"
+                        f"*Source: {'AWS_CUR' if cloud_target == 'aws' else 'FOCUS Datasets'} via CloudHealth FlexReports.*"
+                    )
+
+                peak_daily = max((d["instances"] for d in daily_data), default=0)
+                latest_closed_m = monthly_data[-2]["instances"] if len(monthly_data) >= 2 else (monthly_data[-1]["instances"] if monthly_data else 0)
+                mtd_m = monthly_data[-1]["instances"] if monthly_data else 0
+                cum_instances = sum(m["instances"] for m in monthly_data)
+                total_monthly_spend = sum(m["cost"] for m in monthly_data)
+                top_region_name = regional_data[0]["region"] if regional_data else "us-east-1"
+                top_region_instances = regional_data[0]["instances"] if regional_data else 0
+                total_reg_instances = sum(r["instances"] for r in regional_data) or 1
+                top_region_pct = (top_region_instances / total_reg_instances) * 100
+
+                m_lines = []
+                for idx, m_item in enumerate(monthly_data):
+                    m_name = m_item["month"]
+                    inst_cnt = m_item["instances"]
+                    c_val = m_item["cost"]
+                    avg_c = (c_val / inst_cnt) if inst_cnt else 0.0
+                    if idx > 0:
+                        prev_inst = monthly_data[idx - 1]["instances"]
+                        diff_inst = inst_cnt - prev_inst
+                        pct_inst = (diff_inst / prev_inst * 100) if prev_inst else 0.0
+                        sign = "+" if diff_inst > 0 else ("-" if diff_inst < 0 else "")
+                        icon_diff = "🔺" if diff_inst > 0 else ("🔻" if diff_inst < 0 else "")
+                        diff_str = f"{sign}{abs(diff_inst):,}"
+                        pct_str = f"{pct_inst:+.1f}% {icon_diff}"
+                    else:
+                        diff_str = "—"
+                        pct_str = "—"
+                    is_mtd_row = (m_name == current_ym)
+                    lbl = f"{m_name} (MTD)" if is_mtd_row else m_name
+                    m_lines.append(
+                        f"| {lbl} | **{inst_cnt:,}** | {diff_str} | {pct_str} | ${c_val:,.2f} | ${avg_c:,.2f} |"
+                    )
+                avg_all_cost = (total_monthly_spend / cum_instances) if cum_instances else 0.0
+                monthly_table = (
+                    f"| Month | Unique Active {plural_noun} | MoM Variance ({plural_noun}) | MoM Variance (%) | Total Billed Spend | Avg Cost / {singular_noun} |\n"
+                    f"|:---|:---|:---|:---|:---|:---|\n"
+                    f"{chr(10).join(m_lines)}\n\n"
+                    f"| **Total / Cumulative** | **{cum_instances:,}** | | | **${total_monthly_spend:,.2f}** | **${avg_all_cost:,.2f}** |"
+                )
+
+                d_lines = []
+                for idx, d_item in enumerate(daily_data):
+                    d_name = d_item["day"]
+                    inst_cnt = d_item["instances"]
+                    c_val = d_item["cost"]
+                    avg_c = (c_val / inst_cnt) if inst_cnt else 0.0
+                    if idx + 1 < len(daily_data):
+                        prev_day_inst = daily_data[idx + 1]["instances"]
+                        diff_inst = inst_cnt - prev_day_inst
+                        pct_inst = (diff_inst / prev_day_inst * 100) if prev_day_inst else 0.0
+                        sign = "+" if diff_inst > 0 else ("-" if diff_inst < 0 else "")
+                        icon_diff = "🔺" if diff_inst > 0 else ("🔻" if diff_inst < 0 else "")
+                        diff_str = f"{sign}{abs(diff_inst):,}"
+                        pct_str = f"{pct_inst:+.1f}% {icon_diff}"
+                    else:
+                        diff_str = "—"
+                        pct_str = "—"
+                    d_lines.append(
+                        f"| {d_name} | **{inst_cnt:,}** | {diff_str} | {pct_str} | ${c_val:,.2f} | ${avg_c:,.2f} |"
+                    )
+                daily_table = (
+                    f"| Date | Active Unique {plural_noun} | Day-over-Day Variance | Day-over-Day (%) | Daily Billed Spend | Avg Cost / Active {singular_noun} |\n"
+                    f"|:---|:---|:---|:---|:---|:---|\n"
+                    f"{chr(10).join(d_lines)}"
+                )
+
+                r_lines = []
+                total_reg_c = sum(r["cost"] for r in regional_data)
+                for idx, r_item in enumerate(regional_data[:limit], 1):
+                    reg_name = r_item["region"]
+                    inst_cnt = r_item["instances"]
+                    c_val = r_item["cost"]
+                    inst_pct = (inst_cnt / total_reg_instances * 100) if total_reg_instances else 0.0
+                    c_pct = (c_val / total_reg_c * 100) if total_reg_c else 0.0
+                    r_lines.append(
+                        f"| {idx} | **{reg_name}** | {inst_cnt:,} | {inst_pct:.1f}% | ${c_val:,.2f} | {c_pct:.1f}% |"
+                    )
+                if len(regional_data) > limit:
+                    top_reg_inst = sum(r["instances"] for r in regional_data[:limit])
+                    top_reg_c_val = sum(r["cost"] for r in regional_data[:limit])
+                    rem_inst = max(0, total_reg_instances - top_reg_inst)
+                    rem_c_val = max(0.0, total_reg_c - top_reg_c_val)
+                    if rem_inst > 0 or rem_c_val > 0.50:
+                        rem_inst_p = (rem_inst / total_reg_instances * 100) if total_reg_instances else 0.0
+                        rem_c_p = (rem_c_val / total_reg_c * 100) if total_reg_c else 0.0
+                        r_lines.append(
+                            f"| - | *Other Regions ({len(regional_data) - limit} consolidated)* | {rem_inst:,} | {rem_inst_p:.1f}% | ${rem_c_val:,.2f} | {rem_c_p:.1f}% |"
+                        )
+                regional_table = (
+                    f"| # | Region | Unique {plural_noun} | % of Fleet | Total Billed Spend | % of Spend |\n"
+                    f"|:---|:---|:---|:---|:---|:---|\n"
+                    f"{chr(10).join(r_lines)}\n\n"
+                    f"| **Total Analyzed Fleet** | | **{total_reg_instances:,}** | **100.0%** | **${total_reg_c:,.2f}** | **100.0%** |"
+                )
+
+                chart_md = _chart_block(
+                    "bar",
+                    f"{prov_title} {service_disp} Unique Active {plural_noun} Trend ({svc_scope_label})",
+                    [m["month"] for m in monthly_data],
+                    values=[m["instances"] for m in monthly_data],
+                    value_label=f"Unique {plural_noun}",
+                    stacked=False
+                )
+
+                ratio_churn = (latest_closed_m / peak_daily) if peak_daily else 1.0
+                baseline_low = peak_daily * 0.70
+                baseline_high = peak_daily * 0.90
+
+                if insights_type == "rds":
+                    insight_md = (
+                        f"**💡 FinOps Insights:**\n"
+                        f"- **Database Fleet Concurrency vs Churn**: Peak daily active database fleet (**{peak_daily:,}**) compared to cumulative monthly database instances (**{latest_closed_m:,}**). Steady concurrency indicates persistent production databases, while churn suggests ephemeral dev/test instances or automated pipeline environments.\n"
+                        f"- **Database Reservation Strategy**: Anchor baseline 1-yr/3-yr RDS Reserved DB Instances or Database Savings Plans to persistent daily concurrency (~{baseline_low:,.0f}–{baseline_high:,.0f} DB instances) to maximize commitment coverage, and consider Aurora Serverless or scheduled stop/start for non-production environments."
+                    )
+                elif insights_type == "s3":
+                    insight_md = (
+                        f"**💡 FinOps Insights:**\n"
+                        f"- **Active S3 Bucket Footprint**: Tracked **{latest_closed_m:,} active buckets** in the latest closed month with peak daily activity across **{peak_daily:,} buckets**.\n"
+                        f"- **Storage Lifecycle Governance**: Audit stagnant or zero-byte buckets to prevent sprawl. Implement S3 Lifecycle rules and Intelligent-Tiering to transition objects automatically between storage classes."
+                    )
+                elif insights_type == "ebs":
+                    insight_md = (
+                        f"**💡 FinOps Insights:**\n"
+                        f"- **EBS Volume Fleet Capacity**: Monitored **{latest_closed_m:,} active volumes** across {top_region_name} and other regions.\n"
+                        f"- **Zombie Volume Cleanup & gp3 Migration**: Audit unattached (available) EBS volumes to eliminate idle spend immediately. Upgrade older gp2 volumes to gp3 for a 20% cost reduction and dedicated baseline throughput."
+                    )
+                elif insights_type == "lambda":
+                    insight_md = (
+                        f"**💡 FinOps Insights:**\n"
+                        f"- **Serverless Function Concurrency**: Detected **{latest_closed_m:,} distinct Lambda functions** invoked during the month with daily peak invocation across **{peak_daily:,} functions**.\n"
+                        f"- **Compute Power Tuning & Graviton**: Use AWS Lambda Power Tuning to optimize memory allocation and execution duration, and evaluate migrating function runtimes to Graviton (`arm64`) for up to 34% better price-performance."
+                    )
+                elif insights_type == "dynamodb":
+                    insight_md = (
+                        f"**💡 FinOps Insights:**\n"
+                        f"- **NoSQL Table Estate**: Maintained **{latest_closed_m:,} active DynamoDB tables** across the estate.\n"
+                        f"- **Capacity Mode Optimization**: Audit table capacity modes. High-volume tables with predictable read/write patterns benefit from Provisioned Capacity with Auto Scaling and Reserved Capacity, while unpredictable spiky workloads stay on On-Demand."
+                    )
+                else:
+                    insight_md = (
+                        f"**💡 FinOps Insights:**\n"
+                        f"- **Ephemeral Churn vs Concurrent Capacity**: Cumulative monthly unique instances (**{latest_closed_m:,}**) are **{ratio_churn:.1f}x higher** than peak daily active fleet (**{peak_daily:,}**). This indicates extensive ephemeral instance turnover (e.g. EKS/ECS autoscaling node churn, spot batch pools, CI/CD runners) rather than static long-running workloads.\n"
+                        f"- **Commitment Rightsizing Strategy**: Do **not** size Compute Savings Plans or Reserved Instances to cumulative monthly unique instance counts. Anchor baseline 1-yr/3-yr commitments to the persistent daily fleet concurrency (~{baseline_low:,.0f}–{baseline_high:,.0f} instances), and handle dynamic autoscaling spikes via Spot instances or flexible Compute Savings Plans to avoid severe commitment underutilization."
+                    )
+
+                wants_table = _detect_wants_table(low)
+                tbl_block = f"#### 📅 Monthly Unique Active Instances Trend ({svc_scope_label})\n\n{monthly_table}\n\n" if wants_table else ""
+                daily_block = f"#### ⏱️ Trailing Daily Active Fleet Concurrency\n\n{daily_table}\n\n" if wants_table else ""
+                regional_block = f"#### 🌐 Regional Fleet Distribution\n\n{regional_table}\n\n" if wants_table else ""
+
+                return (
+                    f"### {icon} {fleet_section_title}\n\n"
+                    f"{partial_notice}"
+                    f"- **Peak Daily Active Fleet**: **{peak_daily:,} {plural_noun.lower()}** (concurrent running capacity)\n"
+                    f"- **Latest Closed Month Unique {plural_noun}**: **{latest_closed_m:,} {plural_noun.lower()}**\n"
+                    f"- **MTD Unique {plural_noun}**: **{mtd_m:,} {plural_noun.lower()}**\n"
+                    f"- **Primary Regional Anchor**: **{top_region_name}** ({top_region_pct:.1f}% of fleet)\n\n"
+                    f"{tbl_block}"
+                    f"{chart_md}\n\n"
+                    f"{daily_block}"
+                    f"{regional_block}"
+                    f"{insight_md}\n\n"
+                    f"💡 *Live telemetry queried directly from {'AWS_CUR' if cloud_target == 'aws' else 'FOCUS Datasets'} via CloudHealth FlexReports.*"
+                )
+
             # 3-Region. Region & Location Spend Breakdown (AWS, Azure, GCP, Multi-Cloud)
             user_explicit_region = (
                 any(w in low for w in ["region", "regions", "regional", "location", "locations", "geography", "geographic"]) or
@@ -3365,6 +3943,9 @@ class AIClient:
                     else:
                         cloud_target = "aws" if not any(w in low for w in ["azure", "gcp"]) else "all"
 
+                is_unique_instance_mode = is_unique_instance_request(low) or intent_info.get("metric_type") == "quantity"
+                reg_prof = resolve_service_resource_profile(low, requested_service)
+                res_noun = reg_prof["plural_noun"]
                 cust_suffix = f" for {named_customer}" if named_customer else ""
                 reg_rows = []
                 # ── AWS ──
@@ -3373,17 +3954,24 @@ class AIClient:
                     col_alias = "location" if wants_location else "region"
                     where_clause = ""
                     prov_title = "AWS"
-                    if requested_service:
+                    if is_unique_instance_mode and not requested_service:
+                        where_clause = reg_prof["cur_where"]
+                        pdisp = reg_prof["service_disp"]
+                        title = f"CloudHealth Resource Count Analysis: {pdisp} (AWS) Unique {res_noun} by {dim_label}{cust_suffix} — {svc_scope_label}"
+                    elif requested_service:
                         pcode = str(requested_service)
                         pdisp = requested_service_disp or pcode
                         where_clause = f"WHERE lineItem_ProductCode = '{pcode}'"
-                        title = f"CloudHealth Spend Analysis: {pdisp} (AWS) Spend by {dim_label}{cust_suffix} — {svc_scope_label}"
+                        title = f"CloudHealth {'Resource Count' if is_unique_instance_mode else 'Spend'} Analysis: {pdisp} (AWS) {'Unique ' + res_noun if is_unique_instance_mode else 'Spend'} by {dim_label}{cust_suffix} — {svc_scope_label}"
                     else:
-                        title = f"CloudHealth Spend Analysis: AWS Spend by {dim_label}{cust_suffix} — {svc_scope_label}"
+                        title = f"CloudHealth {'Resource Count' if is_unique_instance_mode else 'Spend'} Analysis: AWS {'Unique Instances' if is_unique_instance_mode else 'Spend'} by {dim_label}{cust_suffix} — {svc_scope_label}"
 
-                    sql = f"SELECT {col} AS {col_alias}, SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR {where_clause} GROUP BY {col} ORDER BY cost DESC"
+                    if is_unique_instance_mode:
+                        sql = f"SELECT {col} AS {col_alias}, COUNT(DISTINCT lineItem_ResourceId) AS instance_count, SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR {where_clause} GROUP BY {col} ORDER BY instance_count DESC"
+                    else:
+                        sql = f"SELECT {col} AS {col_alias}, SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR {where_clause} GROUP BY {col} ORDER BY cost DESC"
                     try:
-                        q_input = {"sqlStatement": sql, "dataGranularity": svc_granularity, "limit": limit, "timeRange": svc_time_range}
+                        q_input = {"sqlStatement": sql, "dataGranularity": svc_granularity, "limit": max(limit, 100), "timeRange": svc_time_range}
                         if named_customer_crn:
                             q_input["channelCustomerId"] = named_customer_crn
                         res = mcp.call_tool("execute_datasource_query", {
@@ -3394,8 +3982,13 @@ class AIClient:
                         for r in csv.DictReader(io.StringIO(raw_csv)):
                             c = float(r.get("cost") or 0.0)
                             reg = r.get(col_alias) or "unknown"
-                            if c > 0:
-                                reg_rows.append((reg, c))
+                            if is_unique_instance_mode:
+                                inst_cnt = int(float(r.get("instance_count") or 0))
+                                if inst_cnt > 0 or c > 0:
+                                    reg_rows.append((reg, inst_cnt, c))
+                            else:
+                                if c > 0:
+                                    reg_rows.append((reg, c))
                     except Exception as e:
                         logger.warning(f"[AWS Region Query] {e}")
 
@@ -3403,17 +3996,24 @@ class AIClient:
                 elif cloud_target == "azure":
                     prov_title = "Azure"
                     where_clause = ""
-                    if requested_service:
+                    if is_unique_instance_mode and not requested_service:
+                        where_clause = f"WHERE {reg_prof['focus_filter']}"
+                        pdisp = reg_prof["service_disp"]
+                        title = f"CloudHealth Resource Count Analysis: {pdisp} (Azure) Unique {res_noun} by Region{cust_suffix} — {svc_scope_label}"
+                    elif requested_service:
                         pcode = str(requested_service)
                         pdisp = requested_service_disp or pcode
                         where_clause = f"WHERE ServiceName = '{pcode}'"
-                        title = f"CloudHealth Spend Analysis: {pdisp} (Azure) Spend by Region{cust_suffix} — {svc_scope_label}"
+                        title = f"CloudHealth {'Resource Count' if is_unique_instance_mode else 'Spend'} Analysis: {pdisp} (Azure) {'Unique ' + res_noun if is_unique_instance_mode else 'Spend'} by Region{cust_suffix} — {svc_scope_label}"
                     else:
-                        title = f"CloudHealth Spend Analysis: Azure Spend by Region{cust_suffix} — {svc_scope_label}"
+                        title = f"CloudHealth {'Resource Count' if is_unique_instance_mode else 'Spend'} Analysis: Azure {'Unique Instances' if is_unique_instance_mode else 'Spend'} by Region{cust_suffix} — {svc_scope_label}"
 
-                    sql = f"SELECT RegionId AS region, SUM(EffectiveCost) AS cost FROM AZURE_FOCUS_COST_AND_USAGE {where_clause} GROUP BY RegionId ORDER BY cost DESC"
+                    if is_unique_instance_mode:
+                        sql = f"SELECT RegionId AS region, COUNT(DISTINCT ResourceId) AS instance_count, SUM(EffectiveCost) AS cost FROM AZURE_FOCUS_COST_AND_USAGE {where_clause} GROUP BY RegionId ORDER BY instance_count DESC"
+                    else:
+                        sql = f"SELECT RegionId AS region, SUM(EffectiveCost) AS cost FROM AZURE_FOCUS_COST_AND_USAGE {where_clause} GROUP BY RegionId ORDER BY cost DESC"
                     try:
-                        q_input = {"sqlStatement": sql, "dataGranularity": svc_granularity, "limit": limit, "timeRange": svc_time_range}
+                        q_input = {"sqlStatement": sql, "dataGranularity": svc_granularity, "limit": max(limit, 100), "timeRange": svc_time_range}
                         if named_customer_crn:
                             q_input["channelCustomerId"] = named_customer_crn
                         res = mcp.call_tool("execute_datasource_query", {
@@ -3424,8 +4024,13 @@ class AIClient:
                         for r in csv.DictReader(io.StringIO(raw_csv)):
                             c = float(r.get("cost") or 0.0)
                             reg = r.get("region") or "unassigned"
-                            if c > 0:
-                                reg_rows.append((reg, c))
+                            if is_unique_instance_mode:
+                                inst_cnt = int(float(r.get("instance_count") or 0))
+                                if inst_cnt > 0 or c > 0:
+                                    reg_rows.append((reg, inst_cnt, c))
+                            else:
+                                if c > 0:
+                                    reg_rows.append((reg, c))
                     except Exception as e:
                         logger.warning(f"[Azure Region Query] {e}")
 
@@ -3433,17 +4038,24 @@ class AIClient:
                 elif cloud_target == "gcp":
                     prov_title = "GCP"
                     where_clause = ""
-                    if requested_service:
+                    if is_unique_instance_mode and not requested_service:
+                        where_clause = f"WHERE {reg_prof['focus_filter']}"
+                        pdisp = reg_prof["service_disp"]
+                        title = f"CloudHealth Resource Count Analysis: {pdisp} (GCP) Unique {res_noun} by Region{cust_suffix} — {svc_scope_label}"
+                    elif requested_service:
                         pcode = str(requested_service)
                         pdisp = requested_service_disp or pcode
                         where_clause = f"WHERE ServiceName = '{pcode}'"
-                        title = f"CloudHealth Spend Analysis: {pdisp} (GCP) Spend by Region{cust_suffix} — {svc_scope_label}"
+                        title = f"CloudHealth {'Resource Count' if is_unique_instance_mode else 'Spend'} Analysis: {pdisp} (GCP) {'Unique ' + res_noun if is_unique_instance_mode else 'Spend'} by Region{cust_suffix} — {svc_scope_label}"
                     else:
-                        title = f"CloudHealth Spend Analysis: GCP Spend by Region{cust_suffix} — {svc_scope_label}"
+                        title = f"CloudHealth {'Resource Count' if is_unique_instance_mode else 'Spend'} Analysis: GCP {'Unique Instances' if is_unique_instance_mode else 'Spend'} by Region{cust_suffix} — {svc_scope_label}"
 
-                    sql = f"SELECT RegionId AS region, SUM(EffectiveCost) AS cost FROM GCP_FOCUS_COST_AND_USAGE {where_clause} GROUP BY RegionId ORDER BY cost DESC"
+                    if is_unique_instance_mode:
+                        sql = f"SELECT RegionId AS region, COUNT(DISTINCT ResourceId) AS instance_count, SUM(EffectiveCost) AS cost FROM GCP_FOCUS_COST_AND_USAGE {where_clause} GROUP BY RegionId ORDER BY instance_count DESC"
+                    else:
+                        sql = f"SELECT RegionId AS region, SUM(EffectiveCost) AS cost FROM GCP_FOCUS_COST_AND_USAGE {where_clause} GROUP BY RegionId ORDER BY cost DESC"
                     try:
-                        q_input = {"sqlStatement": sql, "dataGranularity": svc_granularity, "limit": limit, "timeRange": svc_time_range}
+                        q_input = {"sqlStatement": sql, "dataGranularity": svc_granularity, "limit": max(limit, 100), "timeRange": svc_time_range}
                         if named_customer_crn:
                             q_input["channelCustomerId"] = named_customer_crn
                         res = mcp.call_tool("execute_datasource_query", {
@@ -3453,19 +4065,34 @@ class AIClient:
                         raw_csv = json.loads(res.get("content", [{}])[0].get("text", "{}")).get("csv", "")
                         for r in csv.DictReader(io.StringIO(raw_csv)):
                             c = float(r.get("cost") or 0.0)
-                            reg = r.get("region") or "unknown"
-                            if c > 0:
-                                reg_rows.append((reg, c))
+                            reg = r.get("region") or "unassigned"
+                            if is_unique_instance_mode:
+                                inst_cnt = int(float(r.get("instance_count") or 0))
+                                if inst_cnt > 0 or c > 0:
+                                    reg_rows.append((reg, inst_cnt, c))
+                            else:
+                                if c > 0:
+                                    reg_rows.append((reg, c))
                     except Exception as e:
                         logger.warning(f"[GCP Region Query] {e}")
 
                 # ── Multi-Cloud ──
                 else:
                     prov_title = "Multi-Cloud"
-                    title = f"CloudHealth Spend Analysis: Multi-Cloud Spend by Region{cust_suffix} — {svc_scope_label}"
-                    sql = "SELECT provider AS provider, RegionId AS region, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE GROUP BY provider, RegionId ORDER BY cost DESC"
+                    if is_unique_instance_mode:
+                        where_c = f"WHERE {reg_prof['focus_filter']}" if not requested_service else f"WHERE ServiceName = '{str(requested_service)}'"
+                        title = f"CloudHealth Resource Count Analysis: Multi-Cloud Unique {res_noun} by Region{cust_suffix} — {svc_scope_label}"
+                        sql = f"SELECT provider AS provider, RegionId AS region, COUNT(DISTINCT ResourceId) AS instance_count, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE {where_c} GROUP BY provider, RegionId ORDER BY instance_count DESC"
+                    elif requested_service:
+                        pcode = str(requested_service)
+                        pdisp = requested_service_disp or pcode
+                        title = f"CloudHealth Spend Analysis: {pdisp} Spend by Region{cust_suffix} — {svc_scope_label}"
+                        sql = f"SELECT provider AS provider, RegionId AS region, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE ServiceName = '{pcode}' GROUP BY provider, RegionId ORDER BY cost DESC"
+                    else:
+                        title = f"CloudHealth Spend Analysis: Multi-Cloud Spend by Region{cust_suffix} — {svc_scope_label}"
+                        sql = "SELECT provider AS provider, RegionId AS region, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE GROUP BY provider, RegionId ORDER BY cost DESC"
                     try:
-                        q_input = {"sqlStatement": sql, "dataGranularity": svc_granularity, "limit": limit, "timeRange": svc_time_range}
+                        q_input = {"sqlStatement": sql, "dataGranularity": svc_granularity, "limit": max(limit, 100), "timeRange": svc_time_range}
                         if named_customer_crn:
                             q_input["channelCustomerId"] = named_customer_crn
                         res = mcp.call_tool("execute_datasource_query", {
@@ -3477,8 +4104,13 @@ class AIClient:
                             c = float(r.get("cost") or 0.0)
                             p = r.get("provider") or "Cloud"
                             reg = r.get("region") or "unknown"
-                            if c > 0:
-                                reg_rows.append((f"{p} ({reg})", c))
+                            if is_unique_instance_mode:
+                                inst_cnt = int(float(r.get("instance_count") or 0))
+                                if inst_cnt > 0 or c > 0:
+                                    reg_rows.append((f"{p} ({reg})", inst_cnt, c))
+                            else:
+                                if c > 0:
+                                    reg_rows.append((f"{p} ({reg})", c))
                     except Exception as e:
                         logger.warning(f"[MultiCloud Region Query] {e}")
 
@@ -3493,19 +4125,38 @@ class AIClient:
                 reg_lim_adj = intent_info.get("limit") or cont_ctx.get("inherited_limit") or extract_limit_adjustment(low)
                 if reg_lim_adj: limit = reg_lim_adj
 
-                if reg_min_cost is not None:
-                    reg_rows = [r for r in reg_rows if r[1] >= reg_min_cost]
-                if reg_max_cost is not None:
-                    reg_rows = [r for r in reg_rows if r[1] <= reg_max_cost]
-                ex_terms = [s.lower() for s in reg_exclusions.get("services", []) + reg_exclusions.get("raw_terms", []) + reg_exclusions.get("clouds", [])]
-                if ex_terms:
-                    reg_rows = [r for r in reg_rows if not any(t in r[0].lower() for t in ex_terms)]
-                if reg_sort_ref:
-                    rev = reg_sort_ref.get("direction", "desc") == "desc"
-                    if reg_sort_ref.get("field") in ("service", "name", "region", "location"):
-                        reg_rows.sort(key=lambda x: x[0].lower(), reverse=rev)
+                if is_unique_instance_mode:
+                    if reg_min_cost is not None:
+                        reg_rows = [r for r in reg_rows if r[2] >= reg_min_cost]
+                    if reg_max_cost is not None:
+                        reg_rows = [r for r in reg_rows if r[2] <= reg_max_cost]
+                    ex_terms = [s.lower() for s in reg_exclusions.get("services", []) + reg_exclusions.get("raw_terms", []) + reg_exclusions.get("clouds", [])]
+                    if ex_terms:
+                        reg_rows = [r for r in reg_rows if not any(t in r[0].lower() for t in ex_terms)]
+                    if reg_sort_ref:
+                        rev = reg_sort_ref.get("direction", "desc") == "desc"
+                        if reg_sort_ref.get("field") in ("service", "name", "region", "location"):
+                            reg_rows.sort(key=lambda x: x[0].lower(), reverse=rev)
+                        elif reg_sort_ref.get("field") in ("cost", "spend", "$"):
+                            reg_rows.sort(key=lambda x: x[2], reverse=rev)
+                        else:
+                            reg_rows.sort(key=lambda x: x[1], reverse=rev)
                     else:
-                        reg_rows.sort(key=lambda x: x[1], reverse=rev)
+                        reg_rows.sort(key=lambda x: x[1], reverse=True)
+                else:
+                    if reg_min_cost is not None:
+                        reg_rows = [r for r in reg_rows if r[1] >= reg_min_cost]
+                    if reg_max_cost is not None:
+                        reg_rows = [r for r in reg_rows if r[1] <= reg_max_cost]
+                    ex_terms = [s.lower() for s in reg_exclusions.get("services", []) + reg_exclusions.get("raw_terms", []) + reg_exclusions.get("clouds", [])]
+                    if ex_terms:
+                        reg_rows = [r for r in reg_rows if not any(t in r[0].lower() for t in ex_terms)]
+                    if reg_sort_ref:
+                        rev = reg_sort_ref.get("direction", "desc") == "desc"
+                        if reg_sort_ref.get("field") in ("service", "name", "region", "location"):
+                            reg_rows.sort(key=lambda x: x[0].lower(), reverse=rev)
+                        else:
+                            reg_rows.sort(key=lambda x: x[1], reverse=rev)
 
                 if not reg_rows:
                     return (
@@ -3515,24 +4166,72 @@ class AIClient:
                         f"*Source: {'AWS_CUR' if cloud_target == 'aws' else 'FOCUS Datasets'} via CloudHealth FlexReports.*"
                     )
 
-                total_reg_spend = sum(c for _, c in reg_rows)
-                tbl_lines = [
-                    f"| {idx} | **{reg}** | ${c:,.2f} | {((c / total_reg_spend) * 100 if total_reg_spend else 0):.1f}% |"
-                    for idx, (reg, c) in enumerate(reg_rows[:limit], 1)
-                ]
-                table = (
-                    f"| # | {dim_label} | Cost | % of {prov_title} Spend |\n"
-                    f"|:---|:---|:---|:---|\n"
-                    f"{chr(10).join(tbl_lines)}\n\n"
-                    f"| **Total Analyzed Spend** | | **${total_reg_spend:,.2f}** | **100.0%** |"
-                )
+                if is_unique_instance_mode:
+                    total_instances = sum(r[1] for r in reg_rows)
+                    total_reg_spend = sum(r[2] for r in reg_rows)
+                    tbl_lines = [
+                        f"| {idx} | **{reg}** | {inst_cnt:,} | {((inst_cnt / total_instances) * 100 if total_instances else 0):.1f}% | ${c:,.2f} | {((c / total_reg_spend) * 100 if total_reg_spend else 0):.1f}% |"
+                        for idx, (reg, inst_cnt, c) in enumerate(reg_rows[:limit], 1)
+                    ]
+                    top_reg_instances = sum(r[1] for r in reg_rows[:limit])
+                    top_reg_spend = sum(r[2] for r in reg_rows[:limit])
+                    rem_instances = max(0, total_instances - top_reg_instances)
+                    rem_spend = max(0.0, total_reg_spend - top_reg_spend)
+                    reg_notice = ""
+                    if rem_instances > 0 or rem_spend > 0.50:
+                        rem_inst_pct = (rem_instances / total_instances * 100) if total_instances else 0.0
+                        rem_spend_pct = (rem_spend / total_reg_spend * 100) if total_reg_spend else 0.0
+                        rem_count = max(1, len(reg_rows) - limit)
+                        tbl_lines.append(
+                            f"| - | *Other {dim_label}s ({rem_count} regions consolidated)* | {rem_instances:,} | {rem_inst_pct:.1f}% | ${rem_spend:,.2f} | {rem_spend_pct:.1f}% |"
+                        )
+                        starve_txt = f" Dataset reached query limit of 100 rows." if len(reg_rows) >= 100 else ""
+                        reg_notice = (
+                            f"> ℹ️ **Consolidation & Fleet Notice**: Displaying top {len(reg_rows[:limit])} regions ({top_reg_instances:,} {res_noun.lower()}, ${top_reg_spend:,.2f}).{starve_txt} "
+                            f"Remaining {rem_instances:,} {res_noun.lower()} (${rem_spend:,.2f}, {rem_spend_pct:.1f}%) across {rem_count} regions are consolidated into Other to ensure 100% reconciliation with total fleet ({total_instances:,}) and spend (${total_reg_spend:,.2f}).\n\n"
+                        )
+                    table = (
+                        f"{reg_notice}"
+                        f"| # | {dim_label} | Unique {res_noun} | % of Fleet | Total Billed Spend | % of Spend |\n"
+                        f"|:---|:---|:---|:---|:---|:---|\n"
+                        f"{chr(10).join(tbl_lines)}\n\n"
+                        f"| **Total Analyzed Fleet** | | **{total_instances:,}** | **100.0%** | **${total_reg_spend:,.2f}** | **100.0%** |"
+                    )
+                    chart_labels = [reg for reg, _, _ in reg_rows[:12]]
+                    chart_values = [inst_cnt for _, inst_cnt, _ in reg_rows[:12]]
+                    chart_val_label = f"Unique {res_noun}"
+                else:
+                    total_reg_spend = sum(c for _, c in reg_rows)
+                    reconciled_reg_rows, other_reg_c, reg_notice = reconcile_and_consolidate_breakdown(
+                        reg_rows, total_reg_spend, limit=limit, query_limit=100, other_label=f"Other {dim_label}s (Consolidated)"
+                    )
+                    tbl_lines = [
+                        f"| {idx} | **{reg}** | ${c:,.2f} | {((c / total_reg_spend) * 100 if total_reg_spend else 0):.1f}% |"
+                        for idx, (reg, c) in enumerate(reconciled_reg_rows, 1)
+                    ]
+                    table = (
+                        f"{reg_notice}"
+                        f"| # | {dim_label} | Cost | % of {prov_title} Spend |\n"
+                        f"|:---|:---|:---|:---|\n"
+                        f"{chr(10).join(tbl_lines)}\n\n"
+                        f"| **Total Analyzed Spend** | | **${total_reg_spend:,.2f}** | **100.0%** |"
+                    )
+                    chart_labels = [reg for reg, _ in reg_rows[:12]]
+                    chart_values = [round(c, 2) for _, c in reg_rows[:12]]
+                    chart_val_label = "Cost ($)"
 
                 # Chart Generation
                 chart_type = (intent_info.get("chart_types") or [None])[0] or _detect_chart_type(low) or "bar"
                 c_kind = chart_type if chart_type in ["pie", "doughnut", "bar", "horizontal-bar", "line", "area"] else "bar"
-                chart_labels = [reg for reg, _ in reg_rows[:12]]
-                chart_values = [round(c, 2) for _, c in reg_rows[:12]]
-                chart_md = _chart_block(c_kind, f"{prov_title} Spend by {dim_label}{cust_suffix} — {svc_scope_label}", chart_labels, values=chart_values, horizontal=(c_kind == "horizontal-bar"), stacked=True)
+                chart_md = _chart_block(
+                    c_kind,
+                    f"{prov_title} {'Unique ' + res_noun if is_unique_instance_mode else 'Spend'} by {dim_label}{cust_suffix} — {svc_scope_label}",
+                    chart_labels,
+                    values=chart_values,
+                    value_label=chart_val_label,
+                    horizontal=(c_kind == "horizontal-bar"),
+                    stacked=(c_kind in ("area", "bar") and not is_unique_instance_mode)
+                )
 
                 # LLM Insight Pass or FinOps Doctrine Fallback
                 insight_md = ""
@@ -3542,9 +4241,9 @@ class AIClient:
                             sys_msg = {
                                 "role": "system",
                                 "content": (
-                                    "You are Cleo, an expert FinOps AI. Analyze the regional/location cloud spend table returned to the user.\n"
+                                    "You are Cleo, an expert FinOps AI. Analyze the regional/location cloud data table returned to the user.\n"
                                     "Provide 2 concise, actionable FinOps bullet insights highlighting:\n"
-                                    "1. Primary regional concentration (name top region and % of spend).\n"
+                                    "1. Primary regional concentration (name top region and % of fleet or spend).\n"
                                     "2. Cross-region network egress risk ($0.02/GB) or multi-region commitment alignment (Savings Plans / RIs).\n"
                                     "Follow strict bullet titling rules (bold short title before colon)."
                                 )
@@ -3557,13 +4256,22 @@ class AIClient:
                             logger.debug(f"[LLM Commentary] {e}")
 
                     if not insight_md:
-                        top_reg_name, top_reg_cost = reg_rows[0]
-                        top_pct = (top_reg_cost / total_reg_spend * 100) if total_reg_spend else 0
-                        insight_md = (
-                            f"\n\n**💡 FinOps Insights:**\n"
-                            f"- **Primary Regional Concentration**: Spend is heavily anchored in **{top_reg_name}** representing **${top_reg_cost:,.2f} ({top_pct:.1f}%)** of total analyzed spend. Ensure Compute Savings Plans and regional reservations match this deployment hub.\n"
-                            f"- **Multi-Region & Egress Governance**: Multi-region footprints incur inter-region data transfer fees ($0.02/GB) and replicated storage overhead. Verify whether secondary regions require active-active compute or can be consolidated to minimize cross-region egress."
-                        )
+                        if is_unique_instance_mode:
+                            top_reg_name, top_reg_inst, top_reg_cost = reg_rows[0]
+                            top_pct = (top_reg_inst / total_instances * 100) if total_instances else 0
+                            insight_md = (
+                                f"\n\n**💡 FinOps Insights:**\n"
+                                f"- **Primary Regional Concentration**: Fleet is heavily anchored in **{top_reg_name}** with **{top_reg_inst:,} unique instances ({top_pct:.1f}%)** representing **${top_reg_cost:,.2f}** in spend. Ensure regional Savings Plans / Reservations match this deployment hub.\n"
+                                f"- **Multi-Region Fleet Footprint**: Secondary regions represent only **{100 - top_pct:.1f}%** of instance capacity. Verify whether disaster recovery architectures require pre-provisioned instances or can leverage dynamic IaC provisioning to eliminate idle spend and cross-region egress ($0.02/GB)."
+                            )
+                        else:
+                            top_reg_name, top_reg_cost = reg_rows[0]
+                            top_pct = (top_reg_cost / total_reg_spend * 100) if total_reg_spend else 0
+                            insight_md = (
+                                f"\n\n**💡 FinOps Insights:**\n"
+                                f"- **Primary Regional Concentration**: Spend is heavily anchored in **{top_reg_name}** representing **${top_reg_cost:,.2f} ({top_pct:.1f}%)** of total analyzed spend. Ensure Compute Savings Plans and regional reservations match this deployment hub.\n"
+                                f"- **Multi-Region & Egress Governance**: Multi-region footprints incur inter-region data transfer fees ($0.02/GB) and replicated storage overhead. Verify whether secondary regions require active-active compute or can be consolidated to minimize cross-region egress."
+                            )
 
                 wants_table = _detect_wants_table(low)
                 tbl_md = f"{table}\n\n" if wants_table else ""
@@ -3574,6 +4282,264 @@ class AIClient:
                     f"{chart_md}\n"
                     f"{insight_md}\n\n"
                     f"💡 *Live FinOps data retrieved from CloudHealth ({prov_title}).*"
+                )
+
+            # 3-Support. Dedicated Cloud Support Charges & Plans Analysis via MULTICLOUD_FOCUS_COST_AND_USAGE
+            if is_support_query and mcp:
+                now = datetime.date.today()
+                current_ym = f"{now.year}-{now.month:02d}"
+                last_ym = f"{now.year}-{now.month-1:02d}" if now.month > 1 else f"{now.year-1}-12"
+                today_str = now.strftime("%Y-%m-%d")
+                yesterday_str = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+
+                is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low)) or cont_ctx.get("inherited_is_ytd", False) or (intent_info.get("timeframe_months") == now.month and "ytd" in intent_info.get("corrected_query", "").lower())
+                is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low)) or cont_ctx.get("inherited_is_qtd", False)
+                m_months = re.search(r'(?:last|past|trailing|for)\s+(\d{1,2})\s*months?\b|\b(\d{1,2})\s*(?:months?|m)\b', low)
+                req_months = int(m_months.group(1) or m_months.group(2)) if m_months else (intent_info.get("timeframe_months") if not is_ytd else 0)
+
+                tenant_suffix = " (Tenant)" if any(w in low for w in ["tenant"]) else ""
+                cust_label = named_customer or (f"All Accounts{tenant_suffix}" if tenant_suffix else "All Accounts")
+                wants_table = _detect_wants_table(low)
+
+                # Determine cloud provider scope
+                cloud_target = active_cloud
+                if not cloud_target:
+                    if "aws" in low or "amazon" in low or any(s in ("AWSSupportEnterprise", "AmazonSupport") for s in (intent_info.get("services") or [intent_info.get("service")])):
+                        cloud_target = "aws" if not any(w in low for w in ["azure", "gcp", "google", "all cloud", "all clouds", "multi-cloud", "multicloud"]) else "all"
+                    elif "gcp" in low or "google" in low or any(s in ("GCPSupport",) for s in (intent_info.get("services") or [intent_info.get("service")])):
+                        cloud_target = "gcp" if not any(w in low for w in ["azure", "aws", "amazon", "all cloud", "all clouds", "multi-cloud", "multicloud"]) else "all"
+                    elif "azure" in low or any(s in ("AzureSupport",) for s in (intent_info.get("services") or [intent_info.get("service")])):
+                        cloud_target = "azure" if not any(w in low for w in ["aws", "gcp", "google", "all cloud", "all clouds", "multi-cloud", "multicloud"]) else "all"
+                    else:
+                        cloud_target = "all"
+
+                if cloud_target == "aws":
+                    prov_where = "provider = 'AWS' AND "
+                    prov_title = "AWS"
+                elif cloud_target == "gcp":
+                    prov_where = "provider IN ('GCP', 'Google Cloud') AND "
+                    prov_title = "Google Cloud (GCP)"
+                elif cloud_target == "azure":
+                    prov_where = "provider = 'Azure' AND "
+                    prov_title = "Azure"
+                else:
+                    prov_where = ""
+                    prov_title = "Multi-Cloud"
+
+                # Time range for CloudHealth FlexReports
+                if is_ytd:
+                    support_tr = {"last": max(now.month, 10), "qualifier": "MONTH"}
+                    period_str = f"Year-To-Date (YTD {now.year})"
+                elif req_months and req_months > 1:
+                    support_tr = {"last": min(req_months + 1, 12), "qualifier": "MONTH"}
+                    period_str = f"Last {req_months} Months"
+                elif is_specific or (intent_info.get("target_ym") and intent_info["target_ym"] != current_ym):
+                    target_ym = intent_info.get("target_ym") or last_ym
+                    support_tr = {"from": target_ym, "to": target_ym}
+                    period_str = f"{target_ym}"
+                else:
+                    support_tr = {"last": 12, "qualifier": "MONTH"}
+                    period_str = f"Trailing 12 Months"
+
+                support_sql = (
+                    f"SELECT Month AS month, provider AS provider, ServiceName AS service, "
+                    f"SUM(BilledCost) AS billed_cost, SUM(EffectiveCost) AS cost "
+                    f"FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
+                    f"WHERE {prov_where}(ServiceName LIKE '%Support%' OR ServiceCategory LIKE '%Support%') "
+                    f"AND ServiceCategory != 'Marketplace' "
+                    f"GROUP BY Month, provider, ServiceName "
+                    f"ORDER BY month ASC, cost DESC"
+                )
+
+                support_rows = []
+                try:
+                    q_params = {
+                        "queryInput": {
+                            "sqlStatement": support_sql,
+                            "dataGranularity": "MONTHLY",
+                            "limit": 500,
+                            "timeRange": support_tr
+                        },
+                        "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                    }
+                    if named_customer_crn:
+                        q_params["queryInput"]["channelCustomerId"] = named_customer_crn
+                    res_sup = mcp.call_tool("execute_datasource_query", q_params)
+                    raw_csv = json.loads(res_sup.get("content", [{}])[0].get("text", "{}")).get("csv", "")
+                    for r in csv.DictReader(io.StringIO(raw_csv)):
+                        m = r.get("month") or ""
+                        p = r.get("provider") or prov_title
+                        s = _friendly_service_name(r.get("service") or "")
+                        c = float(r.get("cost") or 0.0)
+                        bc = float(r.get("billed_cost") or 0.0)
+                        if m and (c > 0 or bc > 0):
+                            if is_ytd and not m.startswith(str(now.year)):
+                                continue
+                            support_rows.append({"month": m, "provider": p, "service": s, "cost": c, "billed_cost": bc})
+                except Exception as e:
+                    logger.warning(f"[Support Query] {e}")
+
+                if not support_rows:
+                    return (
+                        f"### ☁️ CloudHealth Support Spend Analysis: {prov_title}\n\n"
+                        f"No live billing data returned for **Support charges** ({cust_label}) in `{period_str}` (Total Spend: **$0.00**).\n\n"
+                        f"*Source: MULTICLOUD_FOCUS_COST_AND_USAGE via CloudHealth FlexReports.*"
+                    )
+
+                all_months = sorted(list(set(r["month"] for r in support_rows)))
+                if req_months and len(all_months) > req_months:
+                    closed_months = [m for m in all_months if m != current_ym]
+                    if len(closed_months) >= req_months:
+                        all_months = closed_months[-req_months:]
+                    else:
+                        all_months = all_months[-req_months:]
+                    support_rows = [r for r in support_rows if r["month"] in all_months]
+
+                svc_keys = sorted(list(set(f"{r['provider']} ({r['service']})" if prov_title == "Multi-Cloud" else r['service'] for r in support_rows)))
+                row_month_costs = defaultdict(lambda: defaultdict(float))
+                for r in support_rows:
+                    k = f"{r['provider']} ({r['service']})" if prov_title == "Multi-Cloud" else r['service']
+                    row_month_costs[k][r["month"]] += r["cost"]
+
+                month_totals = {m: sum(row_month_costs[k].get(m, 0.0) for k in svc_keys) for m in all_months}
+                svc_totals = {k: sum(row_month_costs[k].get(m, 0.0) for m in all_months) for k in svc_keys}
+                grand_total = sum(svc_totals.values())
+
+                include_mom = (len(all_months) >= 2) and (
+                    not is_no_mom_requested(low) and (
+                        intent_info.get("include_mom", True)
+                        or any(w in low for w in ["mom", "month over month", "month-over-month", "growth", "variance", "change", "delta"])
+                    )
+                )
+
+                summary_parts = [f"**{k}**: ${v:,.2f} ({(v/grand_total*100):.1f}%)" for k, v in sorted(svc_totals.items(), key=lambda x: x[1], reverse=True)]
+                summary_str = ", ".join(summary_parts)
+
+                table_md = ""
+                if wants_table:
+                    if len(all_months) >= 5:
+                        headers = ["Billing Month"] + svc_keys + ["Total Support Spend"]
+                        if include_mom:
+                            headers.append("MoM Change")
+                        t_lines = []
+                        prev_m_cost = None
+                        for idx, m in enumerate(all_months):
+                            m_label = _format_time_label(m, "month")
+                            if m == current_ym:
+                                m_label += " (MTD)"
+                            m_tot = month_totals.get(m, 0.0)
+                            cells = [m_label]
+                            for k in svc_keys:
+                                cells.append(f"${row_month_costs[k].get(m, 0.0):,.2f}")
+                            cells.append(f"**${m_tot:,.2f}**")
+                            if include_mom:
+                                if prev_m_cost is not None and prev_m_cost > 0:
+                                    diff = m_tot - prev_m_cost
+                                    pct_diff = (diff / prev_m_cost) * 100
+                                    sign = "+" if diff > 0 else ("-" if diff < 0 else "")
+                                    icon = "🔺" if diff > 0 else ("🔻" if diff < 0 else "")
+                                    mtd_suffix = " *(MTD)*" if m == current_ym else ""
+                                    cells.append(f"{sign}${abs(diff):,.2f} ({pct_diff:+.1f}%) {icon}{mtd_suffix}")
+                                else:
+                                    cells.append("—")
+                            t_lines.append("| " + " | ".join(cells) + " |")
+                            prev_m_cost = m_tot
+
+                        tot_cells = [f"**Total ({period_str})**"]
+                        for k in svc_keys:
+                            tot_cells.append(f"**${svc_totals[k]:,.2f}**")
+                        tot_cells.append(f"**${grand_total:,.2f}**")
+                        if include_mom:
+                            tot_cells.append("—")
+                        t_lines.append("| " + " | ".join(tot_cells) + " |")
+
+                        table_md = "| " + " | ".join(headers) + " |\n"
+                        table_md += "|:---|" + "|".join(["---:" for _ in range(len(headers)-1)]) + "|\n"
+                        table_md += "\n".join(t_lines) + "\n\n"
+
+                    else:
+                        headers = ["Cloud Provider", "Support Offering"] + [_format_time_label(m, "month") for m in all_months]
+                        if include_mom:
+                            headers.append("MoM Change")
+                        headers.extend(["Total Spend", "% of Support Spend"])
+                        t_lines = []
+                        m_prev = all_months[-2] if len(all_months) >= 2 else None
+                        m_curr = all_months[-1] if len(all_months) >= 2 else None
+
+                        for k in sorted(svc_keys, key=lambda x: svc_totals[x], reverse=True):
+                            p = k.split(" (")[0] if " (" in k else prov_title
+                            s_name = k.split(" (")[1].rstrip(")") if " (" in k else k
+                            c_cells = [f"${row_month_costs[k].get(m, 0.0):,.2f}" for m in all_months]
+                            tot_c = svc_totals[k]
+                            pct = (tot_c / grand_total * 100) if grand_total else 0.0
+                            cells = [p, s_name] + c_cells
+                            if include_mom:
+                                p_c = row_month_costs[k].get(m_prev, 0.0)
+                                c_c = row_month_costs[k].get(m_curr, 0.0)
+                                diff = c_c - p_c
+                                pct_diff = (diff / p_c * 100) if p_c > 0 else 0.0
+                                sign = "+" if diff > 0 else ("-" if diff < 0 else "")
+                                icon = "🔺" if diff > 0 else ("🔻" if diff < 0 else "")
+                                mom_cell = f"{sign}${abs(diff):,.2f} ({pct_diff:+.1f}%) {icon}" if p_c > 0 else "—"
+                                cells.append(mom_cell)
+                            cells.extend([f"${tot_c:,.2f}", f"{pct:.1f}%"])
+                            t_lines.append("| " + " | ".join(cells) + " |")
+
+                        tot_m_cells = [f"**${month_totals.get(m, 0.0):,.2f}**" for m in all_months]
+                        tot_cells = [f"**Total {prov_title} Support Spend**", ""] + tot_m_cells
+                        if include_mom:
+                            t_prev = month_totals.get(m_prev, 0.0)
+                            t_curr = month_totals.get(m_curr, 0.0)
+                            t_diff = t_curr - t_prev
+                            t_pct = (t_diff / t_prev * 100) if t_prev > 0 else 0.0
+                            t_sign = "+" if t_diff > 0 else ("-" if t_diff < 0 else "")
+                            t_icon = "🔺" if t_diff > 0 else "🔻"
+                            tot_cells.append(f"**{t_sign}${abs(t_diff):,.2f} ({t_pct:+.1f}%) {t_icon}**" if t_prev > 0 else "—")
+                        tot_cells.extend([f"**${grand_total:,.2f}**", "**100.0%**"])
+                        t_lines.append("| " + " | ".join(tot_cells) + " |")
+
+                        table_md = "| " + " | ".join(headers) + " |\n"
+                        table_md += "|:---|:---|" + "|".join(["---:" for _ in range(len(headers)-2)]) + "\n"
+                        table_md += "\n".join(t_lines) + "\n\n"
+
+                chart_md = ""
+                if not is_no_chart_requested(low):
+                    if len(all_months) >= 2:
+                        labels = [_format_time_label(m, "month") for m in all_months]
+                        if len(svc_keys) > 1:
+                            datasets = [{"label": k, "data": [round(row_month_costs[k].get(m, 0.0), 2) for m in all_months]} for k in svc_keys]
+                            chart_md = _chart_block("line", f"{prov_title} Support Charges Trend ({period_str})", labels, datasets=datasets, stacked=False) + "\n\n"
+                        else:
+                            k = svc_keys[0]
+                            chart_md = _chart_block("line", f"{k} Trend ({period_str})", labels, values=[round(row_month_costs[k].get(m, 0.0), 2) for m in all_months], stacked=False) + "\n\n"
+                    else:
+                        chart_md = _chart_block("bar", f"{prov_title} Support Spend ({period_str})", svc_keys, values=[round(svc_totals[k], 2) for k in svc_keys], horizontal=True, stacked=False) + "\n\n"
+
+                insights_block = ""
+                if not is_no_insights_requested(low):
+                    insights_list = []
+                    if any("google" in k.lower() or "gcp" in k.lower() for k in svc_keys):
+                        insights_list.append(
+                            "- **Google Cloud Support Spend Dynamics**: In Google Cloud, Premium/Enhanced Support fees scale directly as a variable percentage of overall monthly GCP consumption (typically 3%–4% of variable spend plus fixed fee baselines). Review whether non-production projects can be disentangled from the premium support entitlement scope."
+                        )
+                    if any("aws" in k.lower() for k in svc_keys):
+                        insights_list.append(
+                            "- **AWS Enterprise Support Pricing Brackets**: AWS Enterprise Support applies a tiered percentage on aggregate monthly AWS spend (10% of first $150k, 7% of next $350k, 5% of next $500k, 3% over $1M) with a mandatory $15,000/month contractual floor. Ensure all member accounts in your AWS Organization are correctly enrolled under the unified master payer agreement to maximize higher-spend tier discounts."
+                        )
+                    insights_list.append(
+                        "- **Multi-Cloud Support Rationalization & Commitments**: Evaluate total enterprise support contract commitments across providers during annual renewals. Many enterprise customers negotiate fixed-dollar support caps or cloud partner credits to offset variable support overhead."
+                    )
+                    insights_block = f"### 💡 FinOps Insights & Support Cost Levers:\n\n" + "\n".join(insights_list) + "\n\n"
+
+                return (
+                    f"### 📊 CloudHealth Support Charges Spend Analysis: {prov_title} ({period_str})\n\n"
+                    f"Queried live from standard dataset **`MULTICLOUD_FOCUS_COST_AND_USAGE`** for **{cust_label}**:\n\n"
+                    f"- **Target Billing Period**: {period_str}\n"
+                    f"- **Combined Support Spend**: **${grand_total:,.2f}** ({summary_str})\n\n"
+                    f"{table_md}"
+                    f"{chart_md}"
+                    f"{insights_block}"
+                    f"*Source: MULTICLOUD_FOCUS_COST_AND_USAGE via CloudHealth FlexReports.*"
                 )
 
             # 3-MultiService. Dedicated Multi-Service Query Handler (e.g. "RDS and S3", "EC2 and RDS", "S3 and EBS")
@@ -3757,13 +4723,13 @@ class AIClient:
                                 f"| **Total** | **{rds_table_total_desc}** | **${total_rds:,.2f}** | **100.0%** | | | |\n\n"
                             ) if wants_table else ""
 
-                            rds_chart_items = [it for it, _ in sorted_rds if not is_other_category_name(it)][:8] if is_exclude_other else [it for it, _ in sorted_rds[:8]]
+                            rds_chart_items = [it for it, _ in sorted_rds if not is_other_category_name(it)][:20] if is_exclude_other else [it for it, _ in sorted_rds[:20]]
                             if chart_type in ["doughnut", "pie"]:
                                 chart_rds_md = _chart_block(chart_type, f"Amazon RDS Spend by Instance Type ({period_str}) — {cust_label}", rds_chart_items, values=[round(agg_rds[it]["cost"], 2) for it in rds_chart_items], value_label="Cost ($)")
                             elif chart_type == "horizontal-bar":
                                 chart_rds_md = _chart_block("horizontal-bar", f"Amazon RDS Spend by Instance Type ({period_str}) — {cust_label}", rds_chart_items, values=[round(agg_rds[it]["cost"], 2) for it in rds_chart_items], value_label="Cost ($)", horizontal=True)
                             else:
-                                chart_rds_md = _build_time_category_stacked_chart(f"Amazon RDS Spend by Instance Type ({period_str}) — {cust_label}", rds_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8, exclude_other=is_exclude_other)
+                                chart_rds_md = _build_time_category_stacked_chart(f"Amazon RDS Spend by Instance Type ({period_str}) — {cust_label}", rds_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=20, exclude_other=is_exclude_other)
 
                             rds_total_lbl = "Total RDS Spend (Excl. Other)" if is_exclude_other else "Total RDS Spend"
                             service_sections.append(
@@ -3882,13 +4848,13 @@ class AIClient:
                                 f"| **Total** | **{s3_table_total_desc}** | **${total_s3:,.2f}** | **100.0%** | |\n\n"
                             ) if wants_table else ""
 
-                            s3_chart_items = [c for c, _ in sorted_s3 if not is_other_category_name(c)][:8] if is_exclude_other else [c for c, _ in sorted_s3[:8]]
+                            s3_chart_items = [c for c, _ in sorted_s3 if not is_other_category_name(c)][:20] if is_exclude_other else [c for c, _ in sorted_s3[:20]]
                             if chart_type in ["doughnut", "pie"]:
                                 chart_s3_md = _chart_block(chart_type, f"Amazon S3 Spend by Category ({period_str}) — {cust_label}", s3_chart_items, values=[round(agg_s3[c]["cost"], 2) for c in s3_chart_items], value_label="Cost ($)")
                             elif chart_type == "horizontal-bar":
                                 chart_s3_md = _chart_block("horizontal-bar", f"Amazon S3 Spend by Category ({period_str}) — {cust_label}", s3_chart_items, values=[round(agg_s3[c]["cost"], 2) for c in s3_chart_items], value_label="Cost ($)", horizontal=True)
                             else:
-                                chart_s3_md = _build_time_category_stacked_chart(f"Amazon S3 Spend Breakdown ({period_str}) — {cust_label}", s3_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8, exclude_other=is_exclude_other)
+                                chart_s3_md = _build_time_category_stacked_chart(f"Amazon S3 Spend Breakdown ({period_str}) — {cust_label}", s3_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=20, exclude_other=is_exclude_other)
 
                             s3_total_lbl = "Total S3 Spend (Excl. Other)" if is_exclude_other else "Total S3 Spend"
                             service_sections.append(
@@ -4003,13 +4969,13 @@ class AIClient:
                                 f"| **Total** | **{ec2_table_total_desc}** | **${total_ec2:,.2f}** | **100.0%** | |\n\n"
                             ) if wants_table else ""
 
-                            ec2_chart_items = [it for it, _ in sorted_ec2 if not is_other_category_name(it)][:8] if is_exclude_other else [it for it, _ in sorted_ec2[:8]]
+                            ec2_chart_items = [it for it, _ in sorted_ec2 if not is_other_category_name(it)][:20] if is_exclude_other else [it for it, _ in sorted_ec2[:20]]
                             if chart_type in ["doughnut", "pie"]:
                                 chart_ec2_md = _chart_block(chart_type, f"Amazon EC2 Spend by Instance Type ({period_str}) — {cust_label}", ec2_chart_items, values=[round(agg_ec2[it]["cost"], 2) for it in ec2_chart_items], value_label="Cost ($)")
                             elif chart_type == "horizontal-bar":
                                 chart_ec2_md = _chart_block("horizontal-bar", f"Amazon EC2 Spend by Instance Type ({period_str}) — {cust_label}", ec2_chart_items, values=[round(agg_ec2[it]["cost"], 2) for it in ec2_chart_items], value_label="Cost ($)", horizontal=True)
                             else:
-                                chart_ec2_md = _build_time_category_stacked_chart(f"Amazon EC2 Spend Breakdown ({period_str}) — {cust_label}", ec2_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8, exclude_other=is_exclude_other)
+                                chart_ec2_md = _build_time_category_stacked_chart(f"Amazon EC2 Spend Breakdown ({period_str}) — {cust_label}", ec2_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=20, exclude_other=is_exclude_other)
 
                             ec2_total_lbl = "Total EC2 Spend (Excl. Other)" if is_exclude_other else "Total EC2 Spend"
                             service_sections.append(
@@ -4057,7 +5023,14 @@ class AIClient:
                                 f"ORDER BY time_val ASC, cost DESC"
                             )
                         else:
-                            prov_filter = "provider IN ('OCI', 'Oracle Cloud')" if svc_prov == "oci" else f"provider = '{svc_prov}'"
+                            if svc_prov == "oci":
+                                prov_filter = "provider IN ('OCI', 'Oracle Cloud')"
+                            elif svc_prov in ("gcp", "google"):
+                                prov_filter = "provider IN ('GCP', 'Google Cloud')"
+                            elif svc_prov == "azure":
+                                prov_filter = "provider = 'Azure'"
+                            else:
+                                prov_filter = f"provider = '{svc_prov}'"
                             other_sql = (
                                 f"SELECT Month AS time_val, ServiceName AS usage_type, PricingUnit AS operation, "
                                 f"SUM(EffectiveCost) AS cost, SUM(PricingQuantity) AS usage_qty "
@@ -4123,7 +5096,7 @@ class AIClient:
                                 f"| **Total** | **{oth_table_total_desc}** | **${total_oth:,.2f}** | **100.0%** |\n\n"
                             ) if wants_table else ""
 
-                            chart_oth_md = _build_time_category_stacked_chart(f"{svc_disp} Spend Breakdown ({period_str}) — {cust_label}", other_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=8, exclude_other=is_exclude_other)
+                            chart_oth_md = _build_time_category_stacked_chart(f"{svc_disp} Spend Breakdown ({period_str}) — {cust_label}", other_rows, time_col="time_val", cat_col="category", cost_col="cost", time_format=("day" if num_days > 0 else "month"), max_cats=20, exclude_other=is_exclude_other)
 
                             oth_total_lbl = f"Total {svc_disp} Spend (Excl. Other)" if is_exclude_other else f"Total {svc_disp} Spend"
                             service_sections.append(
@@ -4684,42 +5657,119 @@ class AIClient:
                         f"*Source: `AZURE_COST_USAGE` via CloudHealth FlexReports.*"
                     )
 
-            # 3-LEASE-TYPE. Dedicated CloudHealth & AWS CUR Lease Type Breakdown (On-Demand, Reserved Instances, Savings Plans, Spot)
+            # 3-LEASE-TYPE. Dedicated Multi-Cloud Lease Type, Coverage Type & Pricing Model Breakdown (On-Demand, Reserved, Savings Plans, Spot, CUD)
             is_lease_type_request = (
-                intent_info.get("target_dimension") in ("LeaseType", "PricingCategory", "PurchaseOption") or
+                intent_info.get("target_dimension") in ("LeaseType", "PricingCategory", "PurchaseOption", "CoverageType") or
                 "lease_type" in (intent_info.get("breakdowns") or []) or
                 any(w in low for w in [
                     "lease type", "leasetype", "by lease", "lease breakdown", "lease types",
                     "purchase option", "purchase options", "purchase option breakdown", "by purchase option",
                     "pricing model", "pricing models", "pricing model breakdown", "by pricing model",
-                    "capacity type", "by capacity type"
+                    "capacity type", "by capacity type",
+                    "coverage type", "coveragetype", "by coverage", "coverage breakdown", "coverage types", "commitment coverage", "coverage"
                 ]) or
-                (any(w in low for w in ["ondemand", "on-demand", "reservation", "savings plan", "savingsplan", "spot"]) and any(w in low for w in ["breakdown", "break down", "split", "by", "usage", "cost", "spend", "lease", "above"]))
+                (any(w in low for w in ["ondemand", "on-demand", "reservation", "savings plan", "savingsplan", "spot"]) and any(w in low for w in ["breakdown", "break down", "split", "by", "usage", "cost", "spend", "lease", "above", "count"])) or
+                (any(w in low for w in ["azure", "microsoft"]) and any(w in low for w in ["vm", "virtual machine", "vms"]) and any(w in low for w in ["instance type", "instancetype", "vm size", "vm type", "by instance", "by size", "by vm size"]))
             ) and not is_ai_models_query and not any(w in low for w in ["recommendation", "anomal", "spike"])
 
             if is_lease_type_request and mcp:
+                # 1. Determine Cloud Target
+                cloud_target = active_cloud or intent_info.get("cloud")
+                if not cloud_target:
+                    if any(w in low for w in ["azure", "microsoft"]):
+                        cloud_target = "azure"
+                    elif any(w in low for w in ["gcp", "google"]):
+                        cloud_target = "gcp"
+                    elif any(w in low for w in ["aws", "amazon"]):
+                        cloud_target = "aws"
+                    elif requested_service and PCODE_TO_PROVIDER.get(str(requested_service)):
+                        cloud_target = PCODE_TO_PROVIDER[str(requested_service)]
+                    else:
+                        cloud_target = "aws"
+
+                # 2. Dimensions & Metrics requested
+                has_it = (
+                    any(w in low for w in ["instance type", "instancetype", "vm size", "vm type", "size", "by instance", "by size", "by vm size", "by instance type"])
+                    or "instance_type" in (intent_info.get("breakdowns") or [])
+                    or intent_info.get("target_dimension") == "ServiceSubcategory"
+                )
+                has_count = (
+                    is_unique_instance_request(low)
+                    or intent_info.get("metric_type") == "quantity"
+                    or any(w in low for w in ["count", "number of", "how many", "unique", "distinct", "fleet", "vm count", "vms count", "instance count", "instances count"])
+                )
+
+                # 3. Target Service Resolution
                 target_svc = intent_info.get("service")
                 if not target_svc and is_followup:
                     hist_blob = " ".join(prior_cost_low.split() + [a.lower() for a in prior_assistant_msgs[-2:]])
-                    if any(w in hist_blob for w in ["rds", "relational database", "aurora", "database"]):
-                        target_svc = "AmazonRDS"
-                    elif any(w in hist_blob for w in ["ec2", "elastic compute", "virtual machine"]):
-                        target_svc = "AmazonEC2"
+                    if any(w in hist_blob for w in ["rds", "relational database", "aurora", "database", "sql"]):
+                        target_svc = "AmazonRDS" if cloud_target == "aws" else "Database"
+                    elif any(w in hist_blob for w in ["ec2", "elastic compute", "virtual machine", "vm"]):
+                        target_svc = "AmazonEC2" if cloud_target == "aws" else "Compute"
 
-                is_rds = (target_svc == "AmazonRDS") or ("rds" in low) or ("database" in low and "ec2" not in low)
-                is_ec2 = (target_svc == "AmazonEC2") or ("ec2" in low)
-                if is_rds:
-                    target_svc = "AmazonRDS"
-                    svc_disp = "Amazon RDS"
-                    where_svc = "WHERE lineItem_ProductCode = 'AmazonRDS'"
-                elif is_ec2:
-                    target_svc = "AmazonEC2"
-                    svc_disp = "Amazon EC2"
-                    where_svc = "WHERE lineItem_ProductCode = 'AmazonEC2'"
+                # 4. Service Display, Filter & Source Dataset per Cloud
+                if cloud_target == "azure":
+                    prov_title = "Azure"
+                    source_ds = "AZURE_COST_USAGE"
+                    is_db = (target_svc in ("Azure SQL Database", "Database")) or ("database" in low or "sql" in low or "cosmos" in low)
+                    if is_db:
+                        svc_disp = "Azure SQL Database"
+                        where_svc = "WHERE MeterCategory = 'SQL Database'"
+                        res_noun = "Database"
+                        res_plural = "Databases"
+                    else:
+                        svc_disp = "Azure Virtual Machines"
+                        where_svc = "WHERE MeterCategory = 'Virtual Machines' AND (ChargeType = 'Usage' OR ChargeType IS NULL)"
+                        res_noun = "VM"
+                        res_plural = "VMs"
+                elif cloud_target == "gcp":
+                    prov_title = "Google Cloud"
+                    source_ds = "GCP_FOCUS_COST_AND_USAGE"
+                    is_db = (target_svc in ("Cloud SQL", "Database")) or ("database" in low or "cloud sql" in low or "spanner" in low)
+                    if is_db:
+                        svc_disp = "Google Cloud SQL"
+                        where_svc = "WHERE (ServiceCategory = 'Database' OR ServiceName = 'Cloud SQL')"
+                        res_noun = "Database"
+                        res_plural = "Databases"
+                    else:
+                        svc_disp = "Google Cloud Compute Engine"
+                        where_svc = "WHERE (ServiceCategory = 'Compute' OR ServiceName = 'Compute Engine')"
+                        res_noun = "VM Instance"
+                        res_plural = "VM Instances"
                 else:
-                    svc_disp = "AWS Compute"
-                    where_svc = "WHERE lineItem_ProductCode IN ('AmazonEC2', 'AmazonRDS')"
+                    prov_title = "AWS"
+                    source_ds = "AWS_CUR"
+                    is_rds = (target_svc in ("AmazonRDS", "Database")) or ("rds" in low) or ("database" in low and "ec2" not in low)
+                    is_ec2 = (target_svc in ("AmazonEC2", "Compute")) or ("ec2" in low)
+                    if is_rds:
+                        target_svc = "AmazonRDS"
+                        svc_disp = "Amazon RDS"
+                        if has_count:
+                            where_svc = "WHERE lineItem_ProductCode = 'AmazonRDS' AND (product_instanceType IS NOT NULL AND product_instanceType != '' OR lineItem_LineItemType IN ('RIFee', 'DiscountedUsage', 'SavingsPlanCoveredUsage'))"
+                        else:
+                            where_svc = "WHERE lineItem_ProductCode = 'AmazonRDS'"
+                        res_noun = "Database Instance"
+                        res_plural = "Database Instances"
+                    elif is_ec2:
+                        target_svc = "AmazonEC2"
+                        svc_disp = "Amazon EC2"
+                        if has_count:
+                            where_svc = "WHERE lineItem_ProductCode = 'AmazonEC2' AND (product_instanceType IS NOT NULL AND product_instanceType != '' OR lineItem_LineItemType IN ('RIFee', 'DiscountedUsage', 'SavingsPlanCoveredUsage'))"
+                        else:
+                            where_svc = "WHERE lineItem_ProductCode = 'AmazonEC2'"
+                        res_noun = "Instance"
+                        res_plural = "Instances"
+                    else:
+                        svc_disp = "AWS Compute"
+                        if has_count:
+                            where_svc = "WHERE lineItem_ProductCode IN ('AmazonEC2', 'AmazonRDS') AND (product_instanceType IS NOT NULL AND product_instanceType != '' OR lineItem_LineItemType IN ('RIFee', 'DiscountedUsage', 'SavingsPlanCoveredUsage'))"
+                        else:
+                            where_svc = "WHERE lineItem_ProductCode IN ('AmazonEC2', 'AmazonRDS')"
+                        res_noun = "Instance"
+                        res_plural = "Instances"
 
+                # 5. Timeframe Resolution
                 is_ytd = bool(re.search(r'\b(?:ytd|year[- ]to[- ]date|this\s*year)\b', low))
                 is_qtd = bool(re.search(r'\b(?:qtd|quarter[- ]to[- ]date|this\s*quarter)\b', low))
                 if not is_ytd and not is_qtd and is_followup:
@@ -4731,91 +5781,277 @@ class AIClient:
 
                 m_months = re.search(r'\b(\d+)\s*(?:months?|m)\b', low)
                 m_days = re.search(r'\b(\d+)\s*(?:days?|d)\b', low)
-                has_explicit_months = is_ytd or is_qtd or bool(m_months) or bool(intent_info.get("timeframe_months")) or any(w in low for w in ["12months", "12 months", "year", "annual", "months", "month by month", "monthly"])
-                if has_explicit_months:
+                has_explicit_months = is_ytd or is_qtd or bool(m_months) or bool(intent_info.get("timeframe_months")) or is_specific or bool(intent_info.get("target_ym")) or any(w in low for w in ["12months", "12 months", "year", "annual", "months", "month by month", "monthly", "last month", "past month"])
+
+                if is_specific and target_ym:
+                    num_months = 1
+                    query_tr = {"from": target_ym, "to": target_ym}
+                    period_str = target_label or f"Month {target_ym}"
+                elif has_explicit_months:
                     num_months = intent_info.get("timeframe_months") or (datetime.date.today().month if is_ytd else (((datetime.date.today().month - 1) % 3) + 1 if is_qtd else (int(m_months.group(1)) if m_months else 12)))
+                    query_tr = {"last": num_months, "qualifier": "MONTH"}
+                    period_str = f"Last {num_months} Months"
                 else:
-                    num_months = 3  # Default to recent 3 months for lease breakdown trend
+                    num_months = 3
+                    query_tr = {"last": num_months, "qualifier": "MONTH"}
+                    period_str = f"Last {num_months} Months"
 
                 tenant_suffix = " (Tenant)" if any(w in low for w in ["tenant"]) else ""
                 cust_label = named_customer or (f"All Accounts{tenant_suffix}" if tenant_suffix else "All Accounts")
 
-                cur_sql = (
-                    "SELECT timeInterval_Month AS month, pricing_term AS pricing_term, lineItem_LineItemType AS item_type, "
-                    "SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_amount "
-                    "FROM AWS_CUR "
-                    f"{where_svc} "
-                    "GROUP BY timeInterval_Month, pricing_term, lineItem_LineItemType "
-                    "ORDER BY month ASC, cost DESC"
-                )
-                cur_q_params = {
+                # 6. Build SQL Query per Provider & Breakdowns
+                if cloud_target == "azure":
+                    month_filter = f" AND timeInterval_Month = '{target_ym}'" if (is_specific and target_ym) else ""
+                    if has_it:
+                        sql_stmt = (
+                            f"SELECT timeInterval_Month AS month, PricingModel AS pricing_category, MeterSubCategory AS meter_subcategory, MeterName AS meter_name, "
+                            f"COUNT(DISTINCT ResourceId) AS vm_count, SUM(CostInBillingCurrency) AS cost, SUM(Quantity) AS usage_amount "
+                            f"FROM {source_ds} "
+                            f"{where_svc}{month_filter} "
+                            f"GROUP BY timeInterval_Month, PricingModel, MeterSubCategory, MeterName "
+                            f"ORDER BY month ASC, cost DESC"
+                        )
+                    else:
+                        sql_stmt = (
+                            f"SELECT timeInterval_Month AS month, PricingModel AS pricing_category, "
+                            f"COUNT(DISTINCT ResourceId) AS vm_count, SUM(CostInBillingCurrency) AS cost, SUM(Quantity) AS usage_amount "
+                            f"FROM {source_ds} "
+                            f"{where_svc}{month_filter} "
+                            f"GROUP BY timeInterval_Month, PricingModel "
+                            f"ORDER BY month ASC, cost DESC"
+                        )
+                elif cloud_target == "gcp":
+                    month_filter = f" AND Month = '{target_ym}'" if (is_specific and target_ym) else ""
+                    if has_it:
+                        sql_stmt = (
+                            f"SELECT Month AS month, PricingCategory AS pricing_category, ServiceSubcategory AS instance_type, "
+                            f"COUNT(DISTINCT ResourceId) AS vm_count, SUM(EffectiveCost) AS cost, SUM(PricingQuantity) AS usage_amount "
+                            f"FROM {source_ds} "
+                            f"{where_svc}{month_filter} "
+                            f"GROUP BY Month, PricingCategory, ServiceSubcategory "
+                            f"ORDER BY month ASC, cost DESC"
+                        )
+                    else:
+                        sql_stmt = (
+                            f"SELECT Month AS month, PricingCategory AS pricing_category, "
+                            f"COUNT(DISTINCT ResourceId) AS vm_count, SUM(EffectiveCost) AS cost, SUM(PricingQuantity) AS usage_amount "
+                            f"FROM {source_ds} "
+                            f"{where_svc}{month_filter} "
+                            f"GROUP BY Month, PricingCategory "
+                            f"ORDER BY month ASC, cost DESC"
+                        )
+                else:
+                    month_filter = f" AND timeInterval_Month = '{target_ym}'" if (is_specific and target_ym) else ""
+                    if has_it:
+                        sql_stmt = (
+                            f"SELECT timeInterval_Month AS month, pricing_term AS pricing_term, lineItem_LineItemType AS item_type, product_instanceType AS instance_type, "
+                            f"COUNT(DISTINCT lineItem_ResourceId) AS vm_count, SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_amount "
+                            f"FROM {source_ds} "
+                            f"{where_svc}{month_filter} "
+                            f"GROUP BY timeInterval_Month, pricing_term, lineItem_LineItemType, product_instanceType "
+                            f"ORDER BY month ASC, cost DESC"
+                        )
+                    else:
+                        sql_stmt = (
+                            f"SELECT timeInterval_Month AS month, pricing_term AS pricing_term, lineItem_LineItemType AS item_type, "
+                            f"COUNT(DISTINCT lineItem_ResourceId) AS vm_count, SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_amount "
+                            f"FROM {source_ds} "
+                            f"{where_svc}{month_filter} "
+                            f"GROUP BY timeInterval_Month, pricing_term, lineItem_LineItemType "
+                            f"ORDER BY month ASC, cost DESC"
+                        )
+
+                lease_q_params = {
                     "queryInput": {
-                        "sqlStatement": cur_sql,
+                        "sqlStatement": sql_stmt,
                         "dataGranularity": "MONTHLY",
-                        "limit": 300,
-                        "timeRange": {"last": num_months, "qualifier": "MONTH"}
+                        "limit": 500 if has_it else 300,
+                        "timeRange": query_tr
                     },
                     "requestInfo": {"sourceType": "API", "caller": "mcp"}
                 }
                 if named_customer_crn:
-                    cur_q_params["channelCustomerId"] = named_customer_crn
+                    lease_q_params["channelCustomerId"] = named_customer_crn
 
                 lease_totals = defaultdict(float)
                 usage_totals = defaultdict(float)
+                vm_totals = defaultdict(int)
                 monthly_lease = defaultdict(lambda: defaultdict(float))
+                monthly_vms = defaultdict(lambda: defaultdict(int))
                 monthly_net = defaultdict(float)
                 all_months = set()
                 chart_rows = []
 
-                try:
-                    res_cur = mcp.call_tool("execute_datasource_query", cur_q_params)
-                    txt_cur = res_cur.get("content", [{}])[0].get("text", "{}")
-                    raw_csv = json.loads(txt_cur).get("csv", "")
+                # Dual breakdown tracking
+                it_lease_data = defaultdict(lambda: {"cost": 0.0, "hours": 0.0, "vms": 0})
+                it_totals = defaultdict(lambda: {"cost": 0.0, "hours": 0.0, "vms": 0})
+
+                def _parse_lease_csv(raw_csv, prov, cur_ds):
                     for r in csv.DictReader(io.StringIO(raw_csv)):
-                        m = (r.get("month") or "").strip()
-                        term = (r.get("pricing_term") or "").strip()
-                        itype = (r.get("item_type") or "").strip()
-                        c = float(r.get("cost") or 0.0)
-                        u = float(r.get("usage_amount") or 0.0)
+                        m = (r.get("month") or r.get("Month") or r.get("timeInterval_Month") or "").strip()
+                        c = float(r.get("cost") or r.get("CostInBillingCurrency") or r.get("EffectiveCost") or r.get("lineItem_UnblendedCost") or 0.0)
+                        u = float(r.get("usage_amount") or r.get("Quantity") or r.get("hours") or r.get("PricingQuantity") or r.get("lineItem_UsageAmount") or 0.0)
+                        vms = int(float(r.get("vm_count") or r.get("instance_count") or r.get("ResourceId") or 0))
+                        subcat = (r.get("meter_subcategory") or r.get("MeterSubCategory") or "").strip()
+                        mname = (r.get("meter_name") or r.get("MeterName") or "").strip()
+                        if subcat or mname:
+                            if mname and mname.lower() not in ("compute hours", "hours", "usage hours", "hour", ""):
+                                if subcat and subcat.lower() not in mname.lower():
+                                    it_name = f"{mname} ({subcat})"
+                                else:
+                                    it_name = mname
+                            else:
+                                it_name = subcat or mname
+                        else:
+                            it_name = (r.get("instance_type") or r.get("ServiceSubcategory") or r.get("product_instanceType") or "").strip()
                         if not m:
                             continue
                         all_months.add(m)
 
-                        if term == "OnDemand" and itype == "Usage":
-                            ltype = "On-Demand"
-                        elif term == "Reserved" or itype in ("RIFee", "DiscountedUsage"):
-                            ltype = "Reserved Instances (RI)"
-                        elif "SavingsPlan" in itype:
-                            if itype == "SavingsPlanCoveredUsage":
-                                ltype = "Savings Plans"
-                            elif itype == "SavingsPlanNegation":
+                        if prov in ("azure", "gcp"):
+                            pcat = (r.get("pricing_category") or r.get("PricingCategory") or r.get("pricing_model") or r.get("PricingModel") or "").strip().lower()
+                            if "committed" in pcat or "reservation" in pcat or "savings" in pcat:
+                                ltype = "Azure Reservations / Savings Plans" if prov == "azure" else ("Committed Use Discounts (CUD)" if prov == "gcp" else "Reserved / Savings Plans")
+                            elif "dynamic" in pcat or "spot" in pcat or "preemptible" in pcat:
+                                ltype = "Spot VMs"
+                            elif "standard" in pcat or "ondemand" in pcat or "payg" in pcat:
+                                ltype = "On-Demand (Pay-As-You-Go)" if prov == "azure" else "On-Demand"
+                            elif c < 0 or "discount" in pcat or "credit" in pcat:
                                 ltype = "Discounts & Offsets"
                             else:
-                                ltype = "Savings Plans"
-                        elif term == "Spot" or "spot" in itype.lower():
-                            ltype = "Spot Instances"
-                        elif itype == "Fee":
-                            ltype = "Upfront Fees / Commitments"
-                        elif c < 0 or itype in ("EdpDiscount", "SppDiscount", "PrivateRateDiscount", "Credit", "BundledDiscount"):
-                            ltype = "Discounts & Offsets"
+                                ltype = "Other / Unallocated"
                         else:
-                            ltype = "Other / Unallocated"
+                            term = (r.get("pricing_term") or r.get("PricingTerm") or "").strip()
+                            itype = (r.get("item_type") or r.get("lineItem_LineItemType") or r.get("LineItemType") or "").strip()
+                            if term == "OnDemand" and itype == "Usage":
+                                ltype = "On-Demand"
+                            elif term == "Reserved" or itype in ("RIFee", "DiscountedUsage"):
+                                ltype = "Reserved Instances (RI)"
+                                if itype == "RIFee":
+                                    vms = 0
+                            elif "SavingsPlan" in itype:
+                                if itype == "SavingsPlanCoveredUsage":
+                                    ltype = "Savings Plans"
+                                elif itype == "SavingsPlanNegation":
+                                    ltype = "Discounts & Offsets"
+                                    vms = 0
+                                else:
+                                    ltype = "Savings Plans"
+                            elif term == "Spot" or "spot" in itype.lower():
+                                ltype = "Spot Instances"
+                            elif itype == "Fee":
+                                ltype = "Upfront Fees / Commitments"
+                                vms = 0
+                            elif c < 0 or itype in ("EdpDiscount", "SppDiscount", "PrivateRateDiscount", "Credit", "BundledDiscount"):
+                                ltype = "Discounts & Offsets"
+                                vms = 0
+                            else:
+                                ltype = "Other / Unallocated"
+                                vms = 0
 
-                        if ltype in ("On-Demand", "Reserved Instances (RI)", "Savings Plans", "Spot Instances"):
+                        is_active_cat = (
+                            ltype in ("On-Demand", "On-Demand (Pay-As-You-Go)", "Reserved Instances (RI)", "Azure Reservations / Savings Plans", "Savings Plans", "Committed Use Discounts (CUD)", "Spot Instances", "Spot VMs")
+                        )
+                        if is_active_cat:
                             lease_totals[ltype] += c
                             usage_totals[ltype] += u
+                            vm_totals[ltype] += vms
                             monthly_lease[m][ltype] += c
+                            monthly_vms[m][ltype] += vms
                             if c > 0:
                                 chart_rows.append({"month": m, "category": ltype, "cost": c})
+                            if has_it and it_name:
+                                key = (it_name, ltype)
+                                it_lease_data[key]["cost"] += c
+                                it_lease_data[key]["hours"] += u
+                                it_lease_data[key]["vms"] += vms
+                                it_totals[it_name]["cost"] += c
+                                it_totals[it_name]["hours"] += u
+                                it_totals[it_name]["vms"] += vms
                         elif ltype in ("Upfront Fees / Commitments", "Discounts & Offsets"):
                             monthly_lease[m][ltype] += c
                         monthly_net[m] += c
+
+                try:
+                    res_cur = mcp.call_tool("execute_datasource_query", lease_q_params)
+                    txt_cur = res_cur.get("content", [{}])[0].get("text", "{}")
+                    raw_csv = json.loads(txt_cur).get("csv", "")
+                    _parse_lease_csv(raw_csv, cloud_target, source_ds)
                 except Exception as e:
-                    logger.warning(f"[AWS_CUR Lease Type Query] {e}")
+                    logger.warning(f"[{source_ds} Lease Type Query] {e}")
+
+                # Defensive fallback for Azure to AZURE_FOCUS_COST_AND_USAGE if AZURE_COST_USAGE returned 0 rows
+                if not lease_totals and cloud_target == "azure":
+                    try:
+                        month_filter_fb = f" AND Month = '{target_ym}'" if (is_specific and target_ym) else ""
+                        where_svc_fb = "WHERE (ServiceCategory = 'Database' OR ServiceName LIKE '%SQL%')" if is_db else "WHERE (ServiceCategory = 'Compute' OR ServiceName = 'Virtual Machines')"
+                        if has_it:
+                            fb_sql = (
+                                f"SELECT Month AS month, PricingCategory AS pricing_category, ServiceSubcategory AS instance_type, "
+                                f"COUNT(DISTINCT ResourceId) AS vm_count, SUM(EffectiveCost) AS cost, SUM(PricingQuantity) AS usage_amount "
+                                f"FROM AZURE_FOCUS_COST_AND_USAGE "
+                                f"{where_svc_fb}{month_filter_fb} "
+                                f"GROUP BY Month, PricingCategory, ServiceSubcategory "
+                                f"ORDER BY month ASC, cost DESC"
+                            )
+                        else:
+                            fb_sql = (
+                                f"SELECT Month AS month, PricingCategory AS pricing_category, "
+                                f"COUNT(DISTINCT ResourceId) AS vm_count, SUM(EffectiveCost) AS cost, SUM(PricingQuantity) AS usage_amount "
+                                f"FROM AZURE_FOCUS_COST_AND_USAGE "
+                                f"{where_svc_fb}{month_filter_fb} "
+                                f"GROUP BY Month, PricingCategory "
+                                f"ORDER BY month ASC, cost DESC"
+                            )
+                        lease_q_params["queryInput"]["sqlStatement"] = fb_sql
+                        res_fb = mcp.call_tool("execute_datasource_query", lease_q_params)
+                        txt_fb = res_fb.get("content", [{}])[0].get("text", "{}")
+                        raw_csv_fb = json.loads(txt_fb).get("csv", "")
+                        if raw_csv_fb.strip():
+                            _parse_lease_csv(raw_csv_fb, "azure", "AZURE_FOCUS_COST_AND_USAGE")
+                            if lease_totals:
+                                source_ds = "AZURE_FOCUS_COST_AND_USAGE"
+                    except Exception as fb_err:
+                        logger.warning(f"[AZURE_FOCUS Fallback Query] {fb_err}")
+
+                # Defensive fallback for GCP to MULTICLOUD_FOCUS_COST_AND_USAGE if native dataset returned 0 rows
+                if not lease_totals and cloud_target == "gcp":
+                    try:
+                        month_filter = f" AND Month = '{target_ym}'" if (is_specific and target_ym) else ""
+                        if has_it:
+                            fb_sql = (
+                                f"SELECT Month AS month, PricingCategory AS pricing_category, ServiceSubcategory AS instance_type, "
+                                f"COUNT(DISTINCT ResourceId) AS vm_count, SUM(EffectiveCost) AS cost, SUM(PricingQuantity) AS usage_amount "
+                                f"FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
+                                f"WHERE provider = 'GCP' AND {where_svc.replace('WHERE ', '')}{month_filter} "
+                                f"GROUP BY Month, PricingCategory, ServiceSubcategory "
+                                f"ORDER BY month ASC, cost DESC"
+                            )
+                        else:
+                            fb_sql = (
+                                f"SELECT Month AS month, PricingCategory AS pricing_category, "
+                                f"COUNT(DISTINCT ResourceId) AS vm_count, SUM(EffectiveCost) AS cost, SUM(PricingQuantity) AS usage_amount "
+                                f"FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
+                                f"WHERE provider = 'GCP' AND {where_svc.replace('WHERE ', '')}{month_filter} "
+                                f"GROUP BY Month, PricingCategory "
+                                f"ORDER BY month ASC, cost DESC"
+                            )
+                        lease_q_params["queryInput"]["sqlStatement"] = fb_sql
+                        res_fb = mcp.call_tool("execute_datasource_query", lease_q_params)
+                        txt_fb = res_fb.get("content", [{}])[0].get("text", "{}")
+                        raw_csv_fb = json.loads(txt_fb).get("csv", "")
+                        if raw_csv_fb.strip():
+                            _parse_lease_csv(raw_csv_fb, "gcp", "MULTICLOUD_FOCUS_COST_AND_USAGE")
+                            if lease_totals:
+                                source_ds = "MULTICLOUD_FOCUS_COST_AND_USAGE"
+                    except Exception as fb_err:
+                        logger.warning(f"[MULTICLOUD_FOCUS Fallback Query] {fb_err}")
 
                 if lease_totals:
                     sorted_months = sorted(list(all_months))
-                    if is_ytd:
+                    if is_specific and target_ym:
+                        period_str = target_label or f"Month {target_ym}"
+                    elif is_ytd:
                         period_str = f"Year-to-Date (YTD {datetime.date.today().year})" if not sorted_months else f"Year-to-Date ({sorted_months[0]} to {sorted_months[-1]})"
                     elif is_qtd:
                         curr_q = ((datetime.date.today().month - 1) // 3) + 1
@@ -4823,53 +6059,183 @@ class AIClient:
                     else:
                         period_str = f"Last {num_months} Months ({sorted_months[0]} to {sorted_months[-1]})" if sorted_months else f"Last {num_months} Months"
 
-                    CANONICAL_LEASES = [
-                        ("On-Demand", "Standard uncommitted pay-as-you-go capacity"),
-                        ("Reserved Instances (RI)", "1-Yr / 3-Yr committed capacity reservations"),
-                        ("Savings Plans", "Flexible commitment-discounted usage"),
-                        ("Spot Instances", "Discounted spare capacity (N/A for RDS, active for EC2)")
-                    ]
+                    if cloud_target == "azure":
+                        CANONICAL_LEASES = [
+                            ("On-Demand (Pay-As-You-Go)", "Standard uncommitted Pay-As-You-Go capacity"),
+                            ("Azure Reservations / Savings Plans", "1-Yr / 3-Yr committed capacity reservations & Compute Savings Plans"),
+                            ("Spot VMs", "Deeply discounted spare Azure capacity (up to 90% savings)"),
+                        ]
+                    elif cloud_target == "gcp":
+                        CANONICAL_LEASES = [
+                            ("On-Demand", "Standard uncommitted pay-as-you-go capacity"),
+                            ("Committed Use Discounts (CUD)", "1-Yr / 3-Yr committed use discounts for baseline workloads"),
+                            ("Spot VMs", "Discounted spare GCP compute capacity (60%–91% savings)"),
+                        ]
+                    else:
+                        CANONICAL_LEASES = [
+                            ("On-Demand", "Standard uncommitted pay-as-you-go capacity"),
+                            ("Reserved Instances (RI)", "1-Yr / 3-Yr committed capacity reservations"),
+                            ("Savings Plans", "Flexible commitment-discounted usage"),
+                            ("Spot Instances", "Discounted spare capacity (N/A for RDS, active for EC2)"),
+                        ]
+
                     total_compute = sum(lease_totals[lt] for lt, _ in CANONICAL_LEASES)
-                    committed_spend = lease_totals["Reserved Instances (RI)"] + lease_totals["Savings Plans"]
+                    total_vms = sum(vm_totals[lt] for lt, _ in CANONICAL_LEASES)
+                    committed_spend = (
+                        lease_totals.get("Azure Reservations / Savings Plans", 0.0) if cloud_target == "azure" else (
+                            lease_totals.get("Committed Use Discounts (CUD)", 0.0) if cloud_target == "gcp" else (
+                                lease_totals.get("Reserved Instances (RI)", 0.0) + lease_totals.get("Savings Plans", 0.0)
+                            )
+                        )
+                    )
                     coverage_pct = (committed_spend / total_compute * 100) if total_compute > 0 else 0.0
+
+                    show_vm_col = has_count or total_vms > 0
 
                     sum_rows = []
                     for idx, (lt, desc) in enumerate(CANONICAL_LEASES, 1):
                         sp = lease_totals.get(lt, 0.0)
                         pct = (sp / total_compute * 100) if total_compute > 0 else 0.0
                         u_hrs = usage_totals.get(lt, 0.0)
-                        hrs_str = f"{u_hrs:,.1f} hrs" if u_hrs > 0 else ("N/A (Managed DB)" if is_rds and lt == "Spot Instances" else "—")
-                        status_badge = "✅ Committed" if "Reserved" in lt or "Savings" in lt else ("⚡ Flexible" if "Spot" in lt else "⚠️ Uncommitted")
-                        sum_rows.append(
-                            f"| {idx} | **{lt}** | ${sp:,.2f} | {pct:.1f}% | {hrs_str} | {status_badge} | {desc} |"
+                        hrs_str = f"{u_hrs:,.1f} hrs" if u_hrs > 0 else ("N/A (Managed DB)" if (cloud_target == "aws" and is_rds and "Spot" in lt) else "—")
+                        status_badge = "✅ Committed" if any(w in lt for w in ["Reserved", "Savings", "Committed"]) else ("⚡ Flexible" if "Spot" in lt else "⚠️ Uncommitted")
+                        v_cnt = vm_totals.get(lt, 0)
+                        v_str = f"{v_cnt:,}" if v_cnt > 0 else "—"
+
+                        if show_vm_col:
+                            sum_rows.append(
+                                f"| {idx} | **{lt}** | {v_str} | ${sp:,.2f} | {pct:.1f}% | {hrs_str} | {status_badge} | {desc} |"
+                            )
+                        else:
+                            sum_rows.append(
+                                f"| {idx} | **{lt}** | ${sp:,.2f} | {pct:.1f}% | {hrs_str} | {status_badge} | {desc} |"
+                            )
+
+                    is_coverage_term = any(w in low for w in ["coverage", "coverage type", "by coverage", "commitment coverage"])
+                    table_title = "Spend & Instance Count Breakdown by Coverage Type" if (is_coverage_term and show_vm_col) else ("Spend Breakdown by Coverage Type" if is_coverage_term else "Spend & Usage Breakdown by Lease Type")
+                    table_col = "Coverage Type / Commitment Model" if is_coverage_term else "Lease Type / Purchase Option"
+                    if show_vm_col:
+                        summary_table = (
+                            f"#### 🖥️ {table_title}\n\n"
+                            f"| # | {table_col} | Active {res_plural} | Billed Spend | % of Spend | Usage Hours | Status | FinOps Definition |\n"
+                            f"|:---|:---|:---|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(sum_rows)}\n"
+                            f"| | **Total {prov_title} {res_plural} & Spend** | **{total_vms:,}** | **${total_compute:,.2f}** | **100.0%** | | | Commitment Coverage: **{coverage_pct:.1f}%** |\n"
+                        )
+                    else:
+                        summary_table = (
+                            f"#### 🖥️ {table_title}\n\n"
+                            f"| # | {table_col} | Billed Spend | % of Spend | Usage Hours | Status | FinOps Definition |\n"
+                            f"|:---|:---|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(sum_rows)}\n"
+                            f"| | **Total Compute Spend** | **${total_compute:,.2f}** | **100.0%** | | | Commitment Coverage: **{coverage_pct:.1f}%** |\n"
                         )
 
-                    summary_table = (
-                        f"#### 🖥️ Spend & Usage Breakdown by Lease Type\n\n"
-                        f"| # | Lease Type / Purchase Option | Billed Spend | % of Spend | Usage Hours | Status | FinOps Definition |\n"
-                        f"|:---|:---|:---|:---|:---|:---|:---|\n"
-                        f"{chr(10).join(sum_rows)}\n"
-                        f"| | **Total Compute Spend** | **${total_compute:,.2f}** | **100.0%** | | | Commitment Coverage: **{coverage_pct:.1f}%** |\n"
-                    )
+                    # Dual Breakdown Table: Instance Type x Lease Type
+                    it_table = ""
+                    if has_it and it_lease_data:
+                        sorted_it_pairs = sorted(
+                            it_lease_data.items(),
+                            key=lambda item: item[1]["cost"] if not has_count else (item[1]["vms"], item[1]["cost"]),
+                            reverse=True
+                        )
+                        it_rows_md = []
+                        for idx, ((it_name, lt_name), vals) in enumerate(sorted_it_pairs[:20], 1):
+                            c_val = vals["cost"]
+                            h_val = vals["hours"]
+                            vm_val = vals["vms"]
+                            pct_it = (c_val / total_compute * 100) if total_compute > 0 else 0.0
+                            status_badge = "✅ Committed" if any(w in lt_name for w in ["Reserved", "Savings", "Committed"]) else ("⚡ Flexible" if "Spot" in lt_name else "⚠️ Uncommitted")
+                            vm_display = f"{vm_val:,}" if vm_val > 0 else "—"
+                            hrs_display = f"{h_val:,.1f} hrs" if h_val > 0 else "—"
+                            it_rows_md.append(
+                                f"| {idx} | **`{it_name}`** | {lt_name} | {vm_display} | {hrs_display} | ${c_val:,.2f} | {pct_it:.1f}% | {status_badge} |"
+                            )
+                        it_table = (
+                            f"\n#### 📐 Instance Type / VM Size Breakdown by Lease Type\n\n"
+                            f"| # | Instance Type / VM Size | Lease Type | Active {res_plural} | Runtime Hours | Billed Spend | % of Spend | Status |\n"
+                            f"|:---|:---|:---|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(it_rows_md)}\n"
+                            f"| | **Top {min(len(sorted_it_pairs), 20)} Configurations Total** | | **{sum(v['vms'] for _, v in sorted_it_pairs[:20]):,}** | | **${sum(v['cost'] for _, v in sorted_it_pairs[:20]):,.2f}** | **{(sum(v['cost'] for _, v in sorted_it_pairs[:20])/total_compute*100) if total_compute > 0 else 0.0:.1f}%** | |\n"
+                        )
 
                     trend_table = ""
                     if len(sorted_months) > 1:
                         m_rows = []
                         for m in sorted_months:
-                            od = monthly_lease[m].get("On-Demand", 0.0)
-                            ri = monthly_lease[m].get("Reserved Instances (RI)", 0.0)
-                            sp = monthly_lease[m].get("Savings Plans", 0.0)
-                            spot = monthly_lease[m].get("Spot Instances", 0.0)
-                            disc = monthly_lease[m].get("Discounts & Offsets", 0.0)
-                            net = monthly_net[m]
-                            m_rows.append(
-                                f"| {m} | ${od:,.2f} | ${ri:,.2f} | ${sp:,.2f} | ${spot:,.2f} | ${disc:,.2f} | ${net:,.2f} |"
-                            )
+                            if cloud_target == "azure":
+                                od = monthly_lease[m].get("On-Demand (Pay-As-You-Go)", 0.0)
+                                ri = monthly_lease[m].get("Azure Reservations / Savings Plans", 0.0)
+                                spot = monthly_lease[m].get("Spot VMs", 0.0)
+                                disc = monthly_lease[m].get("Discounts & Offsets", 0.0)
+                                net = monthly_net[m]
+                                m_rows.append(
+                                    f"| {m} | ${od:,.2f} | ${ri:,.2f} | ${spot:,.2f} | ${disc:,.2f} | ${net:,.2f} |"
+                                )
+                            elif cloud_target == "gcp":
+                                od = monthly_lease[m].get("On-Demand", 0.0)
+                                cud = monthly_lease[m].get("Committed Use Discounts (CUD)", 0.0)
+                                spot = monthly_lease[m].get("Spot VMs", 0.0)
+                                disc = monthly_lease[m].get("Discounts & Offsets", 0.0)
+                                net = monthly_net[m]
+                                m_rows.append(
+                                    f"| {m} | ${od:,.2f} | ${cud:,.2f} | ${spot:,.2f} | ${disc:,.2f} | ${net:,.2f} |"
+                                )
+                            else:
+                                od = monthly_lease[m].get("On-Demand", 0.0)
+                                ri = monthly_lease[m].get("Reserved Instances (RI)", 0.0)
+                                sp = monthly_lease[m].get("Savings Plans", 0.0)
+                                spot = monthly_lease[m].get("Spot Instances", 0.0)
+                                disc = monthly_lease[m].get("Discounts & Offsets", 0.0)
+                                net = monthly_net[m]
+                                m_rows.append(
+                                    f"| {m} | ${od:,.2f} | ${ri:,.2f} | ${sp:,.2f} | ${spot:,.2f} | ${disc:,.2f} | ${net:,.2f} |"
+                                )
+                        th_azure = "| Month | Pay-As-You-Go (PAYG) | Reservations & Savings | Spot VMs | Discounts | Net Spend |\n|:---|:---|:---|:---|:---|:---|\n"
+                        th_gcp = "| Month | On-Demand | Committed Use (CUD) | Spot VMs | Discounts | Net Spend |\n|:---|:---|:---|:---|:---|:---|\n"
+                        th_aws = "| Month | On-Demand | Reserved (RI) | Savings Plan | Spot | Discounts (EDP/SPP) | Net Spend |\n|:---|:---|:---|:---|:---|:---|:---|\n"
+                        trend_th = th_azure if cloud_target == "azure" else (th_gcp if cloud_target == "gcp" else th_aws)
                         trend_table = (
-                            f"\n#### 📅 Monthly Trend by Lease Type\n\n"
-                            f"| Month | On-Demand | Reserved (RI) | Savings Plan | Spot | Discounts (EDP/SPP) | Net Spend |\n"
-                            f"|:---|:---|:---|:---|:---|:---|:---|\n"
+                            f"\n#### 📅 Monthly Spend Trend by Lease Type\n\n"
+                            f"{trend_th}"
                             f"{chr(10).join(m_rows)}\n"
+                        )
+
+                    vm_trend_table = ""
+                    if show_vm_col and len(sorted_months) > 1:
+                        v_rows = []
+                        for m in sorted_months:
+                            if cloud_target == "azure":
+                                v_od = monthly_vms[m].get("On-Demand (Pay-As-You-Go)", 0)
+                                v_ri = monthly_vms[m].get("Azure Reservations / Savings Plans", 0)
+                                v_spot = monthly_vms[m].get("Spot VMs", 0)
+                                v_tot = v_od + v_ri + v_spot
+                                v_cov = ((v_ri) / v_tot * 100) if v_tot > 0 else 0.0
+                                v_rows.append(f"| {m} | {v_od:,} | {v_ri:,} | {v_spot:,} | **{v_tot:,}** | **{v_cov:.1f}%** |")
+                            elif cloud_target == "gcp":
+                                v_od = monthly_vms[m].get("On-Demand", 0)
+                                v_cud = monthly_vms[m].get("Committed Use Discounts (CUD)", 0)
+                                v_spot = monthly_vms[m].get("Spot VMs", 0)
+                                v_tot = v_od + v_cud + v_spot
+                                v_cov = ((v_cud) / v_tot * 100) if v_tot > 0 else 0.0
+                                v_rows.append(f"| {m} | {v_od:,} | {v_cud:,} | {v_spot:,} | **{v_tot:,}** | **{v_cov:.1f}%** |")
+                            else:
+                                v_od = monthly_vms[m].get("On-Demand", 0)
+                                v_ri = monthly_vms[m].get("Reserved Instances (RI)", 0)
+                                v_sp = monthly_vms[m].get("Savings Plans", 0)
+                                v_spot = monthly_vms[m].get("Spot Instances", 0)
+                                v_tot = v_od + v_ri + v_sp + v_spot
+                                v_cov = ((v_ri + v_sp) / v_tot * 100) if v_tot > 0 else 0.0
+                                v_rows.append(f"| {m} | {v_od:,} | {v_ri:,} | {v_sp:,} | {v_spot:,} | **{v_tot:,}** | **{v_cov:.1f}%** |")
+
+                        v_th_aws = f"| Month | On-Demand {res_plural} | Reserved (RI) {res_plural} | Savings Plans {res_plural} | Spot {res_plural} | Total Active {res_plural} | Fleet Commitment Coverage (%) |\n|:---|:---|:---|:---|:---|:---|:---|\n"
+                        v_th_azure = f"| Month | Pay-As-You-Go {res_plural} | Reservations & Savings {res_plural} | Spot {res_plural} | Total Active {res_plural} | Fleet Commitment Coverage (%) |\n|:---|:---|:---|:---|:---|:---|\n"
+                        v_th_gcp = f"| Month | On-Demand {res_plural} | Committed Use (CUD) {res_plural} | Spot {res_plural} | Total Active {res_plural} | Fleet Commitment Coverage (%) |\n|:---|:---|:---|:---|:---|:---|\n"
+                        v_th = v_th_azure if cloud_target == "azure" else (v_th_gcp if cloud_target == "gcp" else v_th_aws)
+                        vm_trend_table = (
+                            f"\n#### 📈 Monthly Active {res_plural} Fleet & Coverage Trend\n\n"
+                            f"{v_th}"
+                            f"{chr(10).join(v_rows)}\n"
                         )
 
                     chart_md = ""
@@ -4884,38 +6250,59 @@ class AIClient:
                             max_cats=6
                         )
 
-                    od_spend = lease_totals.get("On-Demand", 0.0)
-                    potential_sp_savings = od_spend * 0.30
-                    if is_rds:
-                        spot_note = "- **Spot Instance Applicability**: **Spot instances are not supported for Amazon RDS**. AWS limits Spot capacity to stateless, fault-tolerant workloads (EC2, ECS, EMR, Batch). Relational database clusters require guaranteed hardware tenancy and stateful persistence."
-                        rec_note = f"- **Commitment Coverage Target (30%–55% Savings)**: Identified **${od_spend:,.2f}** in steady-state On-Demand RDS spend. Sizing **1-Year or 3-Year Database Savings Plans** or Database RIs to achieve 70%–80% coverage would yield estimated savings of **${potential_sp_savings:,.2f} to ${od_spend*0.50:,.2f}**."
+                    od_key = "On-Demand (Pay-As-You-Go)" if cloud_target == "azure" else "On-Demand"
+                    od_spend = lease_totals.get(od_key, 0.0)
+                    potential_sp_savings = od_spend * 0.32
+
+                    if cloud_target == "azure":
+                        rec_note = f"- **Azure Reservations & Savings Plans (30%–72% Savings)**: Identified **${od_spend:,.2f}** in steady-state Pay-As-You-Go Azure compute spend. Committing baseline VM sizes via 1-Year or 3-Year Azure Reservations captures up to **72% savings**, while Azure Savings Plans capture up to **65%** with cross-series flexibility."
+                        spot_note = "- **Azure Spot VMs (up to 90% Savings)**: Unused Azure compute capacity can be leveraged at 60%–90% discounts for fault-tolerant AKS node pools, batch processing, and CI/CD agents."
+                        ahb_note = "- **Azure Hybrid Benefit (AHB)**: Apply existing on-premises Windows Server and SQL Server licenses to waive the base compute software surcharge, reducing hourly VM rates by up to 40%–85%."
+                        insights_body = f"{rec_note}\n{spot_note}\n{ahb_note}"
+                    elif cloud_target == "gcp":
+                        rec_note = f"- **GCP Committed Use Discounts (CUD)**: Identified **${od_spend:,.2f}** in on-demand compute spend. Layering 1-Yr or 3-Yr Compute Engine CUDs locks in predictable 37%–57% savings."
+                        spot_note = "- **GCP Spot VMs (60%–91% Savings)**: Preemptible/Spot VM instances provide deep rate reductions for stateless GKE clusters and asynchronous data pipelines."
+                        ahb_note = "- **Custom Machine Types**: Tailor vCPU and RAM allocations to avoid paying for oversized standard predefined machine types."
+                        insights_body = f"{rec_note}\n{spot_note}\n{ahb_note}"
                     else:
-                        spot_note = "- **Spot Instance Opportunities**: Spot provides **60%–90% discounts** relative to retail On-Demand. Ideal for stateless Kubernetes workers, CI/CD runners, and batch processing."
-                        rec_note = f"- **Commitment Rightsizing**: Identified **${od_spend:,.2f}** in On-Demand compute. Layer Compute Savings Plans for baseline 24/7 workloads to capture **${potential_sp_savings:,.2f}** in direct savings."
+                        if is_rds:
+                            spot_note = "- **Spot Instance Applicability**: **Spot instances are not supported for Amazon RDS**. AWS limits Spot capacity to stateless, fault-tolerant workloads (EC2, ECS, EMR, Batch). Relational database clusters require guaranteed hardware tenancy and stateful persistence."
+                            rec_note = f"- **Commitment Coverage Target (30%–55% Savings)**: Identified **${od_spend:,.2f}** in steady-state On-Demand RDS spend. Sizing **1-Year or 3-Year Database Savings Plans** or Database RIs to achieve 70%–80% coverage would yield estimated savings of **${potential_sp_savings:,.2f} to ${od_spend*0.50:,.2f}**."
+                        else:
+                            spot_note = "- **Spot Instance Opportunities**: Spot provides **60%–90% discounts** relative to retail On-Demand. Ideal for stateless Kubernetes workers, CI/CD runners, and batch processing."
+                            rec_note = f"- **Commitment Rightsizing**: Identified **${od_spend:,.2f}** in On-Demand compute. Layer Compute Savings Plans for baseline 24/7 workloads to capture **${potential_sp_savings:,.2f}** in direct savings."
+                        ahb_note = ""
+                        insights_body = f"{rec_note}\n{spot_note}" + (f"\n{ahb_note}" if ahb_note else "")
 
                     if is_no_insights_requested(low):
-                        finops_insights = "*Source: AWS_CUR via CloudHealth FlexReports.*"
+                        finops_insights = f"*Source: {source_ds} via CloudHealth FlexReports.*"
                     else:
                         finops_insights = (
                             f"#### 💡 FinOps Insights & Commitment Optimization Levers\n\n"
-                            f"- **Current Commitment Coverage**: **{coverage_pct:.1f}%** of compute spend is currently protected under commitments (**${committed_spend:,.2f}** across RIs and Savings Plans).\n"
-                            f"{rec_note}\n"
-                            f"{spot_note}\n\n"
+                            f"- **Current Commitment Coverage**: **{coverage_pct:.1f}%** of {prov_title} compute spend is protected under commitments (**${committed_spend:,.2f}** committed).\n"
+                            f"{insights_body}\n\n"
                             f"> **FinOps Foundation Rate Optimization Principle**:\n"
-                            f"> Rightsizing and modernization (e.g. Graviton) must precede multi-year commitment purchases. Lock in baseline usage with flexible Savings Plans first, followed by standard RIs for static database instances.\n\n"
-                            f"*Source: AWS_CUR via CloudHealth FlexReports.*"
+                            f"> Rightsizing and architecture modernization must precede multi-year commitment purchases. Lock in baseline usage with flexible Savings Plans first, followed by standard reservations for static workloads.\n\n"
+                            f"*Source: {source_ds} via CloudHealth FlexReports.*"
                         )
 
+                    vms_bullet = f"- **Total Active {res_plural}**: **{total_vms:,}**\n" if (show_vm_col and total_vms > 0) else ""
+
+                    hdr_title = "Coverage Type & Commitment Breakdown" if is_coverage_term else "Lease Type & Pricing Model Breakdown"
                     return (
-                        f"### 📋 CloudHealth Lease Type & Pricing Model Breakdown: {svc_disp}\n\n"
-                        f"Queried live from standard dataset **`AWS_CUR`** for **{cust_label}**:\n\n"
+                        f"### 📋 CloudHealth {hdr_title}: {svc_disp} ({prov_title})\n\n"
+                        f"Queried live from standard dataset **`{source_ds}`** for **{cust_label}**:\n\n"
                         f"- **Target Billing Period**: {period_str}\n"
-                        f"- **Total Analyzed Compute Spend**: **${total_compute:,.2f}**\n\n"
+                        f"- **Total Analyzed Compute Spend**: **${total_compute:,.2f}**\n"
+                        f"{vms_bullet}\n"
                         f"{summary_table}\n"
+                        f"{it_table}\n"
+                        f"{vm_trend_table}\n"
                         f"{trend_table}\n"
                         f"{chart_md}\n"
                         f"{finops_insights}"
                     )
+
 
             # 3-RDS-IT. Dedicated RDS Instance Type, Engine & Spend Analysis via AWS_RDS_COST_AND_USAGE & AWS_CUR
             is_rds_instance_or_usage = (
@@ -4924,7 +6311,7 @@ class AIClient:
                     any(w in low for w in ["rds", "relational database", "aurora"]) or
                     ("database" in low and any(w in low for w in ["instance", "type", "engine", "usage", "spend", "cost", "breakdown"]))
                 ) and not is_ai_models_query
-            ) and not any(w in low for w in ["recommendation", "anomal", "spike", "optimize rds"]) and not is_multi_service_request and not is_lease_type_request
+            ) and not any(w in low for w in ["recommendation", "anomal", "spike", "optimize rds"]) and not is_multi_service_request and not is_lease_type_request and not any(w in low for w in ["azure", "microsoft", "gcp", "google"]) and intent_info.get("cloud") not in ("azure", "gcp")
 
             if not is_rds_instance_or_usage and is_followup:
                 prev_is_rds = any("aws_rds_cost_and_usage" in a.lower() or "rds spend analysis" in a.lower() or "rds usage" in a.lower() for a in prior_assistant_msgs[-1:]) or \
@@ -5061,6 +6448,19 @@ class AIClient:
                     else:
                         period_str = f"Last {len(months_present)} Months ({months_present[0]} to {months_present[-1]})" if months_present else f"Last {num_months} Months"
                     total_rds_cost = sum(r["cost"] for r in rds_rows)
+                    true_rds_total = _fetch_total_cost(
+                        mcp, "SELECT SUM(BilledCost) AS cost FROM AWS_RDS_COST_AND_USAGE",
+                        rds_gran, rds_tr, named_customer_crn
+                    ) or total_rds_cost
+                    total_rds_cost = true_rds_total
+
+                    rds_res_count = 0
+                    if any(w in low for w in ["how many", "count", "number of", "unique", "instances"]) or intent_info.get("metric_type") == "quantity":
+                        rds_res_count = _fetch_total_resource_count(
+                            mcp,
+                            "SELECT COUNT(DISTINCT lineItem_ResourceId) AS resource_count FROM AWS_CUR WHERE lineItem_ProductCode = 'AmazonRDS' AND lineItem_ResourceId IS NOT NULL AND lineItem_ResourceId != ''",
+                            rds_gran, rds_tr, named_customer_crn
+                        )
 
                     agg_types = {}
                     for r in rds_rows:
@@ -5092,12 +6492,13 @@ class AIClient:
                             graviton_candidates.append({"instance_type": it, "cost": c})
 
                     remaining_types = sorted_types[15:]
-                    if remaining_types and not is_exclude_other:
-                        rem_cost = sum(d["cost"] for _, d in remaining_types)
+                    top_rds_cost = sum(d["cost"] for _, d in sorted_types[:15])
+                    rem_cost = max(sum(d["cost"] for _, d in remaining_types), total_rds_cost - top_rds_cost) if not is_exclude_other else 0.0
+                    if rem_cost > 0.50:
                         rem_pct = (rem_cost / total_rds_cost * 100) if total_rds_cost else 0.0
-                        rem_count = len(remaining_types)
+                        rem_count = max(1, len(remaining_types))
                         it_table_lines.append(
-                            f"| - | *Other ({rem_count} instance types)* | **${rem_cost:,.2f}** | {rem_pct:.1f}% | — | — | — |"
+                            f"| - | *Other ({rem_count} instance types consolidated)* | **${rem_cost:,.2f}** | {rem_pct:.1f}% | — | — | — |"
                         )
 
                     # Instance Type Chart
@@ -5159,7 +6560,7 @@ class AIClient:
                             cat_col="instance_type",
                             cost_col="cost",
                             time_format=t_fmt,
-                            max_cats=10,
+                            max_cats=20,
                             exclude_other=is_exclude_other
                         )
 
@@ -5304,10 +6705,12 @@ class AIClient:
                         item_desc = "active database instance types"
                         body_sections_md = f"{instance_section_md}{engine_section_md}"
 
+                    rds_count_bullet = f"- **Active Unique Database Instances**: **{rds_res_count:,} database instances**\n" if rds_res_count > 0 else ""
                     return (
                         f"### 🗄️ CloudHealth RDS Spend Analysis: {header_title}\n\n"
                         f"Queried live from standard datasets **`AWS_RDS_COST_AND_USAGE`** and **`AWS_CUR`** for **{cust_label}**:\n\n"
                         f"- **Target Billing Period**: {period_str}\n"
+                        f"{rds_count_bullet}"
                         f"- **Total RDS Billed Spend**: **${disp_total:,.2f}** across **{item_count}** {item_desc}\n\n"
                         f"{partial_notice}"
                         f"{body_sections_md}"
@@ -5323,7 +6726,7 @@ class AIClient:
                     ("ec2" in low and any(w in low for w in ["instance", "type", "breakdown", "how many", "number of", "count"])) or
                     (intent_info.get("service") == "AmazonEC2" and not is_ai_models_query and intent_info.get("metric_type") == "quantity")
                 )
-            ) and not any(w in low for w in ["recommendation", "anomal", "spike", "rds", "relational", "aurora", "database"]) and intent_info.get("service") != "AmazonRDS" and not is_multi_service_request and not is_lease_type_request
+            ) and not any(w in low for w in ["recommendation", "anomal", "spike", "rds", "relational", "aurora", "database"]) and intent_info.get("service") != "AmazonRDS" and not is_multi_service_request and not is_lease_type_request and not any(w in low for w in ["azure", "microsoft", "gcp", "google"]) and intent_info.get("cloud") not in ("azure", "gcp")
 
             if not is_ec2_instance_query and is_followup:
                 prev_is_ec2 = any("aws_ec2_cost_and_usage" in a.lower() or "instance type breakdown" in a.lower() for a in prior_assistant_msgs[-1:]) or \
@@ -5591,7 +6994,7 @@ class AIClient:
                                 cat_col="instance_type",
                                 cost_col="cost",
                                 time_format="day",
-                                max_cats=12,
+                                max_cats=20,
                                 exclude_other=is_exclude_other
                             )
 
@@ -5765,7 +7168,7 @@ class AIClient:
                                 cat_col="instance_type",
                                 cost_col="cost",
                                 time_format=t_format,
-                                max_cats=12,
+                                max_cats=20,
                                 exclude_other=is_exclude_other
                             )
 
@@ -5958,7 +7361,8 @@ class AIClient:
                         where_clause = "WHERE lineItem_ProductCode = 'AmazonS3' AND product_storageClass IS NOT NULL AND product_storageClass != ''"
                         sql_svc = (
                             f"SELECT {time_col} AS time_val, product_storageClass AS usage_type, '' AS operation, "
-                            f"SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_qty "
+                            f"SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_qty, "
+                            f"COUNT(DISTINCT lineItem_ResourceId) AS resource_count "
                             f"FROM AWS_CUR "
                             f"{where_clause} "
                             f"GROUP BY {time_col}, product_storageClass "
@@ -5968,22 +7372,29 @@ class AIClient:
                         where_clause = "WHERE lineItem_ProductCode = 'AmazonEC2' AND product_volumeType IS NOT NULL AND product_volumeType != ''"
                         sql_svc = (
                             f"SELECT {time_col} AS time_val, product_volumeType AS usage_type, '' AS operation, "
-                            f"SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_qty "
+                            f"SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_qty, "
+                            f"COUNT(DISTINCT lineItem_ResourceId) AS resource_count "
                             f"FROM AWS_CUR "
                             f"{where_clause} "
                             f"GROUP BY {time_col}, product_volumeType "
                             f"ORDER BY time_val ASC, cost DESC"
                         )
                     else:
-                        where_clause = (
-                            "WHERE lineItem_ProductCode = 'AmazonEC2' AND ("
-                            "lineItem_UsageType LIKE '%Volume%' OR lineItem_UsageType LIKE '%Snapshot%' OR "
-                            "lineItem_UsageType LIKE '%EBS%' OR lineItem_UsageType LIKE '%gp2%' OR lineItem_UsageType LIKE '%gp3%')"
-                        ) if major_svc_pcode == "AmazonEC2_EBS" else f"WHERE lineItem_ProductCode = '{major_svc_pcode}'"
+                        if major_svc_pcode == "AmazonEC2_EBS":
+                            where_clause = (
+                                "WHERE lineItem_ProductCode = 'AmazonEC2' AND ("
+                                "lineItem_UsageType LIKE '%Volume%' OR lineItem_UsageType LIKE '%Snapshot%' OR "
+                                "lineItem_UsageType LIKE '%EBS%' OR lineItem_UsageType LIKE '%gp2%' OR lineItem_UsageType LIKE '%gp3%')"
+                            )
+                        elif major_svc_pcode == "AWSSupport":
+                            where_clause = "WHERE lineItem_ProductCode LIKE 'AWSSupport%'"
+                        else:
+                            where_clause = f"WHERE lineItem_ProductCode = '{major_svc_pcode}'"
 
                         sql_svc = (
                             f"SELECT {time_col} AS time_val, lineItem_UsageType AS usage_type, lineItem_Operation AS operation, "
-                            f"SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_qty "
+                            f"SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_qty, "
+                            f"COUNT(DISTINCT lineItem_ResourceId) AS resource_count "
                             f"FROM AWS_CUR "
                             f"{where_clause} "
                             f"GROUP BY {time_col}, lineItem_UsageType, lineItem_Operation "
@@ -5994,7 +7405,7 @@ class AIClient:
                         "queryInput": {
                             "sqlStatement": sql_svc,
                             "dataGranularity": svc_granularity,
-                            "limit": 50,
+                            "limit": 100,
                             "timeRange": svc_time_range
                         },
                         "requestInfo": {"sourceType": "API", "caller": "mcp"}
@@ -6012,13 +7423,15 @@ class AIClient:
                                 ut = r.get("usage_type", "")
                                 op = r.get("operation", "")
                                 q = float(r.get("usage_qty") or 0.0)
-                                if (c > 0 or q > 0) and (num_days == 0 or tv != today_str):
+                                res_cnt = int(float(r.get("resource_count") or 0))
+                                if (c > 0 or q > 0 or res_cnt > 0) and (num_days == 0 or tv != today_str):
                                     svc_rows.append({
                                         "time_val": tv,
                                         "usage_type": ut,
                                         "operation": op,
                                         "cost": c,
-                                        "qty": q
+                                        "qty": q,
+                                        "res_cnt": res_cnt
                                     })
                             except (ValueError, TypeError):
                                 pass
@@ -6039,12 +7452,25 @@ class AIClient:
                             f"ORDER BY Month ASC, cost DESC"
                         )
                     else:
-                        prov_clause = "provider IN ('OCI', 'Oracle Cloud')" if major_svc_prov == "oci" else f"provider = '{major_svc_prov}'"
+                        if major_svc_prov in ("all", "cloud", "multi-cloud"):
+                            if major_svc_pcode == "Marketplace":
+                                where_clause = "(ServiceCategory = 'Marketplace' OR ServiceName LIKE '%Marketplace%')"
+                            else:
+                                where_clause = f"(ServiceName = '{major_svc_pcode}' OR ServiceCategory = '{major_svc_pcode}')"
+                        elif major_svc_prov in ("gcp", "google"):
+                            where_clause = f"provider IN ('GCP', 'Google Cloud') AND (ServiceName = '{major_svc_pcode}' OR ServiceCategory = '{major_svc_pcode}')"
+                        elif major_svc_prov == "azure":
+                            where_clause = f"provider = 'Azure' AND (ServiceName = '{major_svc_pcode}' OR ServiceCategory = '{major_svc_pcode}')"
+                        elif major_svc_prov == "oci":
+                            where_clause = f"provider IN ('OCI', 'Oracle Cloud') AND (ServiceName = '{major_svc_pcode}' OR ServiceCategory = '{major_svc_pcode}')"
+                        else:
+                            where_clause = f"provider = '{major_svc_prov}' AND (ServiceName = '{major_svc_pcode}' OR ServiceCategory = '{major_svc_pcode}')"
+
                         sql_svc = (
                             f"SELECT Month AS time_val, ServiceName AS usage_type, PricingUnit AS operation, "
                             f"SUM(PricingQuantity) AS usage_qty, SUM(EffectiveCost) AS cost "
                             f"FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
-                            f"WHERE {prov_clause} AND ServiceName = '{major_svc_pcode}' "
+                            f"WHERE {where_clause} "
                             f"GROUP BY Month, ServiceName, PricingUnit "
                             f"ORDER BY Month ASC, cost DESC"
                         )
@@ -6077,6 +7503,34 @@ class AIClient:
                                 pass
                     except Exception as e:
                         logger.warning(f"[{major_svc_disp} Query] {e}")
+
+                if not svc_rows and major_svc_prov == "aws":
+                    fb_where = "provider = 'AWS' AND ServiceName LIKE 'AWSSupport%'" if major_svc_pcode == "AWSSupport" else f"provider = 'AWS' AND (ServiceName = '{major_svc_pcode}' OR ServiceCategory = '{major_svc_pcode}')"
+                    fb_sql = (
+                        f"SELECT Month AS time_val, ServiceName AS usage_type, PricingUnit AS operation, "
+                        f"SUM(PricingQuantity) AS usage_qty, SUM(EffectiveCost) AS cost "
+                        f"FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
+                        f"WHERE {fb_where} "
+                        f"GROUP BY Month, ServiceName, PricingUnit "
+                        f"ORDER BY Month ASC, cost DESC"
+                    )
+                    try:
+                        res_fb = mcp.call_tool("execute_datasource_query", {
+                            "queryInput": {"sqlStatement": fb_sql, "dataGranularity": "MONTHLY", "limit": 50, "timeRange": svc_time_range},
+                            "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                        })
+                        raw_csv_fb = json.loads(res_fb.get("content", [{}])[0].get("text", "{}")).get("csv", "")
+                        for r in csv.DictReader(io.StringIO(raw_csv_fb)):
+                            c = float(r.get("cost") or 0.0)
+                            tv = r.get("time_val", "")
+                            q = float(r.get("usage_qty") or 0.0)
+                            if c > 0 or q > 0:
+                                svc_rows.append({
+                                    "time_val": tv, "usage_type": r.get("usage_type", major_svc_disp),
+                                    "operation": r.get("operation", ""), "cost": c, "qty": q
+                                })
+                    except Exception:
+                        pass
 
                 if not svc_rows:
                     return (
@@ -6130,10 +7584,44 @@ class AIClient:
                 total_svc_spend = true_total or sum(cat_totals.values()) or 1.0
                 total_svc_qty = sum(cat_qtys.values())
 
+                true_res_count = 0
+                if major_svc_prov == "aws":
+                    true_res_count = _fetch_total_resource_count(
+                        mcp, f"SELECT COUNT(DISTINCT lineItem_ResourceId) AS resource_count FROM AWS_CUR {where_clause}",
+                        svc_granularity, svc_time_range, named_customer_crn
+                    )
+                elif major_svc_prov in ("azure", "gcp"):
+                    true_res_count = _fetch_total_resource_count(
+                        mcp, f"SELECT COUNT(DISTINCT ResourceId) AS resource_count FROM {native_table} WHERE ServiceName = '{major_svc_pcode}'",
+                        "MONTHLY", non_aws_time_range, named_customer_crn
+                    )
+                else:
+                    true_res_count = _fetch_total_resource_count(
+                        mcp, f"SELECT COUNT(DISTINCT ResourceId) AS resource_count FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE {where_clause}",
+                        "MONTHLY", non_aws_time_range, named_customer_crn
+                    )
+
+                res_count_bullet = ""
+                if true_res_count > 0:
+                    if major_svc_pcode == "AmazonS3":
+                        res_count_bullet = f"- **Active S3 Buckets**: **{true_res_count:,} buckets**\n"
+                    elif major_svc_pcode == "AmazonEC2_EBS":
+                        res_count_bullet = f"- **Active EBS Volumes**: **{true_res_count:,} volumes**\n"
+                    elif major_svc_pcode == "AWSLambda":
+                        res_count_bullet = f"- **Active Lambda Functions**: **{true_res_count:,} functions**\n"
+                    elif major_svc_pcode == "AmazonDynamoDB":
+                        res_count_bullet = f"- **Active DynamoDB Tables**: **{true_res_count:,} tables**\n"
+                    else:
+                        res_count_bullet = f"- **Active Resources**: **{true_res_count:,} distinct resources**\n"
+
                 if is_quantity_mode:
                     sorted_cats = sorted(cat_totals.items(), key=lambda x: cat_qtys.get(x[0], 0.0), reverse=True)
                 else:
                     sorted_cats = sorted(cat_totals.items(), key=lambda x: x[1], reverse=True)
+
+                reconciled_cats, other_svc_cost, starve_notice = reconcile_and_consolidate_breakdown(
+                    sorted_cats, total_svc_spend, limit=12, query_limit=100, other_label="Other Categories (Consolidated)"
+                )
 
                 unit_label = "GB-Mo" if any(w in major_svc_pcode.lower() for w in ["s3", "storage", "ebs", "disk", "blob"]) else ("Hours" if any(w in major_svc_pcode.lower() for w in ["vm", "compute"]) else "Units")
 
@@ -6152,14 +7640,23 @@ class AIClient:
                         op_str = f" | {op_note[:45]}" if op_note else " | Active operational workload"
                         tbl_lines.append(f"| {idx+1} | **{cat}** | **${c:,.2f}** | {qty_str}{pct:.1f}%{op_str} |")
 
+                if other_svc_cost > 0.50:
+                    rem_pct = (other_svc_cost / total_svc_spend * 100) if total_svc_spend else 0.0
+                    if is_quantity_mode:
+                        tbl_lines.append(f"| - | *Other Categories (Consolidated)* | **Tail volume** | ${other_svc_cost:,.2f} | {rem_pct:.1f}% | Consolidated remainder |")
+                    else:
+                        tbl_lines.append(f"| - | *Other Categories (Consolidated)* | **${other_svc_cost:,.2f}** | {rem_pct:.1f}% | Consolidated remainder |")
+
                 cat_header = "Service Category / Storage Tier" if any(w in major_svc_pcode.lower() for w in ["s3", "storage", "ebs", "blob"]) else "Service Category / Meter"
                 if is_quantity_mode:
                     tbl_header = (
+                        f"{starve_notice}"
                         f"| # | {cat_header} | Usage Volume | Spend ($) | % of Total Volume | Operational Usage Notes |\n"
                         f"|:---|:---|:---|:---|:---|:---|\n"
                     )
                     tbl_total_row = f"| **Total** | **All Categories** | **{total_svc_qty:,.1f} {unit_label}** | **${total_svc_spend:,.2f}** | **100.0%** | |\n\n"
                     metric_summary = (
+                        f"{res_count_bullet}"
                         f"- **Total Operational Volume**: **{total_svc_qty:,.1f} {unit_label}**\n"
                         f"- **Total {major_svc_disp} Spend**: **${total_svc_spend:,.2f}** across **{len(sorted_cats)}** distinct service categories\n\n"
                     )
@@ -6167,12 +7664,14 @@ class AIClient:
                     qty_col = "Usage Volume | " if total_svc_qty > 0 else ""
                     qty_sep = ":---|" if total_svc_qty > 0 else ""
                     tbl_header = (
+                        f"{starve_notice}"
                         f"| # | {cat_header} | Spend ($) | {qty_col}% of Total | Operational Usage Notes |\n"
                         f"|:---|:---|:---|{qty_sep}:---|:---|\n"
                     )
                     qty_tot = f"**{total_svc_qty:,.1f} {unit_label}** | " if total_svc_qty > 0 else ""
                     tbl_total_row = f"| **Total** | **All Categories** | **${total_svc_spend:,.2f}** | {qty_tot}**100.0%** | |\n\n"
                     metric_summary = (
+                        f"{res_count_bullet}"
                         f"- **Total {major_svc_disp} Billed Spend**: **${total_svc_spend:,.2f}**" + (f" ({total_svc_qty:,.1f} {unit_label})" if total_svc_qty > 0 else "") + f" across **{len(sorted_cats)}** distinct service categories\n\n"
                     )
 
@@ -6235,7 +7734,7 @@ class AIClient:
                 "usagetype", "usage type", "usage-type", "operation", "meter name",
                 "line item", "item description", "lineitem", "granular breakdown", "usage breakdown",
                 "by type", "operation breakdown"
-            ])
+            ]) and not any(w in low for w in ["azure", "microsoft", "gcp", "google"]) and intent_info.get("cloud") not in ("azure", "gcp")
             if is_usagetype_query:
                 if is_specific and target_ym != last_ym:
                     ut_time_range = {"from": target_ym, "to": target_ym}
@@ -6263,7 +7762,7 @@ class AIClient:
                     "queryInput": {
                         "sqlStatement": ut_sql,
                         "dataGranularity": ut_granularity,
-                        "limit": 20,
+                        "limit": 100,
                         "timeRange": ut_time_range
                     },
                     "requestInfo": {"sourceType": "API", "caller": "mcp"}
@@ -6300,14 +7799,20 @@ class AIClient:
                         f"> ℹ️ *No granular line items recorded for {cust_display} under {svc_title or 'AWS'} in {ut_period_label}.*"
                     )
 
+                reconciled_ut, other_ut_cost, starve_notice = reconcile_and_consolidate_breakdown(
+                    ut_rows, total_ut_spend, limit=15, query_limit=100, other_label="Other Usage Types (Consolidated)"
+                )
+
                 table_lines = []
-                for r in ut_rows[:15]:
+                for r in reconciled_ut:
                     pct = (r["cost"] / total_ut_spend * 100) if total_ut_spend > 0 else 0.0
-                    desc_str = r["description"]
+                    desc_str = r.get("description", "")
                     if len(desc_str) > 75:
                         desc_str = desc_str[:72] + "..."
+                    qty_val = r.get("qty", 0.0)
+                    qty_str = f"{qty_val:,.1f}" if qty_val > 0 else "—"
                     table_lines.append(
-                        f"| `{r['usage_type']}` | `{r['operation']}` | {desc_str} | {r['qty']:,.1f} | **${r['cost']:,.2f}** | {pct:.1f}% |"
+                        f"| `{r['usage_type']}` | `{r.get('operation', '-')}` | {desc_str} | {qty_str} | **${r['cost']:,.2f}** | {pct:.1f}% |"
                     )
 
                 insights = []
@@ -6338,9 +7843,9 @@ class AIClient:
                 chart_type = _detect_chart_type(low)
                 wants_table = _detect_wants_table(low)
                 chart_md = ""
-                if chart_type and ut_rows:
-                    chart_labels = [r["usage_type"][:35] for r in ut_rows[:15]]
-                    chart_values = [round(r["cost"], 2) for r in ut_rows[:15]]
+                if chart_type and reconciled_ut:
+                    chart_labels = [r["usage_type"][:35] for r in reconciled_ut[:15]]
+                    chart_values = [round(r["cost"], 2) for r in reconciled_ut[:15]]
                     c_kind = chart_type if chart_type in ["doughnut", "pie", "bar", "horizontal-bar", "line", "area"] else "bar"
                     chart_md = _chart_block(c_kind,
                         f"Usage Type Breakdown ({ut_period_label})",
@@ -6348,6 +7853,7 @@ class AIClient:
                         horizontal=(c_kind == "horizontal-bar"), stacked=True)
 
                 tbl_block = (
+                    f"{starve_notice}"
                     f"| Usage Type | AWS Operation | Item Description | Usage Quantity | Spend | % of Total |\n"
                     f"|:---|:---|:---|:---|:---|:---|\n"
                     f"{chr(10).join(table_lines)}\n"
@@ -7037,10 +8543,10 @@ class AIClient:
                 if is_all_clouds:
                     target_ds = "MULTICLOUD_FOCUS_COST_AND_USAGE"
                     sql_stmt = (
-                        "SELECT Month AS month, ServiceName AS service, "
-                        "SUM(BilledCost) AS cost "
+                        "SELECT Month AS month, provider AS provider, ServiceName AS service, "
+                        "SUM(EffectiveCost) AS cost "
                         "FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
-                        "GROUP BY Month, ServiceName "
+                        "GROUP BY Month, provider, ServiceName "
                         "ORDER BY month DESC, cost DESC"
                     )
                     cloud_scope_str = "Across All Clouds"
@@ -7049,7 +8555,7 @@ class AIClient:
                     target_ds = "MULTICLOUD_FOCUS_COST_AND_USAGE"
                     sql_stmt = (
                         "SELECT Month AS month, ServiceName AS service, "
-                        "SUM(BilledCost) AS cost "
+                        "SUM(EffectiveCost) AS cost "
                         "FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
                         "WHERE provider = 'Azure' "
                         "GROUP BY Month, ServiceName "
@@ -7061,7 +8567,7 @@ class AIClient:
                     target_ds = "MULTICLOUD_FOCUS_COST_AND_USAGE"
                     sql_stmt = (
                         "SELECT Month AS month, ServiceName AS service, "
-                        "SUM(BilledCost) AS cost "
+                        "SUM(EffectiveCost) AS cost "
                         "FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
                         "WHERE provider IN ('GCP', 'Google Cloud') "
                         "GROUP BY Month, ServiceName "
@@ -7101,19 +8607,49 @@ class AIClient:
                     multi_csv = ""
 
                 services_by_month = {last_ym: {}, current_ym: {}}
+                service_providers = {}
                 all_services = set()
                 if multi_csv:
                     for row in csv.DictReader(io.StringIO(multi_csv)):
                         m = (row.get("month") or row.get("Month") or row.get("timeInterval_Month") or "").strip()
                         m_prefix = m[:7]
                         s = (row.get("service") or row.get("ServiceName") or row.get("ServiceCategory") or row.get("lineItem_ProductCode") or "").strip()
+                        p = row.get("provider") or ("AWS" if "AWS" in target_ds else "Cloud")
                         try:
-                            c = float(row.get("cost") or row.get("BilledCost") or row.get("EffectiveCost") or row.get("lineItem_UnblendedCost") or 0)
+                            c = float(row.get("cost") or row.get("EffectiveCost") or row.get("BilledCost") or row.get("lineItem_UnblendedCost") or 0)
                         except (ValueError, TypeError):
                             c = 0.0
                         if m_prefix in services_by_month and s:
                             services_by_month[m_prefix][s] = services_by_month[m_prefix].get(s, 0.0) + c
+                            service_providers[s] = p
                             all_services.add(s)
+
+                if services_by_month.get(current_ym) and not services_by_month.get(last_ym):
+                    # Current month had >= 200 service rows, which consumed the entire FlexReport query limit,
+                    # starving the previous month out of the result set. Query previous month explicitly.
+                    try:
+                        q_params_last = dict(q_params)
+                        q_params_last["queryInput"] = dict(q_params["queryInput"])
+                        q_params_last["queryInput"]["timeRange"] = {"from": last_ym, "to": last_ym}
+                        q_params_last["queryInput"]["limit"] = 150
+                        res_last = mcp.call_tool("execute_datasource_query", q_params_last)
+                        txt_last = res_last.get("content", [{}])[0].get("text", "")
+                        csv_last = json.loads(txt_last).get("csv", "")
+                        if csv_last:
+                            for row in csv.DictReader(io.StringIO(csv_last)):
+                                s = (row.get("service") or row.get("ServiceName") or row.get("ServiceCategory") or row.get("lineItem_ProductCode") or "").strip()
+                                p = row.get("provider") or ("AWS" if "AWS" in target_ds else "Cloud")
+                                try:
+                                    c = float(row.get("cost") or row.get("EffectiveCost") or row.get("BilledCost") or row.get("lineItem_UnblendedCost") or 0)
+                                except (ValueError, TypeError):
+                                    c = 0.0
+                                if s and c > 0:
+                                    services_by_month[last_ym][s] = services_by_month[last_ym].get(s, 0.0) + c
+                                    if s not in service_providers:
+                                        service_providers[s] = p
+                                    all_services.add(s)
+                    except Exception as e_last:
+                        logger.warning(f"[Section 3a Dedicated Previous Month Query] {e_last}")
 
                 if is_all_clouds and not all_services:
                     logger.info("[Section 3a] MULTICLOUD_FOCUS_COST_AND_USAGE returned no rows, falling back to AWS_CUR")
@@ -7189,10 +8725,26 @@ class AIClient:
                 tot_sign = "+" if tot_diff > 0 else ("-" if tot_diff < 0 else "")
                 tot_icon = "🔺" if tot_diff > 0 else "🔻"
 
-                table_rows = "\n".join([
-                    f"| {x['service']} | ${x['last_month']:,.2f} | ${x['mtd']:,.2f} | **${x['projected']:,.2f}** | {x['sign']}${abs(x['diff']):,.2f} | {x['pct']:+.1f}% {x['icon']} |"
-                    for x in svc_comparison_list[:15]
-                ])
+                if is_all_clouds:
+                    table_rows = "\n".join([
+                        f"| {service_providers.get(x['service'], 'Multi-Cloud')} | {x['service']} | ${x['last_month']:,.2f} | ${x['mtd']:,.2f} | **${x['projected']:,.2f}** | {x['sign']}${abs(x['diff']):,.2f} | {x['pct']:+.1f}% {x['icon']} |"
+                        for x in svc_comparison_list[:15]
+                    ])
+                    table_hdr_str = (
+                        f"| Cloud Provider | {col_name} | Previous Month ({last_ym}) | MTD Cost ({current_ym}) | Month-End Forecast ({current_ym}) | MoM Variance ($) | MoM Variance (%) |\n"
+                        f"|:---|:---|:---|:---|:---|:---|:---|\n"
+                    )
+                    table_tot_line = f"| **Total Multi-Cloud Spend** | | **${tot_lm:,.2f}** | **${tot_mtd:,.2f}** | **${tot_proj:,.2f}** | **{tot_sign}${abs(tot_diff):,.2f}** | **{tot_pct:+.1f}% {tot_icon}** |\n\n"
+                else:
+                    table_rows = "\n".join([
+                        f"| {x['service']} | ${x['last_month']:,.2f} | ${x['mtd']:,.2f} | **${x['projected']:,.2f}** | {x['sign']}${abs(x['diff']):,.2f} | {x['pct']:+.1f}% {x['icon']} |"
+                        for x in svc_comparison_list[:15]
+                    ])
+                    table_hdr_str = (
+                        f"| {col_name} | Previous Month ({last_ym}) | MTD Cost ({current_ym}) | Month-End Forecast ({current_ym}) | MoM Variance ($) | MoM Variance (%) |\n"
+                        f"|:---|:---|:---|:---|:---|:---|\n"
+                    )
+                    table_tot_line = f"| **Total Customer Spend** | **${tot_lm:,.2f}** | **${tot_mtd:,.2f}** | **${tot_proj:,.2f}** | **{tot_sign}${abs(tot_diff):,.2f}** | **{tot_pct:+.1f}% {tot_icon}** |\n\n"
 
                 top1 = svc_comparison_list[0] if svc_comparison_list else None
                 top2 = svc_comparison_list[1] if len(svc_comparison_list) > 1 else None
@@ -7219,7 +8771,7 @@ class AIClient:
                                 "data": [round(x["last_month"], 2) for x in top_chart_svcs]
                             },
                             {
-                                "label": f"Projected Month-End ({current_ym})",
+                                "label": f"Month-End Forecast ({current_ym})",
                                 "data": [round(x["projected"], 2) for x in top_chart_svcs]
                             }
                         ],
@@ -7249,10 +8801,9 @@ class AIClient:
                     f"### 📊 Service-Level Cost Comparison & Run-Rate Forecast: {scope_title} ({cloud_scope_str})\n\n"
                     f"{chart_part}"
                     f"*Comparing Last Month ({last_ym}) actuals with Current Month ({current_ym}) projected run-rate (Day {days_elapsed} of {days_in_month}, multiplier: {runrate_factor:.2f}x):*\n\n"
-                    f"| {col_name} | Last Month ({last_ym}) | Current MTD ({current_ym}) | Projected Month-End ({current_ym}) | MoM Variance ($) | MoM Variance (%) |\n"
-                    f"|:---|:---|:---|:---|:---|:---|\n"
+                    f"{table_hdr_str}"
                     f"{table_rows}\n"
-                    f"| **Total Customer Spend** | **${tot_lm:,.2f}** | **${tot_mtd:,.2f}** | **${tot_proj:,.2f}** | **{tot_sign}${abs(tot_diff):,.2f}** | **{tot_pct:+.1f}% {tot_icon}** |\n\n"
+                    f"{table_tot_line}"
                     f"{drivers_block}"
                     f"{insight_md}\n\n"
                     f"*Source: {target_ds} via CloudHealth ({source_scope}). Run-rate projection formula: MTD * ({days_in_month}/{days_elapsed}). Numbers match CloudHealth Portal.*"
@@ -7695,7 +9246,7 @@ class AIClient:
                                     cat_col="service",
                                     cost_col="cost",
                                     time_format=t_format,
-                                    max_cats=10
+                                    max_cats=20
                                 )
                         except Exception as e:
                             logger.warning(f"[Chart Service Breakdown Query] {e}")
@@ -7922,17 +9473,32 @@ class AIClient:
                     total_mtd = sum(r[3] for r in top_rows)
                     total_fc = sum(r[5] for r in top_rows)
                     total_lm = sum(r[2] for r in top_rows)
-                    table_rows = "\n".join([
-                        f"| **{name}** | Multi-Cloud (AWS, Azure) | ${mtd:,.2f} | ~${fc:,.2f} | ${lm:,.2f} |"
-                        for name, tc, lm, mtd, _, fc in top_rows
-                    ])
+                    tot_diff = total_fc - total_lm
+                    tot_pct = (tot_diff / total_lm * 100) if total_lm > 0 else (100.0 if total_fc > 0 else 0.0)
+                    tot_sign = "+" if tot_diff > 0 else ("-" if tot_diff < 0 else "")
+                    tot_icon = "🔺" if tot_diff > 0 else "🔻"
+                    tot_delta_str = f"{tot_sign}${abs(tot_diff):,.2f}"
+                    tot_pct_str = f"{tot_pct:+.1f}% {tot_icon}" if total_lm > 0 or total_fc > 0 else "—"
+
+                    row_strs = []
+                    for name, tc, lm, mtd, _, fc_c in top_rows:
+                        diff = fc_c - lm
+                        pct = (diff / lm * 100) if lm > 0 else (100.0 if fc_c > 0 else 0.0)
+                        sign = "+" if diff > 0 else ("-" if diff < 0 else "")
+                        icon = "🔺" if diff > 0 else "🔻"
+                        delta_str = f"{sign}${abs(diff):,.2f}"
+                        pct_str = f"{pct:+.1f}% {icon}" if lm > 0 or fc_c > 0 else "—"
+                        row_strs.append(
+                            f"| **{name}** | Multi-Cloud (AWS, Azure) | ${lm:,.2f} | ${mtd:,.2f} | **${fc_c:,.2f}** | {delta_str} | {pct_str} |"
+                        )
+                    table_rows = "\n".join(row_strs)
                     table_header = (
-                        f"| Customer Name | Cloud Infrastructure | Total MTD Spend ({current_ym}) | Month-End Forecast ({current_ym}) | Total Last Month Spend ({last_ym}) |\n"
-                        f"|:---|:---|:---|:---|:---|\n"
+                        f"| Customer Name | Cloud Infrastructure | Previous Month ({last_ym}) | MTD Spend ({current_ym}) | Month-End Forecast ({current_ym}) | MoM Variance ($) | MoM Variance (%) |\n"
+                        f"|:---|:---|:---|:---|:---|:---|:---|\n"
                         f"{table_rows}\n\n"
-                        f"| **Total** | | **${total_mtd:,.2f}** | **~${total_fc:,.2f}** | **${total_lm:,.2f}** |"
+                        f"| **Total Channel Customer Spend** | | **${total_lm:,.2f}** | **${total_mtd:,.2f}** | **${total_fc:,.2f}** | **{tot_delta_str}** | **{tot_pct_str}** |"
                     )
-                    title = f"Channel Customer Spend: Current Month (MTD) & Forecast"
+                    title = f"Channel Customer Spend: Current Month (MTD) & Forecast with MoM Variance"
                 else:
                     total_lm = sum(r[2] for r in top_rows)
                     total_prior = sum(r[4] for r in top_rows)
@@ -8230,6 +9796,214 @@ class AIClient:
 
                 def _true_total_cost(sql: str, time_range_override: Optional[dict] = None) -> float:
                     return _fetch_total_cost(mcp, sql, svc_granularity, time_range_override or svc_time_range)
+
+                def _fetch_last_month_breakdown(sql_stmt: str, target_month: str) -> dict:
+                    res_map = {}
+                    if not mcp:
+                        return res_map
+                    try:
+                        res = mcp.call_tool("execute_datasource_query", {
+                            "queryInput": {
+                                "sqlStatement": sql_stmt,
+                                "dataGranularity": svc_granularity,
+                                "limit": 100,
+                                "timeRange": {"from": target_month, "to": target_month}
+                            },
+                            "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                        })
+                        raw_csv = json.loads(res["content"][0]["text"]).get("csv", "")
+                        for r in csv.DictReader(io.StringIO(raw_csv)):
+                            c = float(r.get("cost") or 0.0)
+                            s = _friendly_service_name(r.get("service") or "")
+                            p = r.get("provider") or ""
+                            if (p, s) != ("", "") and c > 0:
+                                res_map[(p, s)] = c
+                            if s and c > 0:
+                                res_map[s] = c
+                            if p and c > 0 and not s:
+                                res_map[p] = c
+                    except Exception as e:
+                        logger.warning(f"[Previous Month Breakdown Query] {e}")
+                    return res_map
+
+                def _build_top_services_mom_table(
+                    rows_list: list,
+                    prev_map: dict,
+                    total_prev: float,
+                    total_cur: float,
+                    scope_name: str,
+                    has_prov: bool = True
+                ) -> str:
+                    tbl_lines = []
+                    top_items = rows_list[:limit]
+                    for item in top_items:
+                        if has_prov:
+                            p, s, c = item[0], item[1], item[2]
+                            prev_c = prev_map.get((p, s), prev_map.get(s, 0.0))
+                        else:
+                            p, c = item[0], item[1]
+                            s = ""
+                            prev_c = prev_map.get(p, 0.0)
+                        fc_c = c * runrate_factor
+                        diff = fc_c - prev_c
+                        pct = (diff / prev_c * 100) if prev_c > 0 else (100.0 if fc_c > 0 else 0.0)
+                        sign = "+" if diff > 0 else ("-" if diff < 0 else "")
+                        icon = "🔺" if diff > 0 else "🔻"
+                        if has_prov:
+                            tbl_lines.append(
+                                f"| {p} | {s} | ${prev_c:,.2f} | ${c:,.2f} | **${fc_c:,.2f}** | {sign}${abs(diff):,.2f} | {pct:+.1f}% {icon} |"
+                            )
+                        else:
+                            tbl_lines.append(
+                                f"| {p} | ${prev_c:,.2f} | ${c:,.2f} | **${fc_c:,.2f}** | {sign}${abs(diff):,.2f} | {pct:+.1f}% {icon} |"
+                            )
+
+                    sum_top_cur = sum(item[2] if has_prov else item[1] for item in top_items)
+                    sum_top_prev = sum(
+                        prev_map.get((item[0], item[1]), prev_map.get(item[1], 0.0)) if has_prov else prev_map.get(item[0], 0.0)
+                        for item in top_items
+                    )
+                    other_cur = max(0.0, total_cur - sum_top_cur) if total_cur > 0 else 0.0
+                    other_prev = max(0.0, total_prev - sum_top_prev) if total_prev > 0 else 0.0
+
+                    consol_notice = ""
+                    if other_cur > 0.50 or other_prev > 0.50:
+                        fc_other = other_cur * runrate_factor
+                        diff_other = fc_other - other_prev
+                        pct_other = (diff_other / other_prev * 100) if other_prev > 0 else (100.0 if fc_other > 0 else 0.0)
+                        sign_other = "+" if diff_other > 0 else ("-" if diff_other < 0 else "")
+                        icon_other = "🔺" if diff_other > 0 else "🔻"
+                        if has_prov:
+                            tbl_lines.append(
+                                f"| All Clouds | Other Services (Consolidated) | ${other_prev:,.2f} | ${other_cur:,.2f} | **${fc_other:,.2f}** | {sign_other}${abs(diff_other):,.2f} | {pct_other:+.1f}% {icon_other} |"
+                            )
+                        else:
+                            tbl_lines.append(
+                                f"| Other Services (Consolidated) | ${other_prev:,.2f} | ${other_cur:,.2f} | **${fc_other:,.2f}** | {sign_other}${abs(diff_other):,.2f} | {pct_other:+.1f}% {icon_other} |"
+                            )
+                        pct_top = (sum_top_cur / total_cur * 100) if total_cur else 0.0
+                        pct_oth = (other_cur / total_cur * 100) if total_cur else 0.0
+                        starve_txt = f" (query limit of {limit} rows reached)" if len(rows_list) >= limit else ""
+                        consol_notice = (
+                            f"> ℹ️ **Consolidation & Reconciliation Notice**: Displaying top {len(top_items)} cost drivers (${sum_top_cur:,.2f}, {pct_top:.1f}% of current spend).{starve_txt} "
+                            f"Remaining ${other_cur:,.2f} ({pct_oth:.1f}%) is consolidated into **Other Services (Consolidated)** to ensure 100% financial reconciliation with total cloud spend (${total_cur:,.2f}).\n\n"
+                        )
+
+                    total_fc = total_cur * runrate_factor
+                    tot_diff = total_fc - total_prev
+                    tot_pct = (tot_diff / total_prev * 100) if total_prev > 0 else 0.0
+                    tot_sign = "+" if tot_diff > 0 else ("-" if tot_diff < 0 else "")
+                    tot_icon = "🔺" if tot_diff > 0 else "🔻"
+
+                    if has_prov:
+                        return (
+                            f"{fc_notice}"
+                            f"{consol_notice}"
+                            f"| Cloud Provider | Service Category | Previous Month ({last_ym}) | MTD Cost ({current_ym}) | Month-End Forecast ({current_ym}) | MoM Variance ($) | MoM Variance (%) |\n"
+                            f"|:---|:---|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(tbl_lines)}\n\n"
+                            f"| **Total {scope_name} Spend** | | **${total_prev:,.2f}** | **${total_cur:,.2f}** | **${total_fc:,.2f}** | **{tot_sign}${abs(tot_diff):,.2f}** | **{tot_pct:+.1f}% {tot_icon}** |"
+                        )
+                    else:
+                        return (
+                            f"{fc_notice}"
+                            f"{consol_notice}"
+                            f"| Cloud Provider | Previous Month ({last_ym}) | MTD Cost ({current_ym}) | Month-End Forecast ({current_ym}) | MoM Variance ($) | MoM Variance (%) |\n"
+                            f"|:---|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(tbl_lines)}\n\n"
+                            f"| **Total {scope_name} Spend** | **${total_prev:,.2f}** | **${total_cur:,.2f}** | **${total_fc:,.2f}** | **{tot_sign}${abs(tot_diff):,.2f}** | **{tot_pct:+.1f}% {tot_icon}** |"
+                        )
+
+                def _build_top_services_fallback_mom_table(
+                    rows_list: list,
+                    prior_map: dict,
+                    total_prior: float,
+                    total_closed: float,
+                    prior_month_str: str,
+                    scope_name: str,
+                    has_prov: bool = True
+                ) -> str:
+                    tbl_lines = []
+                    top_items = rows_list[:limit]
+                    for item in top_items:
+                        if has_prov:
+                            p, s, c = item[0], item[1], item[2]
+                            pr_c = prior_map.get((p, s), prior_map.get(s, 0.0))
+                        else:
+                            p, c = item[0], item[1]
+                            s = ""
+                            pr_c = prior_map.get(p, 0.0)
+                        diff = c - pr_c
+                        pct = (diff / pr_c * 100) if pr_c > 0 else (100.0 if c > 0 else 0.0)
+                        sign = "+" if diff > 0 else ("-" if diff < 0 else "")
+                        icon = "🔺" if diff > 0 else "🔻"
+                        if has_prov:
+                            tbl_lines.append(
+                                f"| {p} | {s} | ${pr_c:,.2f} | ${c:,.2f} | {sign}${abs(diff):,.2f} | {pct:+.1f}% {icon} |"
+                            )
+                        else:
+                            tbl_lines.append(
+                                f"| {p} | ${pr_c:,.2f} | ${c:,.2f} | {sign}${abs(diff):,.2f} | {pct:+.1f}% {icon} |"
+                            )
+
+                    sum_top_closed = sum(item[2] if has_prov else item[1] for item in top_items)
+                    sum_top_prior = sum(
+                        prior_map.get((item[0], item[1]), prior_map.get(item[1], 0.0)) if has_prov else prior_map.get(item[0], 0.0)
+                        for item in top_items
+                    )
+                    other_closed = max(0.0, total_closed - sum_top_closed) if total_closed > 0 else 0.0
+                    other_prior = max(0.0, total_prior - sum_top_prior) if total_prior > 0 else 0.0
+
+                    consol_notice = ""
+                    if other_closed > 0.50 or other_prior > 0.50:
+                        diff_other = other_closed - other_prior
+                        pct_other = (diff_other / other_prior * 100) if other_prior > 0 else (100.0 if other_closed > 0 else 0.0)
+                        sign_other = "+" if diff_other > 0 else ("-" if diff_other < 0 else "")
+                        icon_other = "🔺" if diff_other > 0 else "🔻"
+                        if has_prov:
+                            tbl_lines.append(
+                                f"| All Clouds | Other Services (Consolidated) | ${other_prior:,.2f} | ${other_closed:,.2f} | {sign_other}${abs(diff_other):,.2f} | {pct_other:+.1f}% {icon_other} |"
+                            )
+                        else:
+                            tbl_lines.append(
+                                f"| Other Services (Consolidated) | ${other_prior:,.2f} | ${other_closed:,.2f} | {sign_other}${abs(diff_other):,.2f} | {pct_other:+.1f}% {icon_other} |"
+                            )
+                        pct_top = (sum_top_closed / total_closed * 100) if total_closed else 0.0
+                        pct_oth = (other_closed / total_closed * 100) if total_closed else 0.0
+                        starve_txt = f" (query limit of {limit} rows reached)" if len(rows_list) >= limit else ""
+                        consol_notice = (
+                            f"> ℹ️ **Consolidation & Reconciliation Notice**: Displaying top {len(top_items)} cost drivers (${sum_top_closed:,.2f}, {pct_top:.1f}% of closed spend).{starve_txt} "
+                            f"Remaining ${other_closed:,.2f} ({pct_oth:.1f}%) is consolidated into **Other Services (Consolidated)** to ensure 100% financial reconciliation with total cloud spend (${total_closed:,.2f}).\n\n"
+                        )
+
+                    tot_diff = total_closed - total_prior
+                    tot_pct = (tot_diff / total_prior * 100) if total_prior > 0 else 0.0
+                    tot_sign = "+" if tot_diff > 0 else ("-" if tot_diff < 0 else "")
+                    tot_icon = "🔺" if tot_diff > 0 else "🔻"
+
+                    fallback_notice = (
+                        f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
+                        f"Displaying top cloud services from the latest closed billing cycle (**{last_ym}**) compared to prior month (**{prior_month_str}**) with MoM variance.\n\n"
+                    )
+
+                    if has_prov:
+                        return (
+                            f"{fallback_notice}"
+                            f"{consol_notice}"
+                            f"| Cloud Provider | Service Category | Prior Month ({prior_month_str}) | Closed Month ({last_ym}) | MoM Variance ($) | MoM Variance (%) |\n"
+                            f"|:---|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(tbl_lines)}\n\n"
+                            f"| **Total {scope_name} Spend** | | **${total_prior:,.2f}** | **${total_closed:,.2f}** | **{tot_sign}${abs(tot_diff):,.2f}** | **{tot_pct:+.1f}% {tot_icon}** |"
+                        )
+                    else:
+                        return (
+                            f"{fallback_notice}"
+                            f"{consol_notice}"
+                            f"| Cloud Provider | Prior Month ({prior_month_str}) | Closed Month ({last_ym}) | MoM Variance ($) | MoM Variance (%) |\n"
+                            f"|:---|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(tbl_lines)}\n\n"
+                            f"| **Total {scope_name} Spend** | **${total_prior:,.2f}** | **${total_closed:,.2f}** | **{tot_sign}${abs(tot_diff):,.2f}** | **{tot_pct:+.1f}% {tot_icon}** |"
+                        )
 
                 # Determine target provider mode
                 cloud_target = active_cloud
@@ -8585,8 +10359,8 @@ class AIClient:
                         acc_map = self._get_account_name_map(mcp) if matched_dim["id"] == "account" else {}
 
                         for r in csv.DictReader(io.StringIO(raw_csv)):
-                            v = float(r.get("val") or 0.0)
-                            d_val = (r.get("dimension") or "").strip()
+                            v = float(r.get("val") or r.get("cost") or r.get("spend") or 0.0)
+                            d_val = (r.get("dimension") or r.get("service") or r.get("category") or "").strip()
                             if not d_val:
                                 d_val = "(Unallocated / Other)"
                             elif matched_dim["id"] == "account" and d_val in acc_map:
@@ -8680,6 +10454,7 @@ class AIClient:
 
                         chart_md = ""
                         if not is_no_chart_requested(low):
+                            req_chart = "area" if ("area" in low or (intent_info and "area" in intent_info.get("chart_types", []))) else "bar"
                             chart_md = _build_time_category_stacked_chart(
                                 f"{scope_disp} Spend by {dim_label} & Month — {svc_scope_label}",
                                 clean_rows,
@@ -8687,9 +10462,10 @@ class AIClient:
                                 cat_col="dimension",
                                 cost_col="val",
                                 time_format="month",
-                                max_cats=10,
+                                max_cats=20,
                                 unit="Cost ($)" if is_cost else unit_str,
-                                exclude_other=is_exclude_other
+                                exclude_other=is_exclude_other,
+                                chart_type=req_chart
                             )
                             if chart_md:
                                 chart_md = f"\n\n{chart_md}"
@@ -8784,13 +10560,16 @@ class AIClient:
                 if requested_service:
                     pcode = str(requested_service)
                     pdisp = requested_service_disp or pcode
-                    prov = PCODE_TO_PROVIDER.get(pcode, "aws")
-                    prov_disp = "AWS" if prov == "aws" else ("Azure" if prov == "azure" else ("GCP" if prov == "gcp" else "Cloud"))
+                    prov = PCODE_TO_PROVIDER.get(pcode)
+                    prov_disp = "AWS" if prov == "aws" else ("Azure" if prov == "azure" else ("GCP" if prov in ("gcp", "google") else "Cloud"))
                     
                     svc_cost = 0.0
                     used_fallback = False
                     if prov == "aws":
-                        svc_sql = f"SELECT provider AS provider, ServiceName AS service, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider = 'AWS' AND ServiceName = '{pcode}' GROUP BY provider, ServiceName ORDER BY cost DESC"
+                        if pcode == "AWSSupport":
+                            svc_sql = "SELECT provider AS provider, ServiceName AS service, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider = 'AWS' AND ServiceName LIKE 'AWSSupport%' GROUP BY provider, ServiceName ORDER BY cost DESC"
+                        else:
+                            svc_sql = f"SELECT provider AS provider, ServiceName AS service, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider = 'AWS' AND ServiceName = '{pcode}' GROUP BY provider, ServiceName ORDER BY cost DESC"
                         try:
                             res = mcp.call_tool("execute_datasource_query", {
                                 "queryInput": {"sqlStatement": svc_sql, "dataGranularity": svc_granularity, "limit": 1, "timeRange": svc_time_range},
@@ -8816,12 +10595,30 @@ class AIClient:
                                     get_memory().record_sql_fix(svc_sql, f"Zero records for open period {current_ym}", f"{svc_sql} [timeRange: {last_ym}]")
                             except Exception:
                                 pass
+
+                        if svc_cost <= 0.0:
+                            try:
+                                res_all = mcp.call_tool("execute_datasource_query", {
+                                    "queryInput": {
+                                        "sqlStatement": f"SELECT provider AS provider, ServiceName AS service, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE (ServiceName = '{pcode}' OR ServiceName LIKE '%{pcode}%') GROUP BY provider, ServiceName ORDER BY cost DESC",
+                                        "dataGranularity": svc_granularity, "limit": 1, "timeRange": svc_time_range
+                                    },
+                                    "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                                })
+                                raw_csv_all = json.loads(res_all["content"][0]["text"]).get("csv", "")
+                                for r in csv.DictReader(io.StringIO(raw_csv_all)):
+                                    svc_cost = float(r.get("cost") or 0.0)
+                                    fp = r.get("provider")
+                                    if fp:
+                                        prov_disp = "AWS" if fp == "AWS" else ("Azure" if fp == "Azure" else ("GCP" if fp in ("GCP", "Google Cloud") else fp))
+                            except Exception:
+                                pass
                     else:
-                        # Non-AWS service estimation / live focus
+                        # Non-AWS or multi-cloud service query / live focus
                         try:
                             res = mcp.call_tool("execute_datasource_query", {
                                 "queryInput": {
-                                    "sqlStatement": f"SELECT provider AS provider, ServiceName AS service, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE ServiceName LIKE '%{pcode}%' GROUP BY provider, ServiceName ORDER BY cost DESC",
+                                    "sqlStatement": f"SELECT provider AS provider, ServiceName AS service, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE (ServiceName = '{pcode}' OR ServiceName LIKE '%{pcode}%') GROUP BY provider, ServiceName ORDER BY cost DESC",
                                     "dataGranularity": svc_granularity, "limit": 1, "timeRange": svc_time_range
                                 },
                                 "requestInfo": {"sourceType": "API", "caller": "mcp"}
@@ -8829,6 +10626,9 @@ class AIClient:
                             raw_csv = json.loads(res["content"][0]["text"]).get("csv", "")
                             for r in csv.DictReader(io.StringIO(raw_csv)):
                                 svc_cost = float(r.get("cost") or 0.0)
+                                fp = r.get("provider")
+                                if fp:
+                                    prov_disp = "AWS" if fp == "AWS" else ("Azure" if fp == "Azure" else ("GCP" if fp in ("GCP", "Google Cloud") else fp))
                         except Exception:
                             pass
 
@@ -8836,7 +10636,7 @@ class AIClient:
                             try:
                                 res_fb = mcp.call_tool("execute_datasource_query", {
                                     "queryInput": {
-                                        "sqlStatement": f"SELECT provider AS provider, ServiceName AS service, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE ServiceName LIKE '%{pcode}%' GROUP BY provider, ServiceName ORDER BY cost DESC",
+                                        "sqlStatement": f"SELECT provider AS provider, ServiceName AS service, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE (ServiceName = '{pcode}' OR ServiceName LIKE '%{pcode}%') GROUP BY provider, ServiceName ORDER BY cost DESC",
                                         "dataGranularity": svc_granularity, "limit": 1, "timeRange": {"from": last_ym, "to": last_ym}
                                     },
                                     "requestInfo": {"sourceType": "API", "caller": "mcp"}
@@ -8844,6 +10644,9 @@ class AIClient:
                                 raw_csv_fb = json.loads(res_fb["content"][0]["text"]).get("csv", "")
                                 for r in csv.DictReader(io.StringIO(raw_csv_fb)):
                                     svc_cost = float(r.get("cost") or 0.0)
+                                    fp = r.get("provider")
+                                    if fp:
+                                        prov_disp = "AWS" if fp == "AWS" else ("Azure" if fp == "Azure" else ("GCP" if fp in ("GCP", "Google Cloud") else fp))
                                 if svc_cost > 0.0:
                                     used_fallback = True
                             except Exception:
@@ -8950,8 +10753,13 @@ class AIClient:
 
                     if len(all_months) > 1 and svc_totals:
                         month_labels = [_format_time_label(m, "month") for m in all_months]
+                        is_exclude_other = is_exclude_other_requested(low) or is_exclude_other_requested(intent_info.get("corrected_query", ""))
+                        if is_exclude_other:
+                            svc_totals = {s: v for s, v in svc_totals.items() if not is_other_category_name(s)}
                         sorted_services = sorted(svc_totals.keys(), key=lambda s: sum(svc_month_costs[s].get(m, 0.0) for m in all_months), reverse=True)
-                        top_services = sorted_services[:limit]
+                        has_explicit_limit = bool(intent_info.get("limit")) or bool(re.search(r'\b(?:top|first|limit)\s+(\d{1,2})\b', low))
+                        target_limit = intent_info.get("limit") if has_explicit_limit else max(20, limit if limit else 20)
+                        top_services = sorted_services[:target_limit]
                         month_totals = {m: sum(svc_month_costs[s].get(m, 0.0) for s in sorted_services) for m in all_months}
                         total_spend = sum(month_totals.values())
 
@@ -9062,15 +10870,16 @@ class AIClient:
                             else:
                                 c_kind = "line"
 
+                            chart_cat_limit = target_limit if has_explicit_limit else max(20, target_limit)
                             if c_kind in ("line", "area", "bar"):
                                 chart_datasets = []
-                                for s in top_services[:8]:
+                                for s in sorted_services[:chart_cat_limit]:
                                     chart_datasets.append({
                                         "label": s,
                                         "data": [round(svc_month_costs[s].get(m, 0.0), 2) for m in all_months]
                                     })
-                                rem_svcs = sorted_services[8:]
-                                if rem_svcs:
+                                rem_svcs = sorted_services[chart_cat_limit:]
+                                if rem_svcs and not is_exclude_other:
                                     rem_data = [round(sum(svc_month_costs[s].get(m, 0.0) for s in rem_svcs), 2) for m in all_months]
                                     if any(v > 0 for v in rem_data):
                                         chart_datasets.append({"label": "Other Services", "data": rem_data})
@@ -9087,8 +10896,8 @@ class AIClient:
                                 chart_md = _chart_block(
                                     c_kind,
                                     f"Top {prov_title} Services Spend Share ({svc_scope_label})",
-                                    [s for s in top_services[:10]],
-                                    values=[round(sum(svc_month_costs[s].get(m, 0.0) for m in all_months), 2) for s in top_services[:10]],
+                                    [s for s in sorted_services[:chart_cat_limit]],
+                                    values=[round(sum(svc_month_costs[s].get(m, 0.0) for m in all_months), 2) for s in sorted_services[:chart_cat_limit]],
                                     horizontal=(c_kind == "horizontal-bar"),
                                     stacked=False
                                 )
@@ -9163,30 +10972,31 @@ class AIClient:
                     ) or sum(r[2] for r in azure_rows)
                     has_enough_mtd = is_mtd_scope and not used_fallback and days_elapsed >= 3 and total_az > 0
                     if has_enough_mtd:
-                        total_az_fc = total_az * runrate_factor
-                        tbl_lines = [
-                            f"| {p} | {s} | ${c:,.2f} | ${c * runrate_factor:,.2f} | {((c/total_az)*100 if total_az else 0):.1f}% |"
-                            for p, s, c in azure_rows[:limit]
-                        ]
-                        table = (
-                            f"{fc_notice}"
-                            f"| Cloud Provider | Service Category | MTD Cost | Month-End Forecast | % of Azure Spend |\n"
-                            f"|:---|:---|:---|:---|:---|\n"
-                            f"{chr(10).join(tbl_lines)}\n\n"
-                            f"| **Total Azure Spend** | | **${total_az:,.2f}** | **${total_az_fc:,.2f}** | **100.0%** |"
-                        )
+                        prev_map = _fetch_last_month_breakdown(svc_sql, last_ym)
+                        total_prev = _true_total_cost(
+                            "SELECT SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider = 'Azure'",
+                            time_range_override={"from": last_ym, "to": last_ym}
+                        ) or sum(prev_map.get(s, 0.0) for _, s, _ in azure_rows[:limit])
+                        table = _build_top_services_mom_table(azure_rows, prev_map, total_prev, total_az, "Azure", has_prov=True)
+                    elif used_fallback:
+                        prior_dt = datetime.datetime.strptime(last_ym, "%Y-%m") - datetime.timedelta(days=1)
+                        prior_ym = prior_dt.strftime("%Y-%m")
+                        prior_map = _fetch_last_month_breakdown(svc_sql, prior_ym)
+                        total_prior = _true_total_cost(
+                            "SELECT SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider = 'Azure'",
+                            time_range_override={"from": prior_ym, "to": prior_ym}
+                        ) or sum(prior_map.get(s, 0.0) for _, s, _ in azure_rows[:limit])
+                        table = _build_top_services_fallback_mom_table(azure_rows, prior_map, total_prior, total_az, prior_ym, "Azure", has_prov=True)
                     else:
+                        rec_azure, _, az_notice = reconcile_and_consolidate_breakdown(
+                            azure_rows, total_az, limit=limit, other_label="Other Services (Consolidated)"
+                        )
                         tbl_lines = [
                             f"| {p} | {s} | ${c:,.2f} | {((c/total_az)*100 if total_az else 0):.1f}% |"
-                            for p, s, c in azure_rows[:limit]
+                            for p, s, c in rec_azure
                         ]
-                        fallback_note = (
-                            f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
-                            f"Displaying top Azure services from the latest closed billing cycle (**{last_ym}**).\n\n"
-                            if used_fallback else ""
-                        )
                         table = (
-                            f"{fallback_note}"
+                            f"{az_notice}"
                             f"| Cloud Provider | Service Category | Cost | % of Azure Spend |\n"
                             f"|:---|:---|:---|:---|\n"
                             f"{chr(10).join(tbl_lines)}\n\n"
@@ -9254,30 +11064,31 @@ class AIClient:
                     ) or sum(r[2] for r in gcp_rows)
                     has_enough_mtd = is_mtd_scope and not used_fallback and days_elapsed >= 3 and total_gcp > 0
                     if has_enough_mtd:
-                        total_gcp_fc = total_gcp * runrate_factor
-                        tbl_lines = [
-                            f"| {p} | {s} | ${c:,.2f} | ${c * runrate_factor:,.2f} | {((c/total_gcp)*100 if total_gcp else 0):.1f}% |"
-                            for p, s, c in gcp_rows[:limit]
-                        ]
-                        table = (
-                            f"{fc_notice}"
-                            f"| Cloud Provider | Service Category | MTD Cost | Month-End Forecast | % of GCP Spend |\n"
-                            f"|:---|:---|:---|:---|:---|\n"
-                            f"{chr(10).join(tbl_lines)}\n\n"
-                            f"| **Total GCP Spend** | | **${total_gcp:,.2f}** | **${total_gcp_fc:,.2f}** | **100.0%** |"
-                        )
+                        prev_map = _fetch_last_month_breakdown(svc_sql, last_ym)
+                        total_prev = _true_total_cost(
+                            "SELECT SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider IN ('GCP', 'Google Cloud')",
+                            time_range_override={"from": last_ym, "to": last_ym}
+                        ) or sum(prev_map.get(s, 0.0) for _, s, _ in gcp_rows[:limit])
+                        table = _build_top_services_mom_table(gcp_rows, prev_map, total_prev, total_gcp, "GCP", has_prov=True)
+                    elif used_fallback:
+                        prior_dt = datetime.datetime.strptime(last_ym, "%Y-%m") - datetime.timedelta(days=1)
+                        prior_ym = prior_dt.strftime("%Y-%m")
+                        prior_map = _fetch_last_month_breakdown(svc_sql, prior_ym)
+                        total_prior = _true_total_cost(
+                            "SELECT SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider IN ('GCP', 'Google Cloud')",
+                            time_range_override={"from": prior_ym, "to": prior_ym}
+                        ) or sum(prior_map.get(s, 0.0) for _, s, _ in gcp_rows[:limit])
+                        table = _build_top_services_fallback_mom_table(gcp_rows, prior_map, total_prior, total_gcp, prior_ym, "GCP", has_prov=True)
                     else:
+                        rec_gcp, _, gcp_notice = reconcile_and_consolidate_breakdown(
+                            gcp_rows, total_gcp, limit=limit, other_label="Other Services (Consolidated)"
+                        )
                         tbl_lines = [
                             f"| {p} | {s} | ${c:,.2f} | {((c/total_gcp)*100 if total_gcp else 0):.1f}% |"
-                            for p, s, c in gcp_rows[:limit]
+                            for p, s, c in rec_gcp
                         ]
-                        fallback_note = (
-                            f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
-                            f"Displaying top GCP services from the latest closed billing cycle (**{last_ym}**).\n\n"
-                            if used_fallback else ""
-                        )
                         table = (
-                            f"{fallback_note}"
+                            f"{gcp_notice}"
                             f"| Cloud Provider | Service Category | Cost | % of GCP Spend |\n"
                             f"|:---|:---|:---|:---|\n"
                             f"{chr(10).join(tbl_lines)}\n\n"
@@ -9386,36 +11197,37 @@ class AIClient:
                     ) or sum(r[2] for r in aws_rows)
                     has_enough_mtd = is_mtd_scope and not used_fallback and days_elapsed >= 3 and total_aws > 0
                     if has_enough_mtd:
-                        total_aws_fc = total_aws * runrate_factor
-                        tbl_lines = [
-                            f"| {p} | {s} | ${c:,.2f} | ${c * runrate_factor:,.2f} | {((c/total_aws)*100 if total_aws else 0):.1f}% |"
-                            for p, s, c in aws_rows[:limit]
-                        ]
-                        table = (
-                            f"{fc_notice}"
-                            f"| Cloud Provider | Service Category | MTD Cost | Month-End Forecast | % of AWS Spend |\n"
-                            f"|:---|:---|:---|:---|:---|\n"
-                            f"{chr(10).join(tbl_lines)}\n\n"
-                            f"| **Total AWS Spend** | | **${total_aws:,.2f}** | **${total_aws_fc:,.2f}** | **100.0%** |"
-                        )
+                        prev_map = _fetch_last_month_breakdown(svc_sql, last_ym)
+                        total_prev = _true_total_cost(
+                            "SELECT SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider = 'AWS'",
+                            time_range_override={"from": last_ym, "to": last_ym}
+                        ) or sum(prev_map.get(s, 0.0) for _, s, _ in aws_rows[:limit])
+                        table = _build_top_services_mom_table(aws_rows, prev_map, total_prev, total_aws, "AWS", has_prov=True)
+                    elif used_fallback:
+                        prior_dt = datetime.datetime.strptime(last_ym, "%Y-%m") - datetime.timedelta(days=1)
+                        prior_ym = prior_dt.strftime("%Y-%m")
+                        prior_map = _fetch_last_month_breakdown(svc_sql, prior_ym)
+                        total_prior = _true_total_cost(
+                            "SELECT SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider = 'AWS'",
+                            time_range_override={"from": prior_ym, "to": prior_ym}
+                        ) or sum(prior_map.get(s, 0.0) for _, s, _ in aws_rows[:limit])
+                        table = _build_top_services_fallback_mom_table(aws_rows, prior_map, total_prior, total_aws, prior_ym, "AWS", has_prov=True)
                     else:
+                        rec_aws, _, aws_notice = reconcile_and_consolidate_breakdown(
+                            aws_rows, total_aws, limit=limit, other_label="Other Services (Consolidated)"
+                        )
                         tbl_lines = [
                             f"| {p} | {s} | ${c:,.2f} | {((c/total_aws)*100 if total_aws else 0):.1f}% |"
-                            for p, s, c in aws_rows[:limit]
+                            for p, s, c in rec_aws
                         ]
-                        fallback_note = (
-                            f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
-                            f"Displaying top AWS services from the latest closed billing cycle (**{last_ym}**).\n\n"
-                            if used_fallback else ""
-                        )
                         table = (
-                            f"{fallback_note}"
+                            f"{aws_notice}"
                             f"| Cloud Provider | Service Category | Cost | % of AWS Spend |\n"
                             f"|:---|:---|:---|:---|\n"
                             f"{chr(10).join(tbl_lines)}\n\n"
                             f"| **Total AWS Spend** | | **${total_aws:,.2f}** | **100.0%** |"
                         )
-                    svc_hdr = f"CloudHealth Spend Analysis: Top {len(tbl_lines)} AWS Services by Spend — {svc_scope_label if not used_fallback else last_ym}"
+                    svc_hdr = f"CloudHealth Spend Analysis: Top {len(aws_rows[:limit])} AWS Services by Spend — {svc_scope_label if not used_fallback else last_ym}"
 
                 # ── Multi-Cloud / All Clouds Breakdown (AWS + Azure + GCP) ──
                 else:
@@ -9459,18 +11271,17 @@ class AIClient:
                         total_multi = sum(r[1] for r in provider_rows)  # GROUP BY provider alone has no per-row limit to undercount
                         has_enough_mtd = is_mtd_scope and not used_fallback and days_elapsed >= 3 and total_multi > 0
                         if has_enough_mtd:
-                            total_multi_fc = total_multi * runrate_factor
-                            tbl_lines = [
-                                f"| {p} | ${c:,.2f} | ${c * runrate_factor:,.2f} | {((c/total_multi)*100 if total_multi else 0):.1f}% |"
-                                for p, c in provider_rows[:limit]
-                            ]
-                            table = (
-                                f"{fc_notice}"
-                                f"| Cloud Provider | MTD Cost | Month-End Forecast | % of Total |\n"
-                                f"|:---|:---|:---|:---|\n"
-                                f"{chr(10).join(tbl_lines)}\n\n"
-                                f"| **Total Multi-Cloud Spend** | **${total_multi:,.2f}** | **${total_multi_fc:,.2f}** | **100.0%** |"
-                            )
+                            prev_prov_sql = "SELECT provider AS provider, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE GROUP BY provider ORDER BY cost DESC"
+                            prev_map = _fetch_last_month_breakdown(prev_prov_sql, last_ym)
+                            total_prev = sum(prev_map.get(r[0], 0.0) for r in provider_rows) or total_multi
+                            table = _build_top_services_mom_table(provider_rows, prev_map, total_prev, total_multi, "Multi-Cloud", has_prov=False)
+                        elif used_fallback:
+                            prior_dt = datetime.datetime.strptime(last_ym, "%Y-%m") - datetime.timedelta(days=1)
+                            prior_ym = prior_dt.strftime("%Y-%m")
+                            prev_prov_sql = "SELECT provider AS provider, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE GROUP BY provider ORDER BY cost DESC"
+                            prior_map = _fetch_last_month_breakdown(prev_prov_sql, prior_ym)
+                            total_prior = sum(prior_map.get(r[0], 0.0) for r in provider_rows) or total_multi
+                            table = _build_top_services_fallback_mom_table(provider_rows, prior_map, total_prior, total_multi, prior_ym, "Multi-Cloud", has_prov=False)
                         else:
                             tbl_lines = [
                                 f"| {p} | ${c:,.2f} | {((c/total_multi)*100 if total_multi else 0):.1f}% |"
@@ -9561,30 +11372,33 @@ class AIClient:
                         top_multi = multi_rows[:limit]
                         has_enough_mtd = is_mtd_scope and not used_fallback and days_elapsed >= 3 and total_multi > 0
                         if has_enough_mtd:
-                            total_multi_fc = total_multi * runrate_factor
-                            tbl_lines = [
-                                f"| {p} | {s} | ${c:,.2f} | ${c * runrate_factor:,.2f} | {((c/total_multi)*100 if total_multi else 0):.1f}% |"
-                                for p, s, c in top_multi
-                            ]
-                            table = (
-                                f"{fc_notice}"
-                                f"| Cloud Provider | Service Category | MTD Cost | Month-End Forecast | % of Total |\n"
-                                f"|:---|:---|:---|:---|:---|\n"
-                                f"{chr(10).join(tbl_lines)}\n\n"
-                                f"| **Total Multi-Cloud Spend** | | **${total_multi:,.2f}** | **${total_multi_fc:,.2f}** | **100.0%** |"
-                            )
+                            multi_prev_sql = "SELECT provider AS provider, ServiceName AS service, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE GROUP BY provider, ServiceName ORDER BY cost DESC"
+                            prev_map = _fetch_last_month_breakdown(multi_prev_sql, last_ym)
+                            total_prev = _true_total_cost(
+                                "SELECT SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE",
+                                time_range_override={"from": last_ym, "to": last_ym}
+                            ) or sum(prev_map.get((p, s), prev_map.get(s, 0.0)) for p, s, _ in top_multi)
+                            table = _build_top_services_mom_table(top_multi, prev_map, total_prev, total_multi, "Multi-Cloud", has_prov=True)
+                        elif used_fallback:
+                            prior_dt = datetime.datetime.strptime(last_ym, "%Y-%m") - datetime.timedelta(days=1)
+                            prior_ym = prior_dt.strftime("%Y-%m")
+                            multi_prev_sql = "SELECT provider AS provider, ServiceName AS service, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE GROUP BY provider, ServiceName ORDER BY cost DESC"
+                            prior_map = _fetch_last_month_breakdown(multi_prev_sql, prior_ym)
+                            total_prior = _true_total_cost(
+                                "SELECT SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE",
+                                time_range_override={"from": prior_ym, "to": prior_ym}
+                            ) or sum(prior_map.get((p, s), prior_map.get(s, 0.0)) for p, s, _ in top_multi)
+                            table = _build_top_services_fallback_mom_table(top_multi, prior_map, total_prior, total_multi, prior_ym, "Multi-Cloud", has_prov=True)
                         else:
+                            rec_multi, _, multi_notice = reconcile_and_consolidate_breakdown(
+                                top_multi, total_multi, limit=limit, other_label="Other Services (Consolidated)"
+                            )
                             tbl_lines = [
                                 f"| {p} | {s} | ${c:,.2f} | {((c/total_multi)*100 if total_multi else 0):.1f}% |"
-                                for p, s, c in top_multi
+                                for p, s, c in rec_multi
                             ]
-                            fallback_note = (
-                                f"> 💡 **FinOps Ingestion Notice**: Current month (`{current_ym}`) has no finalized billing data yet due to cloud billing settlement latency (24–72h). "
-                                f"Displaying top cloud services from the latest closed billing cycle (**{last_ym}**).\n\n"
-                                if used_fallback else ""
-                            )
                             table = (
-                                f"{fallback_note}"
+                                f"{multi_notice}"
                                 f"| Cloud Provider | Service Category | Cost | % of Total |\n"
                                 f"|:---|:---|:---|:---|\n"
                                 f"{chr(10).join(tbl_lines)}\n\n"
@@ -9632,27 +11446,87 @@ class AIClient:
                 if not is_no_chart_requested(low):
                     effective_chart_scope = last_ym if used_fallback else svc_scope_label
                     c_kind = det_type or (chart_types[0] if chart_types else "bar")
-                    c_kind = c_kind if c_kind in ["pie", "doughnut", "line", "area", "bar", "horizontal-bar"] else "bar"
-                    if cloud_target == "aws" and aws_rows:
-                        labels = [s for _, s, _ in aws_rows[:12]]
-                        values = [c for _, _, c in aws_rows[:12]]
-                        chart_md = _chart_block(c_kind, f"Top AWS Services by Spend ({effective_chart_scope})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False)
-                    elif cloud_target == "azure" and azure_rows:
-                        labels = [s for _, s, _ in azure_rows[:12]]
-                        values = [c for _, _, c in azure_rows[:12]]
-                        chart_md = _chart_block(c_kind, f"Top Azure Services by Spend ({effective_chart_scope})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False)
-                    elif cloud_target == "gcp" and gcp_rows:
-                        labels = [s for _, s, _ in gcp_rows[:12]]
-                        values = [c for _, _, c in gcp_rows[:12]]
-                        chart_md = _chart_block(c_kind, f"Top GCP Services by Spend ({effective_chart_scope})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False)
-                    elif False and cloud_target == "oci" and oci_rows:
-                        labels = [s for _, s, _ in oci_rows[:12]]
-                        values = [c for _, _, c in oci_rows[:12]]
-                        chart_md = _chart_block(c_kind, f"Top OCI Services by Spend ({effective_chart_scope})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False)
-                    elif cloud_target == "all" and multi_rows:
-                        labels = [f"{p} {s}" for p, s, _ in multi_rows[:12]]
-                        values = [c for _, _, c in multi_rows[:12]]
-                        chart_md = _chart_block(c_kind, f"Top Multi-Cloud Services by Spend ({effective_chart_scope})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False)
+                    c_kind = c_kind if c_kind in ["pie", "doughnut", "line", "area", "bar", "horizontal-bar", "waterfall"] else "bar"
+
+                    if c_kind == "waterfall" and (has_enough_mtd or used_fallback):
+                        if cloud_target == "all" and multi_rows:
+                            wf_rows = top_multi
+                            wf_title = f"Multi-Cloud Top Services MoM Variance Waterfall ({last_ym} → {svc_scope_label} Forecast)"
+                            wf_cur = total_multi
+                        elif cloud_target == "aws" and aws_rows:
+                            wf_rows = aws_rows[:limit]
+                            wf_title = f"Top AWS Services MoM Variance Waterfall ({last_ym} → {svc_scope_label} Forecast)"
+                            wf_cur = total_aws
+                        elif cloud_target == "azure" and azure_rows:
+                            wf_rows = azure_rows[:limit]
+                            wf_title = f"Top Azure Services MoM Variance Waterfall ({last_ym} → {svc_scope_label} Forecast)"
+                            wf_cur = total_az
+                        elif cloud_target == "gcp" and gcp_rows:
+                            wf_rows = gcp_rows[:limit]
+                            wf_title = f"Top GCP Services MoM Variance Waterfall ({last_ym} → {svc_scope_label} Forecast)"
+                            wf_cur = total_gcp
+                        else:
+                            wf_rows = []
+                            wf_title = "Top Services MoM Variance Waterfall"
+                            wf_cur = 0.0
+
+                        if wf_rows:
+                            base_label = f"Previous Month ({last_ym})" if not used_fallback else f"Prior Month ({prior_ym})"
+                            end_label = f"Month-End Forecast ({current_ym})" if not used_fallback else f"Closed Month ({last_ym})"
+                            base_total = total_prev if not used_fallback else total_prior
+                            wf_labels = [base_label]
+                            wf_vals = [round(base_total, 2)]
+                            deltas = []
+                            for item in wf_rows:
+                                if cloud_target == "all":
+                                    p, s, c = item[0], item[1], item[2]
+                                    m_dict = prev_map if not used_fallback else prior_map
+                                    prev_c = m_dict.get((p, s), m_dict.get(s, 0.0))
+                                    lbl = f"{p} {s}"
+                                else:
+                                    p, s, c = item[0], item[1], item[2]
+                                    m_dict = prev_map if not used_fallback else prior_map
+                                    prev_c = m_dict.get(s, 0.0)
+                                    lbl = s
+                                cur_c = c * runrate_factor if not used_fallback else c
+                                diff = cur_c - prev_c
+                                deltas.append((lbl, diff))
+                            deltas.sort(key=lambda x: abs(x[1]), reverse=True)
+                            top_d = deltas[:10]
+                            for lbl, diff in top_d:
+                                wf_labels.append(lbl)
+                                wf_vals.append(round(diff, 2))
+                            end_total = (wf_cur * runrate_factor) if not used_fallback else wf_cur
+                            tot_diff = end_total - base_total
+                            other_diff = tot_diff - sum(d for _, d in top_d)
+                            if abs(other_diff) > 1.0:
+                                wf_labels.append("Other Services Net Variance")
+                                wf_vals.append(round(other_diff, 2))
+                            wf_labels.append(end_label)
+                            wf_vals.append(round(end_total, 2))
+                            chart_md = _build_waterfall_chart(wf_title, wf_labels, wf_vals)
+
+                    if not chart_md:
+                        if cloud_target == "aws" and aws_rows:
+                            labels = [s for _, s, _ in aws_rows[:12]]
+                            values = [c for _, _, c in aws_rows[:12]]
+                            chart_md = _chart_block(c_kind, f"Top AWS Services by Spend ({effective_chart_scope})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False)
+                        elif cloud_target == "azure" and azure_rows:
+                            labels = [s for _, s, _ in azure_rows[:12]]
+                            values = [c for _, _, c in azure_rows[:12]]
+                            chart_md = _chart_block(c_kind, f"Top Azure Services by Spend ({effective_chart_scope})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False)
+                        elif cloud_target == "gcp" and gcp_rows:
+                            labels = [s for _, s, _ in gcp_rows[:12]]
+                            values = [c for _, _, c in gcp_rows[:12]]
+                            chart_md = _chart_block(c_kind, f"Top GCP Services by Spend ({effective_chart_scope})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False)
+                        elif False and cloud_target == "oci" and oci_rows:
+                            labels = [s for _, s, _ in oci_rows[:12]]
+                            values = [c for _, _, c in oci_rows[:12]]
+                            chart_md = _chart_block(c_kind, f"Top OCI Services by Spend ({effective_chart_scope})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False)
+                        elif cloud_target == "all" and multi_rows:
+                            labels = [f"{p} {s}" for p, s, _ in multi_rows[:12]]
+                            values = [c for _, _, c in multi_rows[:12]]
+                            chart_md = _chart_block(c_kind, f"Top Multi-Cloud Services by Spend ({effective_chart_scope})", labels, values=values, horizontal=(c_kind == "horizontal-bar" or "horizontal" in low), stacked=False)
 
                 wants_table = _detect_wants_table(low)
                 tbl_md = f"{table}\n" if wants_table else ""
