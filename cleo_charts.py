@@ -168,9 +168,10 @@ def _detect_chart_type(low: str) -> Optional[str]:
         return None
 
     # Variance chart → waterfall (must check before generic "waterfall" keyword)
-    if any(w in low for w in ["variance chart", "waterfall chart", "bridge chart"]):
-        return "waterfall"
-    if "waterfall" in low:
+    if any(w in low for w in [
+        "variance chart", "waterfall chart", "bridge chart", "waterfall",
+        "waterfal", "water fall", "watrefall", "bridge graph", "variance graph", "waterfall graph"
+    ]) or bool(re.search(r'\bwaterfal+s?\b|\bwater\s+fall\b', low)):
         return "waterfall"
     if any(w in low for w in ["doughnut chart", "donut chart", "doughnut graph", "donut graph",
         "doughnut only", "donut only", "doughnut", "donut"
@@ -196,6 +197,144 @@ def _detect_chart_type(low: str) -> Optional[str]:
     ]):
         return "bar"
     return None
+
+
+def filter_charts_to_requested_type(markdown_text: str, user_query: str) -> str:
+    """
+    If the user explicitly asked for a specific chart type ('only line chart', 'just line chart',
+    'line chart only', 'only bar chart', etc.), prune all chart blocks that do not match the requested type.
+    Also deduplicates identical chart blocks.
+    """
+    if not markdown_text or "```chart" not in markdown_text:
+        return markdown_text
+
+    low = (user_query or "").lower()
+
+    single_chart_target = None
+    pattern = re.compile(
+        r'\b(?:only|just)\s+(?:a\s+|an\s+)?(line|bar|pie|doughnut|donut|area)(?:\s+charts?|\s+graphs?)?(?:\s+is\s+enough)?\b|'
+        r'\b(line|bar|pie|doughnut|donut|area)(?:\s+charts?|\s+graphs?)\s+only\b',
+        re.IGNORECASE
+    )
+    m = pattern.search(low)
+    if m:
+        matched_str = (m.group(1) or m.group(2)).lower()
+        single_chart_target = "doughnut" if matched_str == "donut" else matched_str
+
+    chart_pattern = re.compile(r'```chart\s*\n(.*?)\n```', re.DOTALL)
+    blocks = list(chart_pattern.finditer(markdown_text))
+    if not blocks:
+        return markdown_text
+
+    if single_chart_target:
+        def repl(match):
+            spec_str = match.group(1).strip()
+            try:
+                spec = json.loads(spec_str)
+                c_type = spec.get("type", "").lower()
+                if single_chart_target == "bar" and c_type in ("bar", "horizontal-bar"):
+                    return match.group(0)
+                if single_chart_target == "doughnut" and c_type in ("doughnut", "donut"):
+                    return match.group(0)
+                if c_type == single_chart_target:
+                    return match.group(0)
+                return ""
+            except Exception:
+                return match.group(0)
+
+        cleaned = chart_pattern.sub(repl, markdown_text)
+        return re.sub(r'\n{3,}', '\n\n', cleaned).strip()
+
+    seen_specs = set()
+    def dedupe_repl(match):
+        spec_str = match.group(1).strip()
+        try:
+            spec = json.loads(spec_str)
+            key = json.dumps(spec, sort_keys=True)
+            if key in seen_specs:
+                return ""
+            seen_specs.add(key)
+            return match.group(0)
+        except Exception:
+            return match.group(0)
+
+    deduped = chart_pattern.sub(dedupe_repl, markdown_text)
+    return re.sub(r'\n{3,}', '\n\n', deduped).strip()
+
+
+def detect_data_timeframe_deficit(user_query: str, raw_response: str) -> Optional[dict]:
+    """
+    Check if the user explicitly requested N months (N >= 2), but the data table
+    only contains M months where M < N. Returns deficit info or None.
+    Never flags a deficit if the user asked for 1 month, this month, or all requested months are present.
+    """
+    if not user_query or not raw_response:
+        return None
+    low = user_query.lower()
+
+    # Do not flag deficit if user specifically asked for current/this month
+    if any(w in low for w in ["this month", "current month", "mtd"]) and not any(w in low for w in ["last", "past", "trailing"]):
+        return None
+
+    # Check if user explicitly asked for N months (N >= 2)
+    m_req = re.search(r'\b(\d{1,2})\s*[- ]?months?\b', low)
+    req_months = int(m_req.group(1)) if m_req else None
+    if not req_months or req_months < 2:
+        return None
+
+    month_names = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+    table_lines = [l for l in raw_response.split('\n') if l.strip().startswith('|')]
+    if not table_lines:
+        return None
+    header = table_lines[0].lower()
+
+    found_months = []
+    for mo in month_names:
+        matches = re.findall(rf'\b{mo}[a-z]*\s*(?:20\d\d)?\b', header)
+        if matches:
+            found_months.append(matches[0])
+
+    num_found = len(found_months)
+    if 0 < num_found < req_months:
+        return {
+            "requested": req_months,
+            "available": num_found,
+            "months": found_months
+        }
+    return None
+
+
+def ensure_markdown_table_spacing(text: str) -> str:
+    """Ensure every markdown table has blank lines before and after it for valid Markdown table rendering."""
+    if not text or "|" not in text:
+        return text
+    lines = text.split('\n')
+    out = []
+    in_table = False
+    for line in lines:
+        is_table_line = line.strip().startswith('|')
+        if is_table_line and not in_table:
+            if out and out[-1].strip():
+                out.append('')
+            in_table = True
+        elif not is_table_line and in_table:
+            if line.strip() and (not out or out[-1].strip()):
+                out.append('')
+            in_table = False
+        out.append(line)
+    return '\n'.join(out)
+
+
+def sanitize_chart_blocks(text: str) -> str:
+    """
+    Remove any raw or malformed pseudo-chart JSON blocks (e.g. ``` { "chart_type": ... } ```)
+    that lack the ```chart spec and would render as raw JSON text boxes in the UI.
+    """
+    if not text:
+        return text
+    cleaned = re.sub(r'```(?:json)?\s*\{[^`]*?"chart_type"[^`]*?\}\s*```', '', text, flags=re.DOTALL)
+    cleaned = re.sub(r'(?:\n\s*)\{\s*"chart_type"\s*:[^}]*?\}(?:\s*\n)', '\n', cleaned, flags=re.DOTALL)
+    return re.sub(r'\n{3,}', '\n\n', cleaned).strip()
 
 
 def _detect_wants_variance(low: str) -> bool:
@@ -352,9 +491,10 @@ def _build_time_category_stacked_chart(
     cat_col: str = "category",
     cost_col: str = "cost",
     time_format: str = "month",
-    max_cats: int = 12,
+    max_cats: int = 20,
     unit: str = "Cost ($)",
-    exclude_other: bool = False
+    exclude_other: bool = False,
+    chart_type: str = "bar"
 ) -> str:
     """
     Build a multi-dataset vertical stacked bar chart where:
@@ -418,7 +558,7 @@ def _build_time_category_stacked_chart(
                 "data": other_d
             })
 
-    return _chart_block("bar", title, labels, datasets=datasets, value_label=unit, stacked=True)
+    return _chart_block(chart_type, title, labels, datasets=datasets, value_label=unit, stacked=True)
 
 
 def split_thinking_and_response(text: str) -> tuple[str, str]:
@@ -730,6 +870,7 @@ def _parse_table_data_from_assistant_markdown(text: str) -> Optional[dict]:
     """
     Parses structured tabular data from a previously generated assistant markdown response.
     Extracts category/item names, cost amounts, hours, percentages, period, and overall total.
+    Supports standard cost breakdown tables and multi-column MoM variance tables.
     """
     if not text or "|" not in text:
         return None
@@ -753,51 +894,111 @@ def _parse_table_data_from_assistant_markdown(text: str) -> Optional[dict]:
     if len(table_lines) < 3:
         return None
 
+    headers = [c.strip() for c in table_lines[0].strip("|").split("|")]
+    prov_idx = -1
+    cat_idx = -1
+    prev_idx = -1
+    forecast_idx = -1
+    variance_idx = -1
+    cost_idx = -1
+
+    for i, h in enumerate(headers):
+        h_low = h.lower()
+        if any(w in h_low for w in ["cloud provider", "provider"]):
+            prov_idx = i
+        elif any(w in h_low for w in ["service category", "service", "category", "item"]):
+            cat_idx = i
+        elif any(w in h_low for w in ["previous month", "prior month"]):
+            prev_idx = i
+        elif any(w in h_low for w in ["month-end forecast", "forecast"]):
+            forecast_idx = i
+        elif "variance ($)" in h_low:
+            variance_idx = i
+        elif any(w in h_low for w in ["cost", "spend"]):
+            if cost_idx == -1:
+                cost_idx = i
+
+    def _clean_val(val_str: str) -> float:
+        is_neg = "-" in val_str
+        cleaned = re.sub(r"[^\d.]", "", val_str)
+        try:
+            v = float(cleaned)
+            return -v if is_neg else v
+        except (ValueError, TypeError):
+            return 0.0
+
+    is_mom_table = (variance_idx != -1 and prev_idx != -1)
+
     rows = []
+    mom_rows = []
     total_val = None
+    prev_total = None
+    forecast_total = None
+    variance_total = None
+
     for l in table_lines[2:]:
         cells = [c.strip() for c in l.strip("|").split("|")]
         if any("total" in c.lower() for c in cells):
-            for c in cells:
-                if "$" in c:
-                    cleaned = re.sub(r"[^\d.]", "", c)
-                    try:
-                        total_val = float(cleaned)
-                    except ValueError:
-                        pass
+            if is_mom_table:
+                if prev_idx != -1 and prev_idx < len(cells):
+                    prev_total = _clean_val(cells[prev_idx])
+                if forecast_idx != -1 and forecast_idx < len(cells):
+                    forecast_total = _clean_val(cells[forecast_idx])
+                elif cost_idx != -1 and cost_idx < len(cells):
+                    forecast_total = _clean_val(cells[cost_idx])
+                if variance_idx != -1 and variance_idx < len(cells):
+                    variance_total = _clean_val(cells[variance_idx])
+                total_val = forecast_total or prev_total
+            else:
+                for c in cells:
+                    if "$" in c:
+                        cleaned = re.sub(r"[^\d.]", "", c)
+                        try:
+                            total_val = float(cleaned)
+                        except ValueError:
+                            pass
             continue
 
-        label = ""
-        cost = 0.0
-        pct = 0.0
-        hrs = 0.0
-        for c in cells:
-            if "$" in c and cost == 0.0:
-                cleaned = re.sub(r"[^\d.]", "", c)
-                try:
-                    cost = float(cleaned)
-                except ValueError:
-                    pass
-            elif "%" in c and pct == 0.0:
-                cleaned = re.sub(r"[^\d.]", "", c)
-                try:
-                    pct = float(cleaned)
-                except ValueError:
-                    pass
-            elif any(w in c.lower() for w in ["hrs", "hr"]):
-                cleaned = re.sub(r"[^\d.]", "", c)
-                try:
-                    hrs = float(cleaned)
-                except ValueError:
-                    pass
+        if is_mom_table:
+            prov = cells[prov_idx].replace("*", "").replace("`", "").strip() if prov_idx != -1 and prov_idx < len(cells) else ""
+            cat = cells[cat_idx].replace("*", "").replace("`", "").strip() if cat_idx != -1 and cat_idx < len(cells) else ""
+            if prov and cat and prov.lower() not in cat.lower():
+                label = f"{prov} {cat}"
             else:
-                cleaned = c.replace("*", "").replace("`", "").strip()
-                if cleaned and not re.match(r"^\d+$", cleaned) and not label:
-                    if cleaned not in ["AWS", "Azure", "GCP"]:
-                        label = cleaned
+                label = cat or prov
+            v_val = _clean_val(cells[variance_idx]) if variance_idx != -1 and variance_idx < len(cells) else 0.0
+            fc_val = _clean_val(cells[forecast_idx]) if forecast_idx != -1 and forecast_idx < len(cells) else (_clean_val(cells[cost_idx]) if cost_idx != -1 and cost_idx < len(cells) else 0.0)
+            pr_val = _clean_val(cells[prev_idx]) if prev_idx != -1 and prev_idx < len(cells) else 0.0
+            rows.append({"label": label, "cost": fc_val or abs(v_val) or pr_val, "pct": 0.0, "hours": 0.0})
+            mom_rows.append({"label": label, "variance": v_val, "forecast": fc_val, "prev": pr_val})
+        else:
+            label = ""
+            cost = 0.0
+            pct = 0.0
+            hrs = 0.0
+            for c in cells:
+                if "$" in c and cost == 0.0:
+                    cost = _clean_val(c)
+                elif "%" in c and pct == 0.0:
+                    cleaned = re.sub(r"[^\d.]", "", c)
+                    try:
+                        pct = float(cleaned)
+                    except ValueError:
+                        pass
+                elif any(w in c.lower() for w in ["hrs", "hr"]):
+                    cleaned = re.sub(r"[^\d.]", "", c)
+                    try:
+                        hrs = float(cleaned)
+                    except ValueError:
+                        pass
+                else:
+                    cleaned = c.replace("*", "").replace("`", "").strip()
+                    if cleaned and not re.match(r"^\d+$", cleaned) and not label:
+                        if cleaned not in ["AWS", "Azure", "GCP"]:
+                            label = cleaned
 
-        if label and cost > 0:
-            rows.append({"label": label, "cost": cost, "pct": pct, "hours": hrs})
+            if label and cost > 0:
+                rows.append({"label": label, "cost": cost, "pct": pct, "hours": hrs})
 
     if not rows:
         return None
@@ -808,5 +1009,12 @@ def _parse_table_data_from_assistant_markdown(text: str) -> Optional[dict]:
         "period": period or "Current Period",
         "dataset_name": dataset_name,
         "rows": rows,
-        "total": computed_total
+        "total": computed_total,
+        "is_mom_table": is_mom_table,
+        "prev_total": prev_total or 0.0,
+        "forecast_total": forecast_total or computed_total,
+        "variance_total": variance_total or ((forecast_total or computed_total) - (prev_total or 0.0)),
+        "prev_label": headers[prev_idx] if prev_idx != -1 else "Previous Month",
+        "forecast_label": headers[forecast_idx] if forecast_idx != -1 else "Month-End Forecast",
+        "mom_rows": mom_rows
     }
