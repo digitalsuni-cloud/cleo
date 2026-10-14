@@ -26,10 +26,37 @@ COLUMN_SYNONYMS: Dict[str, Dict[str, Any]] = {
         "label": "Member / Usage Account ID",
         "synonyms": [
             "account", "subaccount", "sub-account", "member account", "linked account",
-            "usage account", "project", "project id", "subscription", "subscription id",
+            "usage account", "subscription", "subscription id",
             "cloud account", "account id", "account name", "linked accounts", "member accounts", "usage accounts"
         ],
         "description": "FOCUS member account identifier (AWS Linked Account ID, GCP Project ID, Azure Subscription ID)"
+    },
+    # Perspectives & Organizational Groupings (CloudHealth FlexReports)
+    "Perspective_Project": {
+        "label": "Perspective: Project",
+        "synonyms": ["project", "projects", "perspective project", "perspective projects", "by project", "per project", "project spend", "project breakdown"],
+        "description": "CloudHealth Perspective dimension for Project tracking"
+    },
+    "Perspective_Kubernetes Teams": {
+        "label": "Perspective: Teams",
+        "synonyms": ["team", "teams", "kubernetes teams", "perspective team", "perspective teams", "by team", "per team", "team spend", "team breakdown", "which team", "teams breakdown"],
+        "description": "CloudHealth Perspective dimension for Team tracking"
+    },
+    "Perspective_Cost Center": {
+        "label": "Perspective: Cost Center",
+        "synonyms": ["cost center", "cost centers", "cost_center", "perspective cost center", "by cost center"],
+        "description": "CloudHealth Perspective dimension for Cost Center tracking"
+    },
+    "Perspective_Environment": {
+        "label": "Perspective: Environment",
+        "synonyms": ["environment", "environments", "perspective environment", "by environment"],
+        "description": "CloudHealth Perspective dimension for Environment tracking"
+    },
+    # Resource & Virtual Tags
+    "Tags": {
+        "label": "Tags",
+        "synonyms": ["tag", "tags", "tag teams", "tag team", "tag project", "tag projects", "virtual tag", "virtual tags", "tagged"],
+        "description": "CloudHealth resource tags and virtual tags"
     },
     "BillingAccountId": {
         "label": "Payer / Billing Account ID",
@@ -74,7 +101,7 @@ COLUMN_SYNONYMS: Dict[str, Dict[str, Any]] = {
         "label": "Service Subcategory (Granular)",
         "synonyms": [
             "service subcategory", "granular service", "sub service", "sub-service",
-            "subcategory", "meter category", "meter subcategory", "service component",
+            "subcategory", "service component",
             "component", "sub services", "granular services"
         ],
         "description": "FOCUS 1.2 granular service subcategory (Virtual Machines, Object Storage, Relational Database, NAT Gateway)"
@@ -91,13 +118,18 @@ COLUMN_SYNONYMS: Dict[str, Dict[str, Any]] = {
     },
     "MeterCategory": {
         "label": "Azure Meter Category",
-        "synonyms": ["meter category", "service category", "azure service", "service family"],
-        "description": "Azure service classification"
+        "synonyms": ["meter category", "by meter category", "meter categories", "metercategory", "azure service", "service family"],
+        "description": "Azure native service classification in AZURE_COST_USAGE"
     },
     "MeterSubCategory": {
         "label": "Azure Meter Subcategory",
-        "synonyms": ["meter subcategory", "sub service", "azure subcategory", "service subcategory"],
-        "description": "Azure granular service classification"
+        "synonyms": ["meter subcategory", "meter sub category", "by meter subcategory", "by meter sub category", "meter subcategories", "metersubcategory"],
+        "description": "Azure native granular meter subcategory classification in AZURE_COST_USAGE"
+    },
+    "MeterName": {
+        "label": "Azure Meter Name",
+        "synonyms": ["meter name", "by meter name", "meter names", "metername"],
+        "description": "Azure native meter name classification in AZURE_COST_USAGE"
     },
 
     # Pricing, Lease & Commercial Models
@@ -320,6 +352,84 @@ COLUMN_SYNONYMS: Dict[str, Dict[str, Any]] = {
         "description": "MSP channel customer or end-client organization"
     }
 }
+
+# ── Canonical Cloud Health Datasets Mapping & Extraction ─────────────────────
+DATASET_CANONICAL_MAP = {
+    "azure_cost_usage": "AZURE_COST_USAGE",
+    "azure cost usage": "AZURE_COST_USAGE",
+    "azure_cost_and_usage": "AZURE_COST_USAGE",
+    "azure cost and usage": "AZURE_COST_USAGE",
+    "aws_cur": "AWS_CUR",
+    "aws cur": "AWS_CUR",
+    "aws_ec2_cost_and_usage": "AWS_EC2_COST_AND_USAGE",
+    "aws ec2 cost and usage": "AWS_EC2_COST_AND_USAGE",
+    "multicloud_focus_cost_and_usage": "MULTICLOUD_FOCUS_COST_AND_USAGE",
+    "multicloud focus cost and usage": "MULTICLOUD_FOCUS_COST_AND_USAGE",
+    "focus_cost_and_usage": "MULTICLOUD_FOCUS_COST_AND_USAGE",
+    "focus cost and usage": "MULTICLOUD_FOCUS_COST_AND_USAGE",
+    "azure_focus_cost_and_usage": "AZURE_FOCUS_COST_AND_USAGE",
+    "azure focus cost and usage": "AZURE_FOCUS_COST_AND_USAGE",
+    "azure focus": "AZURE_FOCUS_COST_AND_USAGE",
+    "aws_focus_cost_and_usage": "AWS_FOCUS_COST_AND_USAGE",
+    "aws focus cost and usage": "AWS_FOCUS_COST_AND_USAGE",
+    "aws focus": "AWS_FOCUS_COST_AND_USAGE",
+    "gcp_focus_cost_and_usage": "GCP_FOCUS_COST_AND_USAGE",
+    "gcp focus cost and usage": "GCP_FOCUS_COST_AND_USAGE",
+    "gcp focus": "GCP_FOCUS_COST_AND_USAGE",
+    "multicloud_commitment_savings": "MULTICLOUD_COMMITMENT_SAVINGS",
+    "multicloud commitment savings": "MULTICLOUD_COMMITMENT_SAVINGS",
+    "commitment savings": "MULTICLOUD_COMMITMENT_SAVINGS",
+    "multicloud_operational_emissions": "MULTICLOUD_OPERATIONAL_EMISSIONS",
+    "multicloud operational emissions": "MULTICLOUD_OPERATIONAL_EMISSIONS",
+    "operational emissions": "MULTICLOUD_OPERATIONAL_EMISSIONS",
+    "unified_ai_tokenomics": "UNIFIED_AI_TOKENOMICS",
+    "unified ai tokenomics": "UNIFIED_AI_TOKENOMICS",
+    "multicloud_ai_cost_and_usage": "MULTICLOUD_AI_COST_AND_USAGE",
+    "multicloud ai cost and usage": "MULTICLOUD_AI_COST_AND_USAGE",
+    "aws_ai_cost_and_usage": "AWS_AI_COST_AND_USAGE",
+    "openai_cost_and_usage": "OPENAI_COST_AND_USAGE",
+    "anthropic_cost_and_usage": "ANTHROPIC_COST_AND_USAGE",
+    "gcp_bigquery_resource_usage": "GCP_BIGQUERY_RESOURCE_USAGE",
+    "gcp bigquery resource usage": "GCP_BIGQUERY_RESOURCE_USAGE",
+}
+
+DATASET_CLOUD_MAP = {
+    "AZURE_COST_USAGE": "azure",
+    "AZURE_FOCUS_COST_AND_USAGE": "azure",
+    "AWS_CUR": "aws",
+    "AWS_EC2_COST_AND_USAGE": "aws",
+    "AWS_FOCUS_COST_AND_USAGE": "aws",
+    "AWS_AI_COST_AND_USAGE": "aws",
+    "GCP_FOCUS_COST_AND_USAGE": "gcp",
+    "GCP_BIGQUERY_RESOURCE_USAGE": "gcp",
+}
+
+def extract_target_dataset(text: str) -> Optional[str]:
+    """Extracts explicit dataset name mentioned in user text or feedback instructions."""
+    if not text:
+        return None
+    raw = str(text).strip()
+    low = raw.lower().replace("&", " and ")
+
+    # Direct canonical lookup (handles phrases like 'get the data from azure_cost_usage dataset')
+    for pat, canonical in DATASET_CANONICAL_MAP.items():
+        if re.search(r'\b' + re.escape(pat) + r'\b', low):
+            return canonical
+
+    # Normalized check (strips spaces/underscores)
+    compact_low = re.sub(r'[\s_\-&]+', '', low)
+    for pat, canonical in DATASET_CANONICAL_MAP.items():
+        compact_pat = re.sub(r'[\s_\-&]+', '', pat)
+        if compact_pat in compact_low:
+            return canonical
+
+    # Fallback regex for '[from|use|in|dataset] <NAME> dataset'
+    m = re.search(r'\b(?:from|in|using|use|dataset|data\s*set|table)\s*[:=]?\s*["\']?([a-zA-Z0-9_]{3,40})["\']?(?:\s+dataset)?\b', raw, re.IGNORECASE)
+    if m:
+        cand = m.group(1).upper()
+        if cand in DATASET_CANONICAL_MAP.values():
+            return cand
+    return None
 
 # ── Multi-Cloud Service Mapping & Extraction (AWS, Azure, GCP) ────────
 class ServiceMatch(tuple):
@@ -1308,6 +1418,63 @@ def extract_limit_adjustment(query_text: str) -> Optional[int]:
                     return val
     return None
 
+def extract_all_query_months(query: str, default_year: int = None) -> list[str]:
+    """
+    Extracts all distinct months (YYYY-MM) mentioned explicitly in the query,
+    preserving order of appearance.
+    Supports formats:
+      - 'August 2026', 'Aug 26', 'Sept 2026', 'August and September 2026'
+      - '2026-08', '2026-09'
+      - '08/2026', '09/2026'
+      - 'August vs September'
+    """
+    if not query:
+        return []
+    low = query.lower()
+    now = datetime.date.today()
+    if default_year is None:
+        default_year = now.year
+
+    MONTHS = {
+        "january": 1, "jan": 1, "february": 2, "feb": 2, "march": 3, "mar": 3,
+        "april": 4, "apr": 4, "may": 5, "june": 6, "jun": 6, "july": 7, "jul": 7,
+        "august": 8, "aug": 8, "september": 9, "sep": 9, "sept": 9,
+        "october": 10, "oct": 10, "november": 11, "nov": 11, "december": 12, "dec": 12
+    }
+
+    y_match = re.search(r'\b(20\d{2})\b', low)
+    ref_year = int(y_match.group(1)) if y_match else default_year
+
+    found = []
+    # 1. Month Name + Year (e.g. 'August 2026', 'Aug 26', 'Sept 2026')
+    for m in re.finditer(r'\b(' + '|'.join(MONTHS.keys()) + r')[,\s]+((?:19|20)\d{2}|\d{2})\b', low):
+        mo = MONTHS[m.group(1)]
+        yr_str = m.group(2)
+        yr = int(yr_str) if len(yr_str) == 4 else 2000 + int(yr_str)
+        found.append((m.start(), m.end(), f"{yr}-{mo:02d}"))
+
+    # 2. ISO YYYY-MM (e.g. '2026-08')
+    for m in re.finditer(r'\b((?:19|20)\d{2})-(0[1-9]|1[0-2])\b', low):
+        found.append((m.start(), m.end(), f"{m.group(1)}-{int(m.group(2)):02d}"))
+
+    # 3. MM/YYYY (e.g. '08/2026')
+    for m in re.finditer(r'\b(0[1-9]|1[0-2])/((?:19|20)\d{2})\b', low):
+        found.append((m.start(), m.end(), f"{m.group(2)}-{int(m.group(1)):02d}"))
+
+    # 4. Solo Month names not already covered
+    for m in re.finditer(r'\b(' + '|'.join(MONTHS.keys()) + r')\b', low):
+        if any(start <= m.start() and m.end() <= end for start, end, _ in found):
+            continue
+        mo = MONTHS[m.group(1)]
+        found.append((m.start(), m.end(), f"{ref_year}-{mo:02d}"))
+
+    found.sort(key=lambda x: x[0])
+    res = []
+    for _, _, ym in found:
+        if ym not in res:
+            res.append(ym)
+    return res
+
 def parse_query_time_context(query: str, context_ym: str = None) -> dict:
     """
     Extracts time context, target month, limit, and sort direction from user prompt.
@@ -1334,6 +1501,14 @@ def parse_query_time_context(query: str, context_ym: str = None) -> dict:
     single_date = None
     daily_range = None
     timeframe_days = None
+
+    comp_months = extract_all_query_months(query, default_year=now.year)
+    if len(comp_months) >= 2:
+        target_ym = comp_months[0]
+        m_num = int(target_ym.split("-")[1])
+        yr = int(target_ym.split("-")[0])
+        target_label = f"{FULL_NAMES[m_num]} {yr}"
+        is_specific = True
 
     # 0. Single Day / Date: e.g. 'September 29th', 'Sep 29', '29th of September', '2026-09-29'
     m_iso_day = re.search(r'\b((?:19|20)\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b', low)
@@ -1521,7 +1696,8 @@ def parse_query_time_context(query: str, context_ym: str = None) -> dict:
         "timeframe_days": timeframe_days,
         "daily_range": daily_range,
         "single_date": single_date,
-        "is_mtd": is_mtd
+        "is_mtd": is_mtd,
+        "comparison_months": comp_months if len(comp_months) >= 2 else []
     }
 
 def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None) -> dict:
@@ -1578,7 +1754,8 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         r'|\b(?:give\s+me|show\s+me|get\s+me|display|fetch|provide|what\s+is)?\s*(?:the\s+)?(?:simillar|similar|same)\s+(?:data|spend|cost|numbers?|forecast|projection|trend)?\s*(?:for|in|on|with|across|of)?\s*(?:aws|azure|gcp|google|ec2|rds|s3|lambda|dynamo|bedrock|customer|[a-z0-9_-]+)'
         r'|\b(?:same|simillar|similar)\s+(?:for|in|on|with|to)\b'
         r'|\b(?:do\s+the\s+same|show\s+the\s+same|can\s+you\s+do\s+the\s+same|repeat\s+(?:the\s+same|this|that))\b'
-        r'|\b(?:what\s+about|how\s+about|and\s+for|now\s+for|what\s+is\s+the\s+same)\b',
+        r'|\b(?:what\s+about|how\s+about|and\s+for|now\s+for|what\s+is\s+the\s+same)\b'
+        r'|\b(?:break\s*down|breakdown|split|group)\s+(?:the\s+)?(?:above|previous|prior)?\s*(?:data|results?|numbers?|spend|cost)?\s*(?:again\s+)?by\b',
         low
     )) or is_exclude_other_requested(low) or any(t in low for t in [
         "from the above", "above data", "above result", "the above data", "the above result", "previous data", "previous result"
@@ -1623,7 +1800,13 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         "prior month", "that month", "same month"
     ])
 
-    if not (has_similar_term or is_short_pivot or has_threshold_refinement or has_limit_refinement or has_sort_refinement or has_exclusion_refinement or has_ordinal_refinement or has_relative_date_refinement):
+    target_ds_req = extract_target_dataset(last_msg)
+    has_dataset_pivot = bool(target_ds_req) and (
+        any(w in low for w in ["from", "use", "in", "get", "dataset", "data set", "look into", "check", "query", "instead", "rather than", "table"]) or
+        len(words) <= 8
+    )
+
+    if not (has_similar_term or is_short_pivot or has_threshold_refinement or has_limit_refinement or has_sort_refinement or has_exclusion_refinement or has_ordinal_refinement or has_relative_date_refinement or has_dataset_pivot):
         return {"is_continuation": False}
 
     prior_user_msgs = [m.get("content", "") for m in messages[:-1] if m.get("role") == "user"]
@@ -1789,6 +1972,18 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
             if m_d:
                 inherited_timeframe_days = int(m_d.group(1))
 
+    # Check for Coverage Type & Commitment / Lease Type Breakdown:
+    elif (
+        "coverage type & commitment breakdown" in last_asst_head or
+        "lease type & pricing model breakdown" in last_asst_head or
+        "coverage type" in last_asst_head or
+        "lease type" in last_asst_head or
+        "commitment coverage" in last_asst_body or
+        "spend & instance count breakdown by coverage type" in last_asst_body or
+        any(w in last_user_low for w in ["coverage type", "coveragetype", "by coverage", "lease type", "leasetype", "by lease", "purchase option", "pricing model breakdown", "commitment coverage"])
+    ):
+        prior_type = "coverage_breakdown"
+
     # Check for AI Model / Foundation Model Breakdown:
     elif (
         "cost by ai model" in last_asst_head or
@@ -1852,6 +2047,8 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
             prior_type = "anomalies"
         else:
             prior_type = "top_services"
+    elif not prior_type and has_dataset_pivot:
+        prior_type = "service_breakdown" if new_svc else "top_services"
 
     if not prior_type:
         return {"is_continuation": False}
@@ -1881,6 +2078,9 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         expanded_query = f"show {prov_disp} spend breakdown by region"
     elif prior_type == "service_breakdown":
         expanded_query = f"show {prov_disp} spend breakdown"
+    elif prior_type == "coverage_breakdown":
+        acc_phrase = " by account names" if any(w in low for w in ["account", "accounts", "subaccount", "subaccounts", "account name", "account names"]) else ""
+        expanded_query = f"give me the {new_svc_disp or 'compute'} coverage type and commitment breakdown{acc_phrase}".strip()
     elif prior_type == "ai_model_breakdown":
         expanded_query = f"give me the multi-cloud spend by ai model for the last {inherited_timeframe_months or 6} months"
     elif prior_type == "top_services":
@@ -1893,9 +2093,19 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
     else:
         expanded_query = last_msg
 
+    if target_ds_req:
+        if target_ds_req == "AZURE_COST_USAGE":
+            new_cloud = "azure"
+        elif target_ds_req in ("AWS_CUR", "AWS_EC2_COST_AND_USAGE"):
+            new_cloud = "aws"
+        if not new_svc and inherited_service:
+            new_svc = inherited_service
+            new_svc_disp = inherited_service_disp
+
     return {
         "is_continuation": True,
         "prior_query_type": prior_type,
+        "target_dataset": target_ds_req,
         "inherited_target_year": inherited_target_year or 2027,
         "inherited_target_period_title": inherited_period_title or f"FY {inherited_target_year or 2027}",
         "inherited_timeframe_months": inherited_timeframe_months or 12,
@@ -1947,6 +2157,45 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
 
     # Cloud detection
     cloud = cont_ctx.get("new_cloud") or extract_requested_cloud(last_msg)
+
+    # Dataset detection (from prompt, continuation context, or learned memory corrections)
+    target_dataset = cont_ctx.get("target_dataset") or extract_target_dataset(last_msg)
+    if not target_dataset:
+        try:
+            from cleo_memory import get_memory, _tokenize, _score
+            mem = get_memory()
+            active_corrs = mem.get_active_corrections(last_msg)
+            q_tok = _tokenize(last_msg)
+            for c in active_corrs:
+                ds = c.get("target_dataset") or extract_target_dataset(c.get("instruction") or c.get("correction") or "")
+                if ds:
+                    ds_cloud = DATASET_CLOUD_MAP.get(ds)
+                    if cloud and ds_cloud and ds_cloud != "all" and cloud != "all" and ds_cloud != cloud:
+                        continue
+                    corr_q = c.get("query", "")
+                    if corr_q and _score(q_tok, _tokenize(corr_q)) < 0.2:
+                        continue
+                    target_dataset = ds
+                    break
+        except Exception:
+            pass
+
+    if not target_dataset and messages:
+        for m in reversed(messages[:-1]):
+            if m.get("correction"):
+                ds = extract_target_dataset(m.get("correction", ""))
+                if ds:
+                    ds_cloud = DATASET_CLOUD_MAP.get(ds)
+                    if cloud and ds_cloud and ds_cloud != "all" and cloud != "all" and ds_cloud != cloud:
+                        continue
+                    target_dataset = ds
+                    break
+
+    if target_dataset:
+        if target_dataset == "AZURE_COST_USAGE" and not cloud:
+            cloud = "azure"
+        elif target_dataset in ("AWS_CUR", "AWS_EC2_COST_AND_USAGE") and not cloud:
+            cloud = "aws"
 
     # Azure Hybrid Benefit (AHB) signal detection
     is_ahb = any(w in low for w in [
@@ -2079,13 +2328,23 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
 
     # Breakdowns
     breakdowns = []
+    if cont_ctx.get("prior_query_type") == "coverage_breakdown":
+        if "lease_type" not in breakdowns:
+            breakdowns.append("lease_type")
     if any(w in low for w in [
         "lease type", "leasetype", "by lease", "lease breakdown", "lease types",
         "purchase option", "purchaseoption", "pricing model", "ondemand", "reservation",
         "savingsplan", "savings plan", "spot",
         "coverage type", "coveragetype", "by coverage", "coverage breakdown", "commitment coverage", "coverage"
     ]):
-        breakdowns.append("lease_type")
+        if "lease_type" not in breakdowns:
+            breakdowns.append("lease_type")
+    if (
+        any(w in low for w in ["account", "accounts", "account name", "account names", "subaccount", "subaccounts", "by account", "per account", "by subaccount", "all accounts", "for all accounts", "across all accounts"])
+        and not any(w in low for w in ["storage account", "storage accounts", "user account", "user accounts", "service account", "billing account", "payer account", "master account", "root account", "management account"])
+    ):
+        if "account" not in breakdowns:
+            breakdowns.append("account")
     if any(w in low for w in ["instancetype", "instance type", "instance size", "instance"]):
         breakdowns.append("instance_type")
     if any(w in low for w in ["enginetype", "engine type", "engine", "database engine"]):
@@ -2121,6 +2380,12 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     ]) or bool(re.search(r'\b(?:find|list|query|fetch|give|provide)\b', low))
     has_explicit_data_subject = bool(service) or bool(customer) or bool(m_months) or bool(m_days)
 
+    is_breakdown_requested = any(w in low for w in [
+        "break down", "breakdown", "by account", "by subaccount", "by region", "by service",
+        "by instance", "by type", "by category", "by meter", "group by", "slice by", "per account",
+        "account name", "account names"
+    ]) or bool(breakdowns)
+
     is_pure_reformat = (
         bool(re.search(r'\b(?:chart|plot|graph|visualize)\s+(?:of|for|from)?\s*(?:it|this|that|above|the\s+above|same\s+data|previous\s+data)\b', low)) or
         bool(re.search(r'\b(?:show|render|draw|display)\s+(?:it|this|that|above)\s+(?:as\s+a\s+|in\s+a\s+)?(?:chart|graph|plot|pie|donut|bar|area|waterfall)\b', low)) or
@@ -2137,7 +2402,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
             "waterfall chart please", "as a waterfall", "as a waterfall chart",
             "chart it", "plot it", "graph it", "show as pie", "show as donut", "show in pie", "show as a pie chart", "show as area", "show as waterfall"
         ])
-    ) and not has_explicit_data_subject
+    ) and not has_explicit_data_subject and not is_breakdown_requested
 
     is_history_qa = any(w in low for w in [
         "which customer", "what customer", "which service", "what service", "which month", "what month",
@@ -2179,10 +2444,11 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     # Math calculation or general non-finops question
     low_no_dates = re.sub(r'\b\d{4}[-/]\d{1,2}(?:[-/]\d{1,2})?\b', '', low)
     has_finops_signal = any(w in low for w in [
-        "cost", "spend", "spending", "billed", "effective", "cloud", "aws", "azure", "gcp",
+        "cost", "spend", "spent", "spending", "billed", "effective", "cloud", "aws", "azure", "gcp",
         "service", "services", "account", "accounts", "breakdown", "anomaly", "anomalies",
         "recommendation", "usage", "tenant", "customer", "mcp", "forecast", "all clouds",
         "category", "subcategory", "pricing", "model", "resource", "region", "modality",
+        "team", "teams", "project", "projects", "perspective", "perspectives", "prespective", "tag", "tags",
         "s3", "ec2", "rds", "lambda", "ebs", "dynamodb", "instances", "instance", "fleet"
     ]) or is_unique_instance_request(low)
     is_math = not has_finops_signal and (
@@ -2211,7 +2477,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     elif is_anomaly:
         intent = "anomalies"
         is_new_data_fetch = True
-    elif service or customer or has_fetch_verb or is_unique_instance_request(low) or any(w in low for w in ["spend", "cost", "usage", "billed", "hours", "breakdown", "service", "services", "data", "telemetry", "figures", "numbers", "ytd", "mtd", "qtd"]) or cont_ctx.get("is_continuation"):
+    elif service or customer or has_fetch_verb or is_unique_instance_request(low) or any(w in low for w in ["spend", "spent", "cost", "usage", "billed", "hours", "breakdown", "service", "services", "data", "telemetry", "figures", "numbers", "ytd", "mtd", "qtd", "team", "teams", "project", "projects", "perspective", "tag", "tags"]) or cont_ctx.get("is_continuation"):
         intent = "fetch_data"
         is_new_data_fetch = True
     else:
@@ -2241,17 +2507,49 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         # Forecast and monthly trends do not default to subcategory breakdowns
         target_dimension = None
         breakdowns = []
-    elif any(w in low for w in [
-        "by account", "per account", "account name", "account names", "account breakdown",
-        "breakdown by account", "each account", "by project", "per project",
-        "by subscription", "per subscription", "sub account", "subaccount", "sub-account",
-        "member account", "linked account", "usage account", "cloud account",
-        "by member account", "by linked account", "by usage account", "by cloud account",
-        "subscription-level", "project-level", "per cloud account", "linked accounts",
-        "member accounts", "usage accounts"
-    ]):
-        breakdowns.append("account")
-        target_dimension = "SubaccountId"
+    # ── Tag vs. Perspective Dimensional Routing ──
+    # If user explicitly specifies "tag" / "tags", route to tag columns; otherwise business groups
+    # like "team", "project", "cost center", "environment" route to CloudHealth Perspective dimensions.
+    elif bool(re.search(r'\btags?\b', low)) or any(w in low for w in ["tag:", "virtual tag", "virtual tags", "vtag"]):
+        if any(w in low for w in ["team", "teams"]):
+            breakdowns.append("tag_team")
+            target_dimension = "Tags"
+        elif any(w in low for w in ["project", "projects"]):
+            breakdowns.append("tag_project")
+            target_dimension = "Tags"
+        elif any(w in low for w in ["env", "environment", "environments"]):
+            breakdowns.append("tag_environment")
+            target_dimension = "VirtualTags_CHPS Test Environment"
+        elif any(w in low for w in ["owner", "owners"]):
+            breakdowns.append("tag_owner")
+            target_dimension = "VirtualTags_AI Owner"
+        elif any(w in low for w in ["function", "functions"]):
+            breakdowns.append("tag_function")
+            target_dimension = "VirtualTags_CHPS Test Function"
+        else:
+            breakdowns.append("tags")
+            target_dimension = "Tags"
+    elif any(w in low for w in ["team", "teams", "by team", "by teams", "per team", "team breakdown", "which team", "teams breakdown", "team spent", "team spend"]):
+        breakdowns.append("perspective_team")
+        target_dimension = "Perspective_Kubernetes Teams"
+    elif any(w in low for w in ["project", "projects", "by project", "by projects", "per project", "project breakdown", "which project", "projects breakdown", "project spent", "project spend", "spending by project"]):
+        breakdowns.append("perspective_project")
+        target_dimension = "Perspective_Project"
+    elif any(w in low for w in ["cost center", "cost centers", "by cost center", "cost center breakdown"]):
+        breakdowns.append("perspective_cost_center")
+        target_dimension = "Perspective_Cost Center"
+    elif any(w in low for w in ["environment", "environments", "by environment", "environment breakdown"]):
+        breakdowns.append("perspective_environment")
+        target_dimension = "Perspective_Environment"
+    elif any(w in low for w in ["line of business", "lob", "by line of business"]):
+        breakdowns.append("perspective_line_of_business")
+        target_dimension = "Perspective_Line of Business"
+    elif any(w in low for w in ["department", "departments", "by department"]):
+        breakdowns.append("perspective_department")
+        target_dimension = "Perspective_AI Department"
+    elif any(w in low for w in ["function", "functions", "by function"]):
+        breakdowns.append("perspective_function")
+        target_dimension = "Perspective_Function"
     elif any(w in low for w in [
         "by billing account", "per billing account", "billing account id", "billing accounts",
         "billing account breakdown", "breakdown by billing account", "payer account", "master account",
@@ -2261,6 +2559,25 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     ]):
         breakdowns.append("billing_account")
         target_dimension = "BillingAccountId"
+    elif (
+        any(w in low for w in [
+            "by account", "per account", "account name", "account names", "account breakdown",
+            "breakdown by account", "each account", "for all accounts", "all accounts", "all account",
+            "across all accounts", "by accounts", "per accounts", "for each account", "for accounts",
+            "by subscription", "per subscription", "sub account", "subaccount", "sub-account",
+            "member account", "linked account", "usage account", "cloud account",
+            "by member account", "by linked account", "by usage account", "by cloud account",
+            "subscription-level", "per cloud account", "linked accounts",
+            "member accounts", "usage accounts", "accounts", "account"
+        ])
+        and not any(w in low for w in [
+            "storage account", "storage accounts", "user account", "user accounts", "service account",
+            "billing account", "payer account", "master account", "root account", "management account"
+        ])
+    ):
+        if "account" not in breakdowns:
+            breakdowns.append("account")
+        target_dimension = "SubaccountId"
     elif any(w in low for w in [
         "by service category", "by service_category", "by category", "per category",
         "service categories", "category breakdown", "breakdown by category", "per service category",
@@ -2343,11 +2660,19 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     if any(w in low for w in ["volumetype", "volume type", "gp2", "gp3", "ebs type", "by volume type", "by disk type", "disk type", "by ebs type", "ebs volume type", "gp2 vs gp3"]):
         breakdowns.append("volume_type")
         target_dimension = "product_volumeType"
-    if any(w in low for w in [
+    if any(w in low for w in ["meter sub category", "meter subcategory", "by meter sub category", "by meter subcategory", "metersubcategory"]):
+        breakdowns.append("meter_subcategory")
+        target_dimension = "MeterSubCategory"
+    elif any(w in low for w in ["meter category", "by meter category", "metercategory"]):
+        breakdowns.append("meter_category")
+        target_dimension = "MeterCategory"
+    elif any(w in low for w in ["meter name", "by meter name", "metername"]):
+        breakdowns.append("meter_name")
+        target_dimension = "MeterName"
+    elif any(w in low for w in [
         "subcategory", "sub-category", "service subcategory", "by sub service", "per sub service",
-        "sub-service", "sub service", "granular service", "service component", "meter category",
-        "meter subcategory", "by meter", "component breakdown", "sub services", "granular services",
-        "by meter category", "by meter subcategory"
+        "sub-service", "sub service", "granular service", "service component",
+        "by meter", "component breakdown", "sub services", "granular services"
     ]):
         breakdowns.append("service_subcategory")
         target_dimension = "ServiceSubcategory"
@@ -2381,14 +2706,37 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
                 breakdowns.append("volume_type")
         elif service == "AWSLambda":
             target_dimension = "lineItem_Operation"
-        elif (cloud in ("azure", "gcp") or (service and service in ("Azure", "GCP"))) and not any(w in low for w in ["top ", "service", "services", "most expensive"]):
+        elif (cloud in ("azure", "gcp") or (service and service in ("Azure", "GCP"))) and not any(w in low for w in ["top ", "service", "services", "most expensive", "monthly", "month", "trend", "mom"]):
             target_dimension = "ServiceSubcategory"
             if "service_subcategory" not in breakdowns:
                 breakdowns.append("service_subcategory")
-        elif cloud == "all":
+        elif cloud == "all" and not any(w in low for w in ["month", "monthly", "trend", "mom", "progression", "over time", "history", "by month"]):
             target_dimension = "ServiceName"
             if "service" not in breakdowns:
                 breakdowns.append("service")
+
+    if target_dataset:
+        is_new_data_fetch = True
+        intent = "fetch_data"
+        if target_dataset == "AZURE_COST_USAGE":
+            cloud = "azure"
+            if not target_dimension or target_dimension in ("ServiceSubcategory", "service_subcategory", "ServiceName", "service", "dimension", "unknown"):
+                if any(w in low for w in ["meter sub category", "meter subcategory", "subcategory"]):
+                    target_dimension = "MeterSubCategory"
+                    if "meter_subcategory" not in breakdowns: breakdowns.append("meter_subcategory")
+                elif any(w in low for w in ["meter category", "category"]):
+                    target_dimension = "MeterCategory"
+                    if "meter_category" not in breakdowns: breakdowns.append("meter_category")
+                elif "meter name" in low:
+                    target_dimension = "MeterName"
+                    if "meter_name" not in breakdowns: breakdowns.append("meter_name")
+                elif "resource" in low:
+                    target_dimension = "ResourceName"
+                elif any(w in low for w in ["subscription", "account"]):
+                    target_dimension = "SubscriptionName"
+                else:
+                    target_dimension = "MeterSubCategory"
+                    if "meter_subcategory" not in breakdowns: breakdowns.append("meter_subcategory")
 
     include_chart = not is_no_chart_requested(low)
     include_mom = not is_no_mom_requested(low)
@@ -2406,12 +2754,14 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     result = {
         "intent": intent,
         "cloud": cloud,
+        "target_dataset": target_dataset,
         "service": service,
         "services": [s[0] for s in all_svcs] if all_svcs else ([service] if service else []),
         "customer": customer,
         "metric_type": metric_type,
         "target_dimension": target_dimension,
         "target_ym": target_ym,
+        "comparison_months": t_ctx.get("comparison_months", []),
         "timeframe_months": timeframe_months,
         "timeframe_days": timeframe_days,
         "breakdowns": breakdowns,

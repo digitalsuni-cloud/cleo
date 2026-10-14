@@ -2781,9 +2781,8 @@ def test_home_page_landing_hero_and_navigation():
     # 3. Verify all 4 action cards exist
     assert 'Top Cloud Services (All Clouds)' in ui
     assert 'id="card-channel-customers"' in ui
-    assert 'Channel Customers' in ui
-    assert 'id="card-service-comparison"' in ui
-    assert 'Lundbeck Service Comparison' in ui
+    assert 'id="card-ai-data-query"' in ui
+    assert 'AI Data Query' in ui
     assert 'Waste Reclamation' in ui
 
     # 4. Verify newSession sets stream.innerHTML using getWelcomeHeroHTML()
@@ -2882,4 +2881,841 @@ def test_channel_customers_card_visibility_direct_vs_partner():
     finally:
         cleo_server._tools = original_tools
 
+
+def test_light_and_dark_theme_ui_and_switch_button():
+    """Verify that Cleo UI implements Light and Dark themes with an accessible switch button in the top header."""
+    import os
+    from starlette.testclient import TestClient
+    import cleo_server
+
+    ui_path = os.path.join(os.path.dirname(__file__), "cleo_ui.html")
+    with open(ui_path, "r", encoding="utf-8") as f:
+        ui = f.read()
+
+    # 1. Switch button exists in the header
+    assert 'id="theme-toggle-btn"' in ui
+    assert 'onclick="toggleTheme()"' in ui
+    assert 'role="switch"' in ui
+    assert 'class="theme-switch-btn"' in ui
+    assert 'theme-switch-track' in ui
+    assert 'theme-switch-thumb' in ui
+    assert 'sun' in ui and 'moon' in ui
+
+    # 2. Early initialization in head (prevents theme flash)
+    assert "localStorage.getItem('cleo_theme')" in ui
+    assert "document.documentElement.setAttribute('data-theme'" in ui
+
+    # 3. CSS variables for dark and light themes
+    assert ':root[data-theme="light"]' in ui
+    assert 'color-scheme: dark;' in ui
+    assert 'color-scheme: light;' in ui
+
+    # 4. Theme controller functions defined
+    assert 'function toggleTheme()' in ui
+    assert 'function applyTheme(' in ui
+    assert 'function initTheme()' in ui
+    assert 'function _getChartThemeConfig()' in ui
+    assert 'function _refreshAllChartsTheme()' in ui
+
+    # 5. Served by server endpoint
+    client = TestClient(cleo_server.app)
+    resp = client.get("/newChat")
+    assert resp.status_code == 200
+    assert 'id="theme-toggle-btn"' in resp.text
+    assert ':root[data-theme="light"]' in resp.text
+    assert ':root[data-theme="light"] .close-btn' in resp.text
+    assert ':root[data-theme="light"] .system-hw-badge' in resp.text
+    assert ':root[data-theme="light"] .cleo-chart-title' in resp.text
+    assert ':root[data-theme="light"] .modal-box' in resp.text
+
+    # 6. Verify charts do not have harsh black outlines in light theme
+    assert "pieBorderColor: isLight ? '#fdfcf9' : '#0b0f17'" in resp.text
+    assert "stackedBorderColor: isLight ? '#fdfcf9' : 'rgba(11, 15, 23, 0.4)'" in resp.text
+    assert "pointBorderColor: isLight ? '#fdfcf9' : '#0c111d'" in resp.text
+    assert "opts.plugins.legend.labels.generateLabels = _buildLegendLabelsGenerator();" in resp.text
+
+
+def test_specific_column_routes_to_azure_cost_usage_meter_subcategory():
+    """Verify that when a specific column like 'Meter sub category' is requested,
+    Cleo routes the query to AZURE_COST_USAGE instead of FOCUS, and breaks down by MeterSubCategory."""
+    import json
+    from cleo_query import _deterministic_understand_query
+    from cleo_agent import AIClient, find_dataset_for_specific_column
+
+    # 1. Test deterministic intent classification
+    intent = _deterministic_understand_query([{"role": "user", "content": "get the Azure Storage Account cost and break it down by Meter Sub Category"}])
+    assert intent.get("target_dimension") == "MeterSubCategory"
+    assert "meter_subcategory" in intent.get("breakdowns", [])
+    assert "service_subcategory" not in intent.get("breakdowns", [])
+
+    intent2 = _deterministic_understand_query([{"role": "user", "content": "Show me the Azure Storage Account cost for last month and break it down by Meter Sub Category"}])
+    assert intent2.get("target_dimension") == "MeterSubCategory"
+    assert "meter_subcategory" in intent2.get("breakdowns", [])
+
+    # 2. Test dynamic dataset lookup helper
+    found = find_dataset_for_specific_column("Meter Sub Category", cloud="azure")
+    assert found is not None
+    assert found["dataset"] == "AZURE_COST_USAGE"
+    assert found["column"] == "MeterSubCategory"
+    assert found["time_col"] == "timeInterval_Month"
+    assert found["provider_col"] == "Provider"
+
+    found_cat = find_dataset_for_specific_column("Meter Category", cloud="azure")
+    assert found_cat is not None
+    assert found_cat["dataset"] == "AZURE_COST_USAGE"
+    assert found_cat["column"] == "MeterCategory"
+
+    # 3. Test end-to-end query execution with MockMCP
+    class AzureStorageMockMCP:
+        def __init__(self):
+            self.queries = []
+        def call_tool(self, name, args):
+            if name == "execute_datasource_query":
+                sql = args.get("queryInput", {}).get("sqlStatement", "")
+                self.queries.append(sql)
+                csv_data = (
+                    "provider,dimension,val\n"
+                    "Azure,Standard IO - Block Blob,48210.50\n"
+                    "Azure,Hot Block Blob,31450.20\n"
+                    "Azure,Cool Block Blob,18320.10\n"
+                    "Azure,Standard IO - Page Blob/Disk,12180.40\n"
+                    "Azure,General Block Blob,4520.08\n"
+                    "Azure,Standard IO - Table,2237.00\n"
+                )
+                return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+            return {"content": [{"text": json.dumps([])}]}
+
+    mock_mcp = AzureStorageMockMCP()
+    client = AIClient("direct", {}, [])
+
+    # Test single-month query
+    res = client._generate_impl([
+        {"role": "user", "content": "Show me the Azure Storage Account cost for last month and break it down by Meter Sub Category"}
+    ], mcp=mock_mcp)
+
+    assert len(mock_mcp.queries) > 0, "Expected execute_datasource_query to be called"
+    sql = mock_mcp.queries[0]
+
+    # Verify query routed to AZURE_COST_USAGE
+    assert "FROM AZURE_COST_USAGE" in sql
+    assert "MULTICLOUD_FOCUS_COST_AND_USAGE" not in sql
+    assert "MeterSubCategory" in sql
+    assert "(MeterCategory = 'Storage' OR ConsumedService = 'Microsoft.Storage')" in sql
+    assert "timeInterval_Month = '2026-09'" in sql
+
+    # Verify response contains the granular Azure meter subcategories and dataset citation
+    assert "Standard IO - Block Blob" in res
+    assert "Hot Block Blob" in res
+    assert "Cool Block Blob" in res
+    assert "$48,210.50" in res
+    assert "AZURE_COST_USAGE" in res
+    assert "Meter Subcategory" in res
+
+
+def test_coverage_breakdown_by_account_name_stacked_chart_and_table():
+    """Verify that follow-up request to break down coverage data by account names:
+    1. Triggers contextual continuation for coverage_breakdown preserving account dimension
+    2. Avoids Section 0d pure reformat / pie chart hijacking
+    3. Queries live dataset (AWS_CUR) grouping by account_id and lease_type
+    4. Generates an Account Breakdown Table and a stacked bar chart with Coverage Types on X-axis and Account Names as categories
+    """
+    import json
+    from cleo_query import _detect_contextual_continuation, _deterministic_understand_query
+    from cleo_agent import AIClient
+
+    history = [
+        {"role": "user", "content": "give me the RDS instance count by coverage type for the current month"},
+        {"role": "assistant", "content": (
+            "### 📋 CloudHealth Coverage Type & Commitment Breakdown: Amazon RDS (AWS)\n\n"
+            "Queried live from standard dataset **`AWS_CUR`** for **All Accounts**:\n\n"
+            "| # | Lease Type / Purchase Option | Active Database Instances | Billed Spend |\n"
+            "| 1 | On-Demand | 363 | $47,552.14 |\n"
+            "| 2 | Reserved Instances (RI) | 652 | $24,273.73 |\n"
+            "| 3 | Savings Plans | 164 | $15,887.81 |\n"
+        )},
+        {"role": "user", "content": "break down the above data again by Account Names"}
+    ]
+
+    # 1. Verify contextual continuation detects coverage_breakdown & account dimension
+    continuation = _detect_contextual_continuation(history)
+    assert continuation is not None
+    assert continuation.get("is_continuation") is True
+    assert continuation.get("prior_query_type") == "coverage_breakdown"
+    assert continuation.get("new_service") == "AmazonRDS"
+    assert "account" in continuation.get("expanded_query", "").lower()
+
+    # 2. Verify deterministic understanding preserves intent without flagging as pure reformat
+    intent = _deterministic_understand_query(history)
+    assert intent.get("intent") == "fetch_data"
+    assert intent.get("intent") != "reformat_previous"
+    assert intent.get("target_dimension") == "SubaccountId"
+    assert "lease_type" in (intent.get("breakdowns") or [])
+    assert "account" in (intent.get("breakdowns") or [])
+    assert intent.get("service") == "AmazonRDS"
+
+    # 3. Test execution with MockMCP
+    class MockCoverageMCP:
+        def __init__(self):
+            self.queries = []
+
+        def call_tool(self, name, args):
+            if name == "execute_datasource_query":
+                sql = args.get("queryInput", {}).get("sqlStatement", "")
+                self.queries.append(sql)
+                if "LOGICAL_ASSET_AWS_USAGE_ACCOUNT" in sql:
+                    csv_data = (
+                        "id,amazon_name,name\n"
+                        "111122223333,Engineering Prod,Engineering Prod\n"
+                        "444455556666,Analytics Dev,Analytics Dev\n"
+                    )
+                    return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+                else:
+                    # Return AWS_CUR usage grouped by account_id and pricing_term
+                    csv_data = (
+                        "account_id,month,pricing_term,item_type,cost,usage_amount,resource_id\n"
+                        "111122223333,2026-10,OnDemand,Usage,1200.0,10.0,db-1\n"
+                        "111122223333,2026-10,Reserved,DiscountedUsage,800.0,8.0,db-2\n"
+                        "444455556666,2026-10,OnDemand,SavingsPlanCoveredUsage,500.0,5.0,db-3\n"
+                        "444455556666,2026-10,OnDemand,Usage,200.0,2.0,db-4\n"
+                    )
+                    return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+            return {"content": [{"text": json.dumps([])}]}
+
+    mock_mcp = MockCoverageMCP()
+    client = AIClient("direct", {}, [])
+
+    res = client._generate_impl(history, mcp=mock_mcp)
+
+    # Verify query was executed with account_id in SELECT and GROUP BY
+    assert len(mock_mcp.queries) > 0
+    cur_sql = [q for q in mock_mcp.queries if "AWS_CUR" in q][0]
+    assert "lineItem_UsageAccountId AS account_id" in cur_sql
+    assert "GROUP BY" in cur_sql and "account_id" in cur_sql
+
+    # Verify response contains the account table
+    assert "#### 🏢 Account Breakdown by Coverage Type & Commitment Posture" in res
+    assert "Engineering Prod (111122223333)" in res
+    assert "Analytics Dev (444455556666)" in res
+
+    # Verify chart format: stacked bar chart, Coverage Type on X-axis (labels), Account Names as categories (datasets)
+    assert "```chart" in res
+    start_c = res.find("```chart") + 8
+    end_c = res.find("```", start_c)
+    chart_json = json.loads(res[start_c:end_c].strip())
+
+    assert chart_json.get("type") == "bar"
+    assert chart_json.get("stacked") is True
+    assert chart_json.get("labels") == ["On-Demand", "Reserved Instances (RI)", "Savings Plans"]
+
+    # Datasets must contain the account names as categories
+    dataset_labels = [d.get("label") for d in chart_json.get("datasets", [])]
+    assert "Engineering Prod (111122223333)" in dataset_labels
+    assert "Analytics Dev (444455556666)" in dataset_labels
+
+    # Verify Engineering Prod has On-Demand $1,200 and RI $800
+    eng_ds = next(d for d in chart_json["datasets"] if d["label"] == "Engineering Prod (111122223333)")
+    assert eng_ds["data"] == [1200.0, 800.0, 0.0]
+
+    # Verify Analytics Dev has On-Demand $200 and Savings Plans $500
+    ana_ds = next(d for d in chart_json["datasets"] if d["label"] == "Analytics Dev (444455556666)")
+    assert ana_ds["data"] == [200.0, 0.0, 500.0]
+
+
+def test_extract_target_dataset():
+    """Verify extract_target_dataset accurately identifies datasets from free text and feedback comments."""
+    from cleo_query import extract_target_dataset
+
+    # Azure variants
+    assert extract_target_dataset("get the data from Azure_Cost_Usage dataset") == "AZURE_COST_USAGE"
+    assert extract_target_dataset("please look into the data in Azure_Cost_Usage dataset") == "AZURE_COST_USAGE"
+    assert extract_target_dataset("try querying azure_cost_usage") == "AZURE_COST_USAGE"
+    assert extract_target_dataset("from Azure Cost Usage") == "AZURE_COST_USAGE"
+    assert extract_target_dataset("fetch from azure cost & usage") == "AZURE_COST_USAGE"
+
+    # AWS variants
+    assert extract_target_dataset("use AWS_CUR dataset instead") == "AWS_CUR"
+    assert extract_target_dataset("pull data from aws cur") == "AWS_CUR"
+    assert extract_target_dataset("fetch from aws_ec2_cost_and_usage") == "AWS_EC2_COST_AND_USAGE"
+
+    # FOCUS & BigQuery variants
+    assert extract_target_dataset("use multicloud_focus_cost_and_usage") == "MULTICLOUD_FOCUS_COST_AND_USAGE"
+    assert extract_target_dataset("look into GCP_BIGQUERY_RESOURCE_USAGE") == "GCP_BIGQUERY_RESOURCE_USAGE"
+
+    # Negative cases
+    assert extract_target_dataset("show top services by cost") is None
+    assert extract_target_dataset("") is None
+    assert extract_target_dataset(None) is None
+
+
+def test_feedback_thumbs_down_dataset_comment_learns_and_routes_to_azure_cost_usage():
+    """Verify that when a user submits thumbs-down feedback with 'get the data from Azure_Cost_Usage dataset':
+    1. Feedback endpoint records the correction and rule with target_dataset = 'AZURE_COST_USAGE'
+    2. Session assistant message is annotated with voted='bad' and correction comment
+    3. Query understanding recognizes target_dataset = 'AZURE_COST_USAGE' and sets MeterSubCategory dimension
+    4. Regenerated query routes directly to AZURE_COST_USAGE and executes appropriate SQL
+    """
+    import json
+    import tempfile
+    from pathlib import Path
+    import cleo_memory
+    import cleo_server
+    from cleo_query import _deterministic_understand_query
+    from cleo_agent import AIClient
+
+    orig_mem = cleo_memory._memory
+    orig_sessions = dict(cleo_server._sessions)
+
+    with tempfile.NamedTemporaryFile(suffix=".json") as tf:
+        try:
+            mem = cleo_memory.CleoMemory(memory_path=Path(tf.name))
+            cleo_memory._memory = mem
+
+            # 1. Setup session with an initial query and assistant reply
+            session_id = "test-session-azure-feedback"
+            user_q = "show Azure Storage spend for last month"
+            initial_asst_reply = "### 📊 CloudHealth Spend Analysis: AZURE Cost by ServiceSubcategory — Storage\n\nInitial MULTICLOUD_FOCUS_COST_AND_USAGE data..."
+            cleo_server._sessions[session_id] = {
+                "id": session_id,
+                "title": "Azure Storage",
+                "messages": [
+                    {"role": "user", "content": user_q},
+                    {"role": "assistant", "content": initial_asst_reply}
+                ]
+            }
+
+            # 2. User submits thumbs-down with dataset comment
+            req = cleo_server.FeedbackRequest(
+                session_id=session_id,
+                message_index=1,
+                rating="bad",
+                correction="get the data from Azure_Cost_Usage dataset"
+            )
+            feedback_resp = cleo_server.submit_feedback(req)
+            assert feedback_resp["status"] == "recorded"
+            assert feedback_resp["type"] == "correction"
+
+            # 3. Verify assistant message in session is annotated
+            asst_msg = cleo_server._sessions[session_id]["messages"][1]
+            assert asst_msg.get("voted") == "bad"
+            assert asst_msg.get("correction") == "get the data from Azure_Cost_Usage dataset"
+
+            # 4. Verify memory recorded correction and rule
+            corrs = mem.get_active_corrections(user_q)
+            assert len(corrs) > 0
+            assert corrs[0].get("target_dataset") == "AZURE_COST_USAGE"
+
+            # 5. Verify query understanding picks up AZURE_COST_USAGE from memory
+            intent = _deterministic_understand_query([{"role": "user", "content": user_q}])
+            assert intent.get("target_dataset") == "AZURE_COST_USAGE"
+            assert intent.get("cloud") == "azure"
+            assert intent.get("target_dimension") == "MeterSubCategory"
+
+            # 6. Test regeneration execution with MockMCP
+            class MockAzureMCP:
+                def __init__(self):
+                    self.queries = []
+
+                def call_tool(self, name, args):
+                    if name == "execute_datasource_query":
+                        sql = args.get("queryInput", {}).get("sqlStatement", "")
+                        self.queries.append(sql)
+                        csv_data = (
+                            "provider,dimension,val\n"
+                            "Azure,Premium SSD Managed Disks,6450.25\n"
+                            "Azure,General Block Blob v2,3210.80\n"
+                            "Azure,Standard SSD Managed Disks,1520.10\n"
+                        )
+                        return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+                    return {"content": [{"text": json.dumps([])}]}
+
+                def list_tools(self):
+                    return []
+
+            mock_mcp = MockAzureMCP()
+            client = AIClient("direct", {}, [])
+
+            # Regenerate: user query re-sent
+            resp = client._generate_impl([{"role": "user", "content": user_q}], mcp=mock_mcp)
+
+            # Assert MCP SQL query targets AZURE_COST_USAGE
+            assert len(mock_mcp.queries) > 0
+            azure_sql = mock_mcp.queries[0]
+            assert "FROM AZURE_COST_USAGE" in azure_sql
+            assert "MULTICLOUD_FOCUS_COST_AND_USAGE" not in azure_sql
+            assert "MeterSubCategory AS dimension" in azure_sql
+            assert "ActualCostInUsd" in azure_sql
+            assert "Provider = 'Azure'" in azure_sql
+            assert "MeterCategory = 'Storage'" in azure_sql or "ConsumedService = 'Microsoft.Storage'" in azure_sql
+
+            # Assert response displays data from AZURE_COST_USAGE
+            assert "AZURE_COST_USAGE" in resp
+            assert "Premium SSD Managed Disks" in resp
+            assert "$6,450.25" in resp
+            assert "General Block Blob v2" in resp
+
+        finally:
+            cleo_memory._memory = orig_mem
+            cleo_server._sessions.clear()
+            cleo_server._sessions.update(orig_sessions)
+
+
+def test_chat_followup_dataset_pivot_routes_to_azure_cost_usage():
+    """Verify that when a user asks a follow-up query like 'get the data from Azure_Cost_Usage dataset':
+    1. Contextual continuation detects target_dataset = 'AZURE_COST_USAGE' and inherits service context
+    2. Query understanding preserves the dataset pivot and service
+    3. AIClient queries AZURE_COST_USAGE instead of MULTICLOUD_FOCUS_COST_AND_USAGE
+    """
+    import json
+    from cleo_query import _detect_contextual_continuation, _deterministic_understand_query
+    from cleo_agent import AIClient
+
+    history = [
+        {"role": "user", "content": "show Azure Storage spend for last month"},
+        {"role": "assistant", "content": "### 📊 CloudHealth Spend Analysis: AZURE Cost by ServiceSubcategory — Storage Accounts\n\nPrior table..."},
+        {"role": "user", "content": "get the data from Azure_Cost_Usage dataset"}
+    ]
+
+    # 1. Contextual continuation
+    cont = _detect_contextual_continuation(history)
+    assert cont.get("is_continuation") is True
+    assert cont.get("target_dataset") == "AZURE_COST_USAGE"
+    assert cont.get("new_cloud") == "azure"
+
+    # 2. Deterministic understanding
+    intent = _deterministic_understand_query(history)
+    assert intent.get("target_dataset") == "AZURE_COST_USAGE"
+    assert intent.get("cloud") == "azure"
+
+    # 3. Execution with MockMCP
+    class MockAzureMCP:
+        def __init__(self):
+            self.queries = []
+
+        def call_tool(self, name, args):
+            if name == "execute_datasource_query":
+                sql = args.get("queryInput", {}).get("sqlStatement", "")
+                self.queries.append(sql)
+                csv_data = (
+                    "provider,dimension,val\n"
+                    "Azure,Premium SSD Managed Disks,7120.00\n"
+                    "Azure,Standard SSD Managed Disks,1890.50\n"
+                )
+                return {"content": [{"text": json.dumps({"csv": csv_data})}]}
+            return {"content": [{"text": json.dumps([])}]}
+
+        def list_tools(self):
+            return []
+
+    mock_mcp = MockAzureMCP()
+    client = AIClient("direct", {}, [])
+    resp = client._generate_impl(history, mcp=mock_mcp)
+
+    assert len(mock_mcp.queries) > 0
+    assert any("FROM AZURE_COST_USAGE" in q for q in mock_mcp.queries)
+    assert "AZURE_COST_USAGE" in resp
+    assert "Premium SSD Managed Disks" in resp
+
+
+def test_chart_modal_multi_metric_category_and_percent_aggregation_options():
+    """Verify that Cleo UI chart expansion modal provides category, metric, and percentage aggregation (avg vs sum) options."""
+    import os, subprocess, re
+
+    ui_path = os.path.join(os.path.dirname(__file__), "cleo_ui.html")
+    with open(ui_path, "r", encoding="utf-8") as f:
+        ui = f.read()
+
+    # 1. HTML Controls exist in toolbar
+    assert 'id="chart-modal-category-control"' in ui
+    assert 'id="chart-modal-category-select"' in ui
+    assert 'onchange="onModalCategoryChange(this.value)"' in ui
+
+    assert 'id="chart-modal-metric-control"' in ui
+    assert 'id="chart-modal-metric-select"' in ui
+    assert 'onchange="onModalMetricChange(this.value)"' in ui
+
+    assert 'id="chart-modal-pct-agg-control"' in ui
+    assert 'id="chart-modal-pct-agg-select"' in ui
+    assert 'onchange="onModalPctAggChange(this.value)"' in ui
+    assert '<option value="avg">Avg (%)</option>' in ui
+    assert '<option value="sum">Sum (%)</option>' in ui
+
+    # CloudHealth report toolbar layout controls
+    assert 'class="chart-modal-toolbar ch-report-toolbar"' in ui
+    assert 'id="chart-modal-filters-btn"' in ui
+    assert 'id="chart-modal-table-control"' in ui
+    assert '<option value="waterfall">WATERFALL</option>' in ui
+    assert 'id="chart-modal-xaxis-control"' in ui
+    assert 'id="chart-modal-xaxis-select"' in ui
+    assert 'onchange="onModalXAxisChange(this.value)"' in ui
+    assert 'id="chart-modal-options-btn"' in ui
+    assert 'id="chart-modal-options-popover"' in ui
+
+    # 2. JavaScript controller functions exist
+    assert "function _extractTableViewsFromBubble(" in ui
+    assert "function _normalizeCoverageCategoryName(" in ui
+    assert "function _formatCategoryTitle(" in ui
+    assert "function _parseNumericValue(" in ui
+    assert "function _parseMoMValue(" in ui
+    assert "function onModalCategoryChange(" in ui
+    assert "function onModalMetricChange(" in ui
+    assert "function onModalPctAggChange(" in ui
+    assert "function onModalTableChange(" in ui
+    assert "function onModalXAxisChange(" in ui
+    assert "function toggleModalOptionsMenu(" in ui
+    assert "function applyActiveViewAndMetric()" in ui
+    assert "function _isPercentMetricLabel(" in ui
+    assert "function _formatMetricBadge(" in ui
+
+    # 3. All script tags have valid syntax (Node.js syntax check)
+    scripts = re.findall(r"<script.*?>([\s\S]*?)</script>", ui, re.IGNORECASE)
+    assert len(scripts) >= 5
+    for idx, s in enumerate(scripts):
+        tmp_file = f"/tmp/test_ui_script_{idx}.js"
+        with open(tmp_file, "w", encoding="utf-8") as tf:
+            tf.write(s)
+        res = subprocess.run(["node", "--check", tmp_file], capture_output=True, text=True)
+        assert res.returncode == 0, f"Script {idx} syntax error: {res.stderr}"
+        if os.path.exists(tmp_file):
+            os.remove(tmp_file)
+
+
+def test_activate_existing_browser_tab(monkeypatch):
+    """Verify that _activate_existing_browser_tab activates existing browser tabs and avoids opening duplicates."""
+    import subprocess
+    import cleo_server
+
+    # 1. Non-macOS platform immediately returns False
+    monkeypatch.setattr("sys.platform", "linux")
+    assert cleo_server._activate_existing_browser_tab(8080) is False
+
+    # 2. macOS with active Chrome tab returns True
+    monkeypatch.setattr("sys.platform", "darwin")
+
+    def mock_run_chrome_found(cmd, *args, **kwargs):
+        class MockCompletedProcess:
+            returncode = 0
+            stdout = "Google Chrome\nSafari"
+            stderr = ""
+        # If running process check
+        if 'get name of every application process' in cmd[-1]:
+            return MockCompletedProcess()
+        # If running Chrome script
+        if 'tell application "Google Chrome"' in cmd[-1]:
+            p = MockCompletedProcess()
+            p.stdout = "activated"
+            return p
+        p = MockCompletedProcess()
+        p.stdout = "not_found"
+        return p
+
+    monkeypatch.setattr(subprocess, "run", mock_run_chrome_found)
+    assert cleo_server._activate_existing_browser_tab(8080) is True
+
+    # 3. macOS with no existing tab returns False
+    def mock_run_none_found(cmd, *args, **kwargs):
+        class MockCompletedProcess:
+            returncode = 0
+            stdout = "Google Chrome\nSafari"
+            stderr = ""
+        if 'get name of every application process' in cmd[-1]:
+            return MockCompletedProcess()
+        p = MockCompletedProcess()
+        p.stdout = "not_found"
+        return p
+
+    monkeypatch.setattr(subprocess, "run", mock_run_none_found)
+    assert cleo_server._activate_existing_browser_tab(8080) is False
+
+    # 4. Error/exception handling returns False gracefully
+    def mock_run_exception(*args, **kwargs):
+        raise RuntimeError("osascript timeout")
+
+    monkeypatch.setattr(subprocess, "run", mock_run_exception)
+    assert cleo_server._activate_existing_browser_tab(8080) is False
+
+
+def test_perspective_and_tag_column_routing():
+    """
+    Validates that:
+    1. 'Which team spent the most in August?' routes to Perspective column (Perspective_Kubernetes Teams)
+       and NOT SubaccountId.
+    2. 'which Project is spending more' routes to Perspective column (Perspective_Project)
+       and NOT SubaccountId.
+    3. Specifically mentioning 'Tag Teams' routes to Tags/VirtualTags, not Perspective.
+    4. find_dataset_for_specific_column correctly flags is_perspective vs is_tag.
+    """
+    from cleo_query import _deterministic_understand_query
+    from cleo_agent import find_dataset_for_specific_column
+
+    # 1. Team query -> Perspective_Kubernetes Teams
+    team_res = _deterministic_understand_query([{"role": "user", "content": "Which team spent the most in August?"}])
+    assert team_res.get("target_dimension") == "Perspective_Kubernetes Teams"
+    assert "perspective_team" in team_res.get("breakdowns", [])
+    assert team_res.get("target_dimension") != "SubaccountId"
+    assert "account" not in team_res.get("breakdowns", [])
+
+    # 2. Project query -> Perspective_Project
+    proj_res = _deterministic_understand_query([{"role": "user", "content": "which Project is spending more"}])
+    assert proj_res.get("target_dimension") == "Perspective_Project"
+    assert "perspective_project" in proj_res.get("breakdowns", [])
+    assert proj_res.get("target_dimension") != "SubaccountId"
+    assert "account" not in proj_res.get("breakdowns", [])
+
+    # 3. Tag Teams query -> Tags
+    tag_res = _deterministic_understand_query([{"role": "user", "content": "Show me the cost breakdown by Tag Teams"}])
+    assert tag_res.get("target_dimension") == "Tags"
+    assert "tag_team" in tag_res.get("breakdowns", [])
+    assert "perspective_team" not in tag_res.get("breakdowns", [])
+
+    # 4. Account query still maps to account
+    acc_res = _deterministic_understand_query([{"role": "user", "content": "Which account is spending more?"}])
+    assert "account" in acc_res.get("breakdowns", [])
+    assert acc_res.get("target_dimension") != "Perspective_Project"
+
+    # 5. find_dataset_for_specific_column tests
+    ds_team = find_dataset_for_specific_column("Perspective_Kubernetes Teams")
+    assert ds_team is not None
+    assert ds_team.get("is_perspective") is True
+
+    ds_proj = find_dataset_for_specific_column("Perspective_Project")
+    assert ds_proj is not None
+    assert ds_proj.get("is_perspective") is True
+
+    ds_tag_team = find_dataset_for_specific_column("Tag Teams")
+    assert ds_tag_team is not None
+    assert ds_tag_team.get("is_tag") is True
+
+
+def test_datasets_api_endpoints():
+    """Verify that /api/datasets and /api/datasets/{dataset_name} return valid schema and columns."""
+    from starlette.testclient import TestClient
+    from cleo_server import app
+
+    client = TestClient(app)
+
+    # 1. Test /api/datasets list
+    resp = client.get("/api/datasets")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "datasets" in data
+    assert data["total"] > 0
+    ds_names = [d["name"] for d in data["datasets"]]
+    assert "MULTICLOUD_FOCUS_COST_AND_USAGE" in ds_names
+    assert "AWS_COST_HISTORY" in ds_names
+
+    # 2. Test /api/datasets/{dataset_name} for MULTICLOUD_FOCUS_COST_AND_USAGE
+    resp_focus = client.get("/api/datasets/MULTICLOUD_FOCUS_COST_AND_USAGE")
+    assert resp_focus.status_code == 200
+    focus_data = resp_focus.json()
+    assert focus_data["name"] == "MULTICLOUD_FOCUS_COST_AND_USAGE"
+    assert focus_data["columns_count"] > 0
+    col_names = [c["name"] for c in focus_data["columns"]]
+    assert "EffectiveCost" in col_names
+
+    # 3. Test /api/datasets/{dataset_name} for AWS_COST_HISTORY (with perspective & tags)
+    resp_aws = client.get("/api/datasets/AWS_COST_HISTORY")
+    assert resp_aws.status_code == 200
+    aws_data = resp_aws.json()
+    assert aws_data["name"] == "AWS_COST_HISTORY"
+    aws_cols = {c["name"]: c for c in aws_data["columns"]}
+    assert "Perspective_Kubernetes Teams" in aws_cols
+    assert aws_cols["Perspective_Kubernetes Teams"]["is_perspective"] is True
+
+    # 4. Test 404 for unknown dataset
+    resp_404 = client.get("/api/datasets/NON_EXISTENT_DATASET_XYZ_123")
+    assert resp_404.status_code == 404
+
+
+def test_account_two_month_comparison_routing_and_consolidation():
+    import json
+    from cleo_query import extract_all_query_months, _deterministic_understand_query
+    from cleo_agent import AIClient
+
+    q = "what's the aug 2026 monthly spend for all accounts and compare it by sept 2026"
+
+    # 1. Test month extraction & deterministic parsing
+    months = extract_all_query_months(q)
+    assert months == ["2026-08", "2026-09"]
+
+    det = _deterministic_understand_query([{"role": "user", "content": q}])
+    assert det.get("target_dimension") == "SubaccountId"
+    assert det.get("comparison_months") == ["2026-08", "2026-09"]
+    assert "account" in (det.get("breakdowns") or [])
+
+    # 2. Test AIClient execution with synthetic 25 accounts
+    class MockMCP:
+        def call_tool(self, name, args):
+            if name == "execute_datasource_query":
+                sql = args.get("queryInput", {}).get("sqlStatement", "")
+                if "MULTICLOUD_FOCUS_COST_AND_USAGE" in sql:
+                    csv_lines = ["month,provider,dimension,val"]
+                    for i in range(1, 26):
+                        acc_id = f"11112222{i:04d}"
+                        csv_lines.append(f"2026-08,AWS,{acc_id},{1000.0 + i * 50:.2f}")
+                        csv_lines.append(f"2026-09,AWS,{acc_id},{1100.0 + i * 60:.2f}")
+                    return {"content": [{"type": "text", "text": json.dumps({"csv": "\n".join(csv_lines)})}]}
+                elif "LOGICAL_ASSET_AWS_USAGE_ACCOUNT" in sql:
+                    csv_lines = ["id,amazon_name,name"]
+                    for i in range(1, 26):
+                        acc_id = f"11112222{i:04d}"
+                        csv_lines.append(f"{acc_id},AWS-Prod-{i},AWS-Prod-{i}")
+                    return {"content": [{"type": "text", "text": json.dumps({"csv": "\n".join(csv_lines)})}]}
+                elif "LOGICAL_ASSET_AZURE_SUBSCRIPTION" in sql:
+                    return {"content": [{"type": "text", "text": json.dumps({"csv": "id,name"})}]}
+                return {"content": [{"type": "text", "text": json.dumps({"csv": ""})}]}
+            elif name == "list_datasets":
+                return {"content": [{"type": "text", "text": json.dumps({"datasets": [{"name": "MULTICLOUD_FOCUS_COST_AND_USAGE"}]})}]}
+            return {"content": [{"type": "text", "text": "{}"}]}
+
+    client = AIClient("direct", {}, [])
+    resp = client.generate([{"role": "user", "content": q}], MockMCP())
+
+    # Verify header & routing
+    assert "CloudHealth Spend Analysis: Multi-Cloud Cost by Account Name / ID — August 2026 vs September 2026" in resp
+
+    # Verify Top 15 accounts present in table
+    assert "AWS-Prod-25 (111122220025)" in resp
+    assert "AWS-Prod-11 (111122220011)" in resp
+
+    # Verify grouping of remaining accounts into 'Other Accounts'
+    assert "Other Accounts (10 accounts consolidated)" in resp
+    assert "$12,750.00" in resp  # other m1 sum
+    assert "$14,300.00" in resp  # other m2 sum
+
+    # Verify total row reconciliation
+    assert "$41,250.00" in resp
+    assert "$47,000.00" in resp
+
+    # Verify accordion for full fleet
+    assert "<details>" in resp
+    assert "<summary><b>🔍 Show all 25 accounts</b> (click to expand full list)</summary>" in resp
+
+    # Verify side-by-side grouped horizontal bar chart
+    assert "```chart" in resp
+    assert '"horizontal": true' in resp
+    assert '"label": "August 2026"' in resp
+    assert '"label": "September 2026"' in resp
+
+
+def test_multicloud_13month_mom_waterfall_routing():
+    """
+    Verify queries asking for multi-cloud monthly cost over 13 months with MoM comparison:
+    1. Do not hallucinate ServiceName dimension or service breakdown.
+    2. Detect waterfall chart type by default for MoM comparison progression.
+    3. Generate the 13-month Month | Cost | MoM Change table and waterfall chart.
+    """
+    import json
+    from cleo_agent import AIClient
+    from cleo_query import _deterministic_understand_query
+    from cleo_charts import _detect_chart_type
+
+    q = "give me the last 13 month cost data for all clouds by MoM comparison"
+
+    # 1. Deterministic intent parser check
+    info = _deterministic_understand_query([{"role": "user", "content": q}])
+    assert info["intent"] == "fetch_data"
+    assert info["cloud"] == "all"
+    assert info.get("target_dimension") is None
+    assert "service" not in (info.get("breakdowns") or [])
+
+    # 2. Chart type detection
+    assert _detect_chart_type(q.lower()) == "waterfall"
+
+    # 3. End-to-end execution
+    class MockMCP:
+        def __init__(self):
+            self.executed_queries = []
+
+        def call_tool(self, name, args):
+            self.executed_queries.append((name, args))
+            if name == "execute_datasource_query":
+                rows = ["month,cost"]
+                dates = [
+                    "2026-10", "2026-09", "2026-08", "2026-07", "2026-06", "2026-05",
+                    "2026-04", "2026-03", "2026-02", "2026-01", "2025-12", "2025-11", "2025-10"
+                ]
+                for i, d in enumerate(dates):
+                    rows.append(f"{d},{100000.0 + (13 - i) * 1000}")
+                return {"content": [{"text": json.dumps({"csv": "\n".join(rows) + "\n"})}]}
+            return {"content": [{"text": "{}"}]}
+
+    client = AIClient("direct", {}, [])
+    mcp = MockMCP()
+    resp = client.generate([{"role": "user", "content": q}], mcp)
+
+    # Verify query
+    assert len(mcp.executed_queries) >= 1
+    ds_calls = [c for c in mcp.executed_queries if c[0] == "execute_datasource_query"]
+    assert len(ds_calls) == 1
+    call_args = ds_calls[0][1]
+    assert "MULTICLOUD_FOCUS_COST_AND_USAGE" in call_args["queryInput"]["sqlStatement"]
+    assert "SUM(EffectiveCost)" in call_args["queryInput"]["sqlStatement"]
+    assert call_args["queryInput"]["timeRange"]["last"] == 12
+
+    # Verify response structure
+    assert "CloudHealth Spend Analysis: Multi-Cloud Monthly Spend Breakdown" in resp
+    assert "| Month | Cost | MoM Change |" in resp
+    assert "2026-10" in resp
+    assert "2025-10" in resp
+    assert "```chart" in resp
+    assert '"type": "waterfall"' in resp
+    assert '"title": "Multi-Cloud Month-over-Month Spend Progression"' in resp
+
+
+def test_bulk_delete_sessions_api_and_ui():
+    """Verify that multiple chat sessions can be selected and cleared via API and UI."""
+    import cleo_server
+    from starlette.testclient import TestClient
+
+    # 1. Test Server Endpoint
+    client = TestClient(cleo_server.app)
+
+    orig_sessions = dict(cleo_server._sessions)
+    try:
+        # Seed test sessions in cleo_server._sessions
+        sid1 = "test-bulk-sid-1"
+        sid2 = "test-bulk-sid-2"
+        sid3 = "test-bulk-sid-3"
+        cleo_server._sessions[sid1] = {"title": "Chat 1", "messages": [{"role": "user", "content": "hello 1"}]}
+        cleo_server._sessions[sid2] = {"title": "Chat 2", "messages": [{"role": "user", "content": "hello 2"}]}
+        cleo_server._sessions[sid3] = {"title": "Chat 3", "messages": [{"role": "user", "content": "hello 3"}]}
+
+        # Call bulk-delete for sid1 and sid2
+        res = client.post("/api/sessions/bulk-delete", json={"session_ids": [sid1, sid2, "non-existent-sid"]})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "cleared"
+        assert sid1 in data["deleted"]
+        assert sid2 in data["deleted"]
+        assert sid1 not in cleo_server._sessions
+        assert sid2 not in cleo_server._sessions
+        assert sid3 in cleo_server._sessions
+    finally:
+        cleo_server._sessions.clear()
+        cleo_server._sessions.update(orig_sessions)
+        cleo_server._save_sessions()
+
+    # 2. Test UI markup and script handlers
+    import os
+    ui_path = os.path.join(os.path.dirname(__file__), "cleo_ui.html")
+    with open(ui_path, "r", encoding="utf-8") as f:
+        ui = f.read()
+
+    assert 'id="btn-toggle-select-mode"' in ui
+    assert 'onclick="toggleHistorySelectMode()"' in ui
+    assert 'id="history-batch-bar"' in ui
+    assert 'id="history-select-all-cb"' in ui
+    assert 'id="btn-delete-selected-histories"' in ui
+    assert 'onclick="deleteSelectedHistories()"' in ui
+
+    assert "function toggleHistorySelectMode(" in ui
+    assert "function enterHistorySelectMode(" in ui
+    assert "function exitHistorySelectMode(" in ui
+    assert "function handleHistoryItemClick(" in ui
+    assert "function handleHistoryCheckboxClick(" in ui
+    assert "function toggleHistoryItemSelection(" in ui
+    assert "function toggleSelectAllHistories(" in ui
+    assert "function updateHistoryBatchUI(" in ui
+    assert "function deleteSelectedHistories(" in ui
+    assert "/api/sessions/bulk-delete" in ui
 

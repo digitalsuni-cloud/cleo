@@ -358,7 +358,7 @@ from cleo_agent import (
     normalize_ollama_url, get_ollama_opener,
     MLX_MODELS, get_installed_mlx_models, call_mlx_generate, unload_mlx_models, estimate_token_count,
     crawl_and_cache_all_datasource_metadata, split_thinking_and_response,
-    detect_system_info
+    detect_system_info, get_cached_datasource_metadata, CURATED_DATASET_SPECS
 )
 
 def unload_ollama_models(model_name: Optional[str] = None):
@@ -523,7 +523,7 @@ _mcp: Optional[MCPClient] = None
 _ai:  Optional[AIClient]  = None
 _tools: list[dict]     = []
 
-SESSIONS_CACHE_FILE = os.path.expanduser("~/.cleo/sessions.json")
+SESSIONS_CACHE_FILE = os.environ.get("CLEO_SESSIONS_FILE", os.path.expanduser("~/.cleo/sessions.json"))
 MAX_SAVED_SESSIONS = 100
 
 def _generate_chat_title(prompt: str) -> str:
@@ -613,9 +613,10 @@ def _normalize_session(sid: str, sdata: any) -> dict:
     }
 
 def _load_sessions() -> dict:
-    if os.path.exists(SESSIONS_CACHE_FILE):
+    sessions_file = os.environ.get("CLEO_SESSIONS_FILE", SESSIONS_CACHE_FILE)
+    if os.path.exists(sessions_file):
         try:
-            with open(SESSIONS_CACHE_FILE, "r") as f:
+            with open(sessions_file, "r") as f:
                 raw = json.load(f)
                 if isinstance(raw, dict):
                     normalized = {}
@@ -639,8 +640,8 @@ def _load_sessions() -> dict:
                     res = dict(sorted_items[:MAX_SAVED_SESSIONS])
                     if needs_save:
                         try:
-                            os.makedirs(os.path.dirname(SESSIONS_CACHE_FILE), exist_ok=True)
-                            with open(SESSIONS_CACHE_FILE, "w") as f_out:
+                            os.makedirs(os.path.dirname(sessions_file), exist_ok=True)
+                            with open(sessions_file, "w") as f_out:
                                 json.dump(res, f_out, indent=2)
                         except Exception as e:
                             logger.debug(f"Could not auto-save updated GUID sessions: {e}")
@@ -651,8 +652,9 @@ def _load_sessions() -> dict:
 
 def _save_sessions():
     global _sessions
+    sessions_file = os.environ.get("CLEO_SESSIONS_FILE", SESSIONS_CACHE_FILE)
     try:
-        os.makedirs(os.path.dirname(SESSIONS_CACHE_FILE), exist_ok=True)
+        os.makedirs(os.path.dirname(sessions_file), exist_ok=True)
         sorted_items = sorted(
             _sessions.items(),
             key=lambda item: item[1].get("updated_at", "") if isinstance(item[1], dict) else "",
@@ -660,7 +662,7 @@ def _save_sessions():
         )
         if len(sorted_items) > MAX_SAVED_SESSIONS:
             _sessions = dict(sorted_items[:MAX_SAVED_SESSIONS])
-        with open(SESSIONS_CACHE_FILE, "w") as f:
+        with open(sessions_file, "w") as f:
             json.dump(_sessions, f, indent=2)
     except Exception as e:
         logger.warning(f"Could not save sessions cache: {e}")
@@ -1813,6 +1815,138 @@ async def mcp_endpoint(request: Request):
 def get_tools():
     return {"tools": _tools}
 
+@app.get("/api/datasets")
+def get_available_datasets():
+    """
+    Returns the list of available CloudHealth standard and custom datasets,
+    prioritized by curated FinOps relevance and categorized by cloud provider / domain.
+    """
+    metadata_map = get_cached_datasource_metadata() or {}
+    datasets = []
+
+    curated_order = [
+        "MULTICLOUD_FOCUS_COST_AND_USAGE",
+        "AWS_COST_HISTORY",
+        "AZURE_COST_HISTORY",
+        "GCP_COST_HISTORY",
+        "AZURE_COST_USAGE",
+        "AWS_CUR",
+        "MULTICLOUD_AI_COST_AND_USAGE",
+        "AWS_COST_HISTORY_DRILLDOWN",
+        "AZURE_COST_HISTORY_DRILLDOWN",
+        "UNIFIED_AI_TOKENOMICS",
+        "MULTICLOUD_COMMITMENT_SAVINGS",
+        "MULTICLOUD_OPERATIONAL_EMISSIONS",
+        "K8S_CONTAINERS_USAGE",
+        "AZURE_K8S_COST",
+        "AWS_DATA_TRANSFER_COST_AND_USAGE",
+        "CLOUDHEALTH_CONSUMPTION_BREAKDOWN",
+        "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+        "WASTE_OPPORTUNITY",
+    ]
+
+    ordered_keys = [k for k in curated_order if k in metadata_map] + sorted([k for k in metadata_map.keys() if k not in curated_order])
+
+    for k in ordered_keys:
+        ds = metadata_map.get(k) or {}
+        cols = ds.get("columns", [])
+        spec = CURATED_DATASET_SPECS.get(k, {})
+        display_name = ds.get("displayName") or spec.get("displayName") or k
+
+        if "AWS" in k or k == "AWS_CUR":
+            cat = "AWS"
+        elif "AZURE" in k:
+            cat = "Azure"
+        elif "GCP" in k:
+            cat = "Google Cloud"
+        elif any(w in k for w in ("AI", "TOKEN", "LLM", "OPENAI", "ANTHROPIC")):
+            cat = "AI & Foundation Models"
+        elif "K8S" in k or "CONTAINER" in k:
+            cat = "Kubernetes"
+        elif any(w in k for w in ("FOCUS", "MULTICLOUD", "SAVINGS", "EMISSIONS", "RIGHTSIZING", "WASTE", "CONSUMPTION")):
+            cat = "Multi-Cloud & Governance"
+        else:
+            cat = "General Telemetry"
+
+        dim_count = sum(1 for c in cols if str(c.get("type", "")).upper() == "DIMENSION")
+        meas_count = sum(1 for c in cols if str(c.get("type", "")).upper() == "MEASURE")
+
+        datasets.append({
+            "name": k,
+            "displayName": display_name,
+            "category": cat,
+            "columns_count": len(cols),
+            "dimensions_count": dim_count,
+            "measures_count": meas_count,
+            "description": ds.get("description") or spec.get("description", "")
+        })
+
+    return {"datasets": datasets, "total": len(datasets)}
+
+@app.get("/api/datasets/{dataset_name:path}")
+def get_dataset_columns(dataset_name: str):
+    """
+    Returns the columns and schema details for the requested dataset.
+    """
+    metadata_map = get_cached_datasource_metadata() or {}
+    ds = metadata_map.get(dataset_name)
+    if not ds:
+        for k, v in metadata_map.items():
+            if k.lower() == dataset_name.lower():
+                ds = v
+                dataset_name = k
+                break
+
+    if not ds and _mcp:
+        try:
+            res = _mcp.call_tool("get_datasource_metadata", {"dataset": dataset_name})
+            txt = (res.get("content") or [{}])[0].get("text", "")
+            if txt:
+                parsed = json.loads(txt)
+                if isinstance(parsed, dict) and "columns" in parsed:
+                    ds = parsed
+        except Exception as e:
+            logger.warning(f"Error fetching metadata for {dataset_name}: {e}")
+
+    if not ds:
+        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_name}' not found")
+
+    spec = CURATED_DATASET_SPECS.get(dataset_name, {})
+    cols = ds.get("columns", [])
+
+    enriched_cols = []
+    for c in cols:
+        c_name = c.get("name", "")
+        c_disp = c.get("displayName") or c_name
+        c_type = str(c.get("type", "")).upper() or "DIMENSION"
+        c_dtype = str(c.get("dataType", "")).upper() or "STRING"
+
+        is_perspective = "persp" in c_name.lower()
+        is_tag = any(t in c_name.lower() for t in ("tag", "vtag"))
+        is_priority = (c_name in spec.get("priority_dimensions", []) or c_name in spec.get("priority_measures", []))
+
+        enriched_cols.append({
+            "name": c_name,
+            "displayName": c_disp,
+            "type": c_type,
+            "dataType": c_dtype,
+            "description": c.get("description") or "",
+            "is_perspective": is_perspective,
+            "is_tag": is_tag,
+            "is_priority": is_priority
+        })
+
+    # Sort: Measures first (priority measures at top), then Dimensions (priority dimensions at top)
+    enriched_cols.sort(key=lambda x: (x["type"] != "MEASURE", not x["is_priority"], x["name"].lower()))
+
+    return {
+        "name": dataset_name,
+        "displayName": ds.get("displayName") or spec.get("displayName") or dataset_name,
+        "description": ds.get("description") or spec.get("description", ""),
+        "columns_count": len(enriched_cols),
+        "columns": enriched_cols
+    }
+
 _customers_cache: dict = {"token": None, "data": []}
 
 @app.get("/api/customers")
@@ -2682,6 +2816,21 @@ def clear_all_sessions():
     _save_sessions()
     return {"status": "cleared", "total": 0}
 
+class BulkDeleteSessionsRequest(BaseModel):
+    session_ids: list[str]
+
+@app.post("/api/sessions/bulk-delete")
+@app.delete("/api/sessions/bulk-delete")
+def bulk_delete_sessions(req: BulkDeleteSessionsRequest):
+    deleted = []
+    for sid in req.session_ids:
+        if sid in _sessions:
+            del _sessions[sid]
+            deleted.append(sid)
+    if deleted:
+        _save_sessions()
+    return {"status": "cleared", "deleted": deleted, "count": len(deleted), "remaining": len(_sessions)}
+
 # ── Self-Learning Memory ───────────────────────────────────────────────────────
 
 from cleo_memory import get_memory as _get_memory
@@ -2704,29 +2853,38 @@ def submit_feedback(req: FeedbackRequest):
     asst_msgs  = [m for m in msgs if m.get("role") == "assistant"]
     
     idx = req.message_index
-    # Resolve user message index with fallback for 1-based or out-of-bounds indices
-    if 0 <= idx < len(user_msgs):
-        user_query = user_msgs[idx].get("content", "")
-    elif idx - 1 >= 0 and idx - 1 < len(user_msgs):
-        user_query = user_msgs[idx - 1].get("content", "")
-    elif user_msgs:
-        user_query = user_msgs[-1].get("content", "")
-    else:
-        user_query = ""
+    target_asst = None
+    user_query = ""
 
-    # Resolve assistant reply index similarly
-    if 0 <= idx < len(asst_msgs):
-        target_asst = asst_msgs[idx]
-        asst_reply = target_asst.get("content", "")
-    elif idx - 1 >= 0 and idx - 1 < len(asst_msgs):
-        target_asst = asst_msgs[idx - 1]
-        asst_reply = target_asst.get("content", "")
-    elif asst_msgs:
-        target_asst = asst_msgs[-1]
-        asst_reply = target_asst.get("content", "")
-    else:
-        target_asst = None
-        asst_reply = ""
+    # Priority 1: Match directly by message index in session messages list
+    if 0 <= idx < len(msgs):
+        if msgs[idx].get("role") == "assistant":
+            target_asst = msgs[idx]
+            u_before = [m for m in msgs[:idx] if m.get("role") == "user"]
+            if u_before:
+                user_query = u_before[-1].get("content", "")
+        elif msgs[idx].get("role") == "user":
+            user_query = msgs[idx].get("content", "")
+            a_after = [m for m in msgs[idx:] if m.get("role") == "assistant"]
+            if a_after:
+                target_asst = a_after[0]
+
+    # Priority 2: Fallback to user_msgs and asst_msgs lists
+    if not user_query:
+        if 0 <= idx < len(user_msgs):
+            user_query = user_msgs[idx].get("content", "")
+        elif idx - 1 >= 0 and idx - 1 < len(user_msgs):
+            user_query = user_msgs[idx - 1].get("content", "")
+        elif user_msgs:
+            user_query = user_msgs[-1].get("content", "")
+
+    if target_asst is None:
+        if 0 <= idx < len(asst_msgs):
+            target_asst = asst_msgs[idx]
+        elif idx - 1 >= 0 and idx - 1 < len(asst_msgs):
+            target_asst = asst_msgs[idx - 1]
+        elif asst_msgs:
+            target_asst = asst_msgs[-1]
 
     # Annotate message in active session state
     if target_asst is not None:
@@ -2734,19 +2892,31 @@ def submit_feedback(req: FeedbackRequest):
         if req.correction:
             target_asst["correction"] = req.correction
 
+    asst_reply = target_asst.get("content", "") if target_asst else ""
+
     if req.rating == "good":
         summary = asst_reply[:200].replace("\n", " ").strip()
         if user_query:
             mem.record_good_pattern(user_query, summary)
+        _save_sessions()
         return {"status": "recorded", "type": "good_pattern"}
     elif req.rating == "bad":
         if req.correction:
             mem.record_correction(user_query, req.correction)
+            from cleo_query import extract_target_dataset
+            explicit_ds = extract_target_dataset(req.correction)
+            if explicit_ds and user_query:
+                mem.record_rule(
+                    f"When asked '{user_query}', query data from {explicit_ds} dataset.",
+                    search_keywords=f"{user_query} {explicit_ds} dataset"
+                )
+            _save_sessions()
             return {"status": "recorded", "type": "correction"}
         else:
             # Standalone thumbs-down: log negative feedback so the model/agent avoids repeating this response
             summary = asst_reply[:200].replace("\n", " ").strip()
             mem.record_negative_feedback(user_query, summary)
+            _save_sessions()
             return {"status": "recorded", "type": "negative_feedback"}
 
     return {"status": "ignored"}
@@ -3087,6 +3257,119 @@ def serve_gui(session_id: Optional[str] = None):
         return HTMLResponse(content=content)
     return HTMLResponse(content="<h1>Cleo UI template not found</h1>", status_code=500)
 
+def _activate_existing_browser_tab(port: int) -> bool:
+    """If a browser tab is already open with Cleo (on macOS), activate that tab and bring it to front.
+    Returns True if an existing tab was found and activated, False otherwise.
+    """
+    if sys.platform != "darwin":
+        return False
+
+    port_str = str(port)
+    try:
+        proc_check = subprocess.run(
+            ["osascript", "-e", 'tell application "System Events" to get name of every application process'],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if proc_check.returncode != 0:
+            return False
+        running_apps = proc_check.stdout
+    except Exception:
+        return False
+
+    # 1. Chromium-based browsers: Chrome, Brave, Edge, Chromium
+    chromium_apps = [
+        ("Google Chrome", "Google Chrome"),
+        ("Brave Browser", "Brave Browser"),
+        ("Microsoft Edge", "Microsoft Edge"),
+        ("Chromium", "Chromium"),
+    ]
+    for app_name, display_name in chromium_apps:
+        if app_name not in running_apps:
+            continue
+        script = f'''
+        tell application "{app_name}"
+            repeat with w in windows
+                set tabIdx to 0
+                repeat with t in tabs of w
+                    set tabIdx to tabIdx + 1
+                    set u to (URL of t) as text
+                    if u contains "127.0.0.1:{port_str}" or u contains "localhost:{port_str}" then
+                        set active tab index of w to tabIdx
+                        set index of w to 1
+                        activate
+                        return "activated"
+                    end if
+                end repeat
+            end repeat
+        end tell
+        return "not_found"
+        '''
+        try:
+            res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=3)
+            if res.returncode == 0 and "activated" in res.stdout:
+                logger.info(f"Activated existing Cleo tab in {display_name}")
+                return True
+        except Exception as e:
+            logger.debug(f"Could not check {app_name} tabs: {e}")
+
+    # 2. Safari
+    if "Safari" in running_apps:
+        safari_script = f'''
+        tell application "Safari"
+            repeat with w in windows
+                repeat with t in tabs of w
+                    set u to (URL of t) as text
+                    if u contains "127.0.0.1:{port_str}" or u contains "localhost:{port_str}" then
+                        set current tab of w to t
+                        set index of w to 1
+                        activate
+                        return "activated"
+                    end if
+                end repeat
+            end repeat
+        end tell
+        return "not_found"
+        '''
+        try:
+            res = subprocess.run(["osascript", "-e", safari_script], capture_output=True, text=True, timeout=3)
+            if res.returncode == 0 and "activated" in res.stdout:
+                logger.info("Activated existing Cleo tab in Safari")
+                return True
+        except Exception as e:
+            logger.debug(f"Could not check Safari tabs: {e}")
+
+    # 3. Arc
+    if "Arc" in running_apps:
+        arc_script = f'''
+        tell application "Arc"
+            repeat with w in windows
+                tell w
+                    repeat with t in tabs
+                        set u to (URL of t) as text
+                        if u contains "127.0.0.1:{port_str}" or u contains "localhost:{port_str}" then
+                            select t
+                            tell application "Arc" to activate
+                            return "activated"
+                        end if
+                    end repeat
+                end tell
+            end repeat
+        end tell
+        return "not_found"
+        '''
+        try:
+            res = subprocess.run(["osascript", "-e", arc_script], capture_output=True, text=True, timeout=3)
+            if res.returncode == 0 and "activated" in res.stdout:
+                logger.info("Activated existing Cleo tab in Arc")
+                return True
+        except Exception as e:
+            logger.debug(f"Could not check Arc tabs: {e}")
+
+    return False
+
+
 if __name__ == "__main__":
     _auto_update_on_startup()
 
@@ -3111,8 +3394,9 @@ if __name__ == "__main__":
         def _open_browser_bg():
             if _wait_for_server_ready(_port):
                 try:
-                    import webbrowser
-                    webbrowser.open(f"http://127.0.0.1:{_port}")
+                    if not _activate_existing_browser_tab(_port):
+                        import webbrowser
+                        webbrowser.open(f"http://127.0.0.1:{_port}")
                 except Exception:
                     pass
             else:

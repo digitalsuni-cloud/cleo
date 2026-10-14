@@ -211,6 +211,18 @@ CURATED_DATASET_SPECS = {
         "priority_measures": ["ActualCostInBillingCurrency", "ActualCostInUsd", "CostInBillingCurrency", "Quantity", "AmortizedCostInUsd"],
         "priority_dimensions": ["ResourceName", "ResourceId", "ResourceGroup", "SubscriptionName", "SubscriptionId", "MeterCategory", "MeterSubCategory", "MeterName", "AdditionalInfo", "MetricType", "ConsumedService", "timeInterval_Month"]
     },
+    "AWS_COST_HISTORY": {
+        "priority_measures": ["effective_cost", "cost_amortized", "OriginalAwsCost", "usage_quantity", "AwsCost"],
+        "priority_dimensions": ["Perspective_Kubernetes Teams", "Perspective_Project", "Perspective_Cost Center", "Perspective_Environment", "Perspective_Resource Group", "Perspective_Line of Business", "Perspective_AI Owner", "Perspective_Owner", "Perspective_AI Department", "Perspective_Function", "VirtualTags_CHPS Test Environment", "VirtualTags_AI Owner", "AWS-Account", "AWS-Service-Category"]
+    },
+    "AZURE_COST_HISTORY": {
+        "priority_measures": ["effective_cost", "Cost", "amortized_cost", "NormalizedEffectiveCost", "OriginalCost"],
+        "priority_dimensions": ["Perspective_Kubernetes Teams", "Perspective_Project", "Perspective_Cost Center", "Perspective_Environment", "Perspective_Resource Group", "Perspective_Line of Business", "Perspective_AI Owner", "Perspective_Owner", "Perspective_AI Department", "Perspective_Function", "VirtualTags_CHPS Test Environment", "VirtualTags_AI Owner", "Azure-Accounts", "Azure-Services"]
+    },
+    "GCP_COST_HISTORY": {
+        "priority_measures": ["GcpCost", "DeltaGcpCost", "PreviousGcpCost"],
+        "priority_dimensions": ["Perspective_Kubernetes Teams", "Perspective_Project", "Perspective_Cost Center", "Perspective_Environment", "Perspective_Resource Group", "Perspective_Line of Business", "Perspective_AI Owner", "Perspective_Owner", "Perspective_AI Department", "Perspective_Function", "VirtualTags_CHPS Test Environment", "VirtualTags_AI Owner", "GCP-Billing-Account", "GCE-Project"]
+    },
     "MULTICLOUD_FOCUS_COST_AND_USAGE": {
         "priority_measures": ["EffectiveCost", "BilledCost", "PricingQuantity"],
         "priority_dimensions": ["provider", "ServiceName", "ServiceCategory", "ServiceSubcategory", "PricingCategory", "RegionId", "SubaccountId", "BillingAccountId", "ResourceId", "PricingUnit", "Month"]
@@ -362,6 +374,204 @@ if os.path.exists(DATASOURCES_METADATA_CACHE_FILE):
     except Exception:
         pass
 
+def find_dataset_for_specific_column(requested_dim_or_col: str, cloud: Optional[str] = None) -> Optional[dict]:
+    """
+    Checks if a requested column name or dimension is available in specialized or native cloud datasets
+    (e.g., AZURE_COST_USAGE, AWS_CUR, AWS_COST_HISTORY, AZURE_COST_HISTORY) rather than defaulting to FOCUS datasets.
+    
+    Returns a dict with:
+      - 'dataset': dataset name (e.g. 'AZURE_COST_USAGE', 'AWS_COST_HISTORY')
+      - 'column': exact matched column name (e.g. 'MeterSubCategory', 'Perspective_Kubernetes Teams')
+      - 'displayName': display label
+      - 'metric': default cost measure (e.g. 'ActualCostInUsd', 'effective_cost')
+      - 'time_col': time column name (e.g. 'timeInterval_Month', 'Month')
+      - 'provider_col': provider column (e.g. 'Provider', 'provider')
+      - 'cloud': cloud provider (e.g. 'azure', 'aws', 'gcp')
+      - 'is_perspective': True if column is a CloudHealth Perspective
+      - 'is_tag': True if column is a resource or virtual tag
+    or None if no match is found.
+    """
+    if not requested_dim_or_col:
+        return None
+
+    raw_str = str(requested_dim_or_col).strip()
+    norm = re.sub(r"[_\s\-]+", "", raw_str).lower()
+    low_str = raw_str.lower()
+
+    # Check COLUMN_SYNONYMS to resolve canonical column name if known
+    canonical_col = None
+    for col_key, col_info in COLUMN_SYNONYMS.items():
+        if norm == re.sub(r"[_\s\-]+", "", col_key).lower():
+            canonical_col = col_key
+            break
+        syns = [s.lower() for s in col_info.get("synonyms", [])]
+        if any(norm == re.sub(r"[_\s\-]+", "", s).lower() or low_str == s or s in low_str for s in syns):
+            canonical_col = col_key
+            break
+
+    target_candidate = canonical_col or raw_str
+    target_norm = re.sub(r"[_\s\-]+", "", target_candidate).lower()
+
+    # Priority datasets based on cloud
+    c_lower = (cloud or "").lower()
+    cloud_pref = []
+    if c_lower in ("azure", "microsoft"):
+        cloud_pref = ["AZURE_COST_HISTORY", "AZURE_COST_HISTORY_DRILLDOWN", "AZURE_COST_USAGE", "AZURE_FOCUS_COST_AND_USAGE"]
+    elif c_lower in ("aws", "amazon"):
+        cloud_pref = ["AWS_COST_HISTORY", "AWS_COST_HISTORY_DRILLDOWN", "AWS_CUR", "AWS_FOCUS_COST_AND_USAGE"]
+    elif c_lower in ("gcp", "google"):
+        cloud_pref = ["GCP_COST_HISTORY", "GCP_FOCUS_COST_AND_USAGE"]
+    else:
+        cloud_pref = ["AWS_COST_HISTORY", "AZURE_COST_HISTORY", "GCP_COST_HISTORY", "AWS_COST_HISTORY_DRILLDOWN", "AZURE_COST_HISTORY_DRILLDOWN"]
+
+    # Native/specialized datasets are checked BEFORE generic multi-cloud FOCUS datasets
+    dataset_search_order = cloud_pref + [
+        "AZURE_COST_USAGE",
+        "AWS_CUR",
+        "MULTICLOUD_AI_COST_AND_USAGE",
+        "UNIFIED_AI_TOKENOMICS",
+        "MULTICLOUD_COMMITMENT_SAVINGS",
+        "MULTICLOUD_OPERATIONAL_EMISSIONS",
+        "MULTICLOUD_FOCUS_COST_AND_USAGE",
+    ]
+    seen = set()
+    datasets = [d for d in dataset_search_order if not (d in seen or seen.add(d))]
+
+    cache = get_cached_datasource_metadata() or {}
+    all_datasets = datasets + [d for d in cache.keys() if d not in datasets]
+
+    is_tag = bool(re.search(r'\btags?\b', low_str)) or low_str.startswith(('tag_', 'virtualtags_', 'vtag_'))
+    concept = re.sub(r'^(?:perspective|tag|tags|virtualtags)[\s_\[\]:]*', '', low_str).strip(' _[]')
+    concept_norm = re.sub(r'[^a-z0-9]', '', concept)
+
+    matched_col = None
+    matched_display = None
+    matched_ds = None
+    is_persp_found = False
+    is_tag_found = False
+    generic_tag_col = None
+    generic_tag_ds = None
+
+    # Step 1: Check for Perspective vs Tag dimensional matches
+    for ds_name in (all_datasets if is_tag else datasets):
+        ds_info = cache.get(ds_name) or {}
+        cols = ds_info.get("columns", [])
+        spec = CURATED_DATASET_SPECS.get(ds_name, {})
+        spec_dims = spec.get("priority_dimensions", [])
+        all_col_candidates = []
+        for c in cols:
+            c_name = c.get("name", "")
+            c_disp = c.get("displayName", c_name)
+            all_col_candidates.append((c_name, c_disp))
+        for d in spec_dims:
+            if not any(c[0] == d for c in all_col_candidates):
+                all_col_candidates.append((d, d))
+
+        for c_name, c_disp in all_col_candidates:
+            c_low = c_name.lower()
+            if is_tag:
+                if any(k in c_low for k in ["tag", "vtag"]):
+                    c_clean = re.sub(r'^(?:virtualtags|customertags|cloudtags|azure_tags|tags|tag|vtag)[\s_\[\]:]*', '', c_low).strip(' _[]')
+                    c_norm = re.sub(r'[^a-z0-9]', '', c_clean)
+                    if c_norm == concept_norm or c_norm == concept_norm + 's' or (concept_norm and concept_norm in c_norm):
+                        matched_col = c_name
+                        matched_display = c_disp
+                        matched_ds = ds_name
+                        is_tag_found = True
+                        break
+                    elif c_low in ("tags", "customertags", "azure_tags", "cloudtags") and not generic_tag_col:
+                        generic_tag_col = c_name
+                        generic_tag_ds = ds_name
+            else:
+                if "persp" in c_low:
+                    c_clean = re.sub(r'^(?:perspective)[\s_\[\]:]*', '', c_low).strip(' _[]')
+                    c_norm = re.sub(r'[^a-z0-9]', '', c_clean)
+                    if c_norm == concept_norm or c_norm == concept_norm + 's' or (concept_norm and concept_norm in c_norm):
+                        matched_col = c_name
+                        matched_display = c_disp
+                        matched_ds = ds_name
+                        is_persp_found = True
+                        break
+        if matched_col:
+            break
+
+    if not matched_col and is_tag and generic_tag_col:
+        matched_col = generic_tag_col
+        matched_display = generic_tag_col
+        matched_ds = generic_tag_ds
+        is_tag_found = True
+
+    # Step 2: Standard exact match fallback if not matched by special perspective/tag logic
+    if not matched_col:
+        for ds_name in datasets:
+            ds_info = cache.get(ds_name) or {}
+            cols = ds_info.get("columns", [])
+            spec = CURATED_DATASET_SPECS.get(ds_name, {})
+            spec_dims = spec.get("priority_dimensions", [])
+            for c in cols:
+                c_name = c.get("name", "")
+                c_disp = c.get("displayName", c_name)
+                c_norm = re.sub(r"[_\s\-]+", "", c_name).lower()
+                c_disp_norm = re.sub(r"[_\s\-]+", "", c_disp).lower()
+                if target_norm in (c_norm, c_disp_norm) or norm in (c_norm, c_disp_norm):
+                    matched_col = c_name
+                    matched_display = c_disp
+                    matched_ds = ds_name
+                    break
+            if not matched_col:
+                for d in spec_dims:
+                    d_norm = re.sub(r"[_\s\-]+", "", d).lower()
+                    if target_norm == d_norm or norm == d_norm:
+                        matched_col = d
+                        matched_display = d
+                        matched_ds = ds_name
+                        break
+            if matched_col:
+                break
+
+    if matched_col:
+        ds_name = matched_ds
+        ds_info = cache.get(ds_name) or {}
+        cols = ds_info.get("columns", [])
+        spec = CURATED_DATASET_SPECS.get(ds_name, {})
+        spec_dims = spec.get("priority_dimensions", [])
+
+        time_col = "timeInterval_Month" if (any(c.get("name") == "timeInterval_Month" for c in cols) or "timeInterval_Month" in spec_dims) else "Month"
+        prov_col = "Provider" if (any(c.get("name") == "Provider" for c in cols) or "Provider" in spec_dims) else "provider"
+
+        if ds_name in ("AWS_COST_HISTORY", "AWS_COST_HISTORY_DRILLDOWN"):
+            metric_col = "effective_cost"
+        elif ds_name in ("AZURE_COST_HISTORY", "AZURE_COST_HISTORY_DRILLDOWN"):
+            metric_col = "effective_cost"
+        elif ds_name == "GCP_COST_HISTORY":
+            metric_col = "GcpCost"
+        elif ds_name == "AZURE_COST_USAGE":
+            metric_col = "ActualCostInUsd"
+        elif ds_name == "AWS_CUR":
+            metric_col = "lineItem_UnblendedCost"
+        elif "FOCUS" in ds_name or "AI" in ds_name:
+            metric_col = "EffectiveCost"
+        elif ds_name == "MULTICLOUD_COMMITMENT_SAVINGS":
+            metric_col = "Commitment_Savings"
+        elif ds_name == "MULTICLOUD_OPERATIONAL_EMISSIONS":
+            metric_col = "Carbon"
+        else:
+            metric_col = "ActualCostInUsd"
+
+        return {
+            "dataset": ds_name,
+            "column": matched_col,
+            "displayName": matched_display or matched_col,
+            "metric": metric_col,
+            "time_col": time_col,
+            "provider_col": prov_col,
+            "cloud": "azure" if "AZURE" in ds_name else ("aws" if "AWS" in ds_name else ("gcp" if "GCP" in ds_name else None)),
+            "is_perspective": is_persp_found,
+            "is_tag": is_tag_found
+        }
+
+    return None
+
 def build_llm_schema_context() -> str:
     """
     Builds a concise, high-density catalog of CloudHealth datasets and key columns
@@ -412,7 +622,10 @@ def build_llm_schema_context() -> str:
     lines.append("- SubaccountId / lineItem_UsageAccountId / SubscriptionId: 'account', 'subaccount', 'member account', 'linked account', 'usage account', 'project', 'subscription'")
     lines.append("- BillingAccountId / bill_PayerAccountId: 'billing account', 'payer account', 'master account', 'root account', 'management account'")
     lines.append("- ServiceCategory / MeterCategory: 'service category', 'macro service', 'service family', 'domain', 'category'")
-    lines.append("- ServiceSubcategory / MeterSubCategory: 'service subcategory', 'granular service', 'sub service', 'meter category', 'meter subcategory', 'component'")
+    lines.append("- ServiceSubcategory / MeterSubCategory: 'service subcategory', 'granular service', 'sub service', 'component'")
+    lines.append("- MeterSubCategory: 'meter sub category', 'meter subcategory', 'azure meter subcategory' (analyzed via AZURE_COST_USAGE)")
+    lines.append("- MeterCategory: 'meter category', 'azure meter category' (analyzed via AZURE_COST_USAGE)")
+    lines.append("- MeterName: 'meter name', 'azure meter name' (analyzed via AZURE_COST_USAGE)")
     lines.append("- PricingCategory: 'pricing category', 'pricing model', 'commercial model', 'contract type', 'pricing type'")
     lines.append("- LeaseType (pricing_term & lineItem_LineItemType): 'lease type', 'purchase option', 'capacity type', 'ondemand', 'reservation', 'savings plan', 'spot'")
     lines.append("- product_storageClass: 'storage class', 'storage tier', 's3 tier', 'lifecycle tier', 'hot/cool/archive'")
@@ -687,14 +900,15 @@ def build_system_prompt(tools: list[dict], engine_label: str = None) -> str:
         "     * AWS S3: Default dimension is 'product_storageClass' (synonyms: storage class, storage tier, s3 tier, lifecycle tier: Standard, Intelligent-Tiering, Glacier). Quantity = SUM(lineItem_UsageAmount) (GB-Mo).\n"
         "     * AWS EBS: Default dimension is 'product_volumeType' (synonyms: volume type, ebs type, disk type, gp2, gp3, io1, io2). Quantity = SUM(lineItem_UsageAmount) (GB-Mo).\n"
         "     * AWS Lambda: Default dimension is 'lineItem_Operation' (synonyms: operation, api operation, action, invocations, duration). Quantity = SUM(lineItem_UsageAmount).\n"
-        "     * Azure Compute/Storage/DB: Default dimension is 'ServiceSubcategory' from AZURE_FOCUS_COST_AND_USAGE (synonyms: meter category, meter subcategory, sub service). Quantity = SUM(PricingQuantity) (Hours / GB-Mo), COUNT(DISTINCT ResourceId).\n"
+        "     * Azure Compute/Storage/DB: Default dimension is 'ServiceSubcategory' from AZURE_FOCUS_COST_AND_USAGE (for generic granular sub-services). When the user explicitly asks for specific column names like 'Meter Sub Category', 'Meter Category', or 'Meter Name', check and query AZURE_COST_USAGE with MeterSubCategory / MeterCategory / MeterName. Quantity = SUM(PricingQuantity) (Hours / GB-Mo), COUNT(DISTINCT ResourceId).\n"
         "     * GCP Compute/Storage/DB: Default dimension is 'ServiceSubcategory' from GCP_FOCUS_COST_AND_USAGE. Quantity = SUM(PricingQuantity) (Hours / GB-Mo), COUNT(DISTINCT ResourceId).\n"
         "   - NEVER substitute Region or Location for service-specific dimensions unless the user explicitly used words like 'region', 'regional', or 'location'.\n"
         "7. COMPREHENSIVE MULTI-CLOUD & FOCUS 1.2 DIMENSIONAL TAXONOMY (NATURAL LANGUAGE SYNONYMS):\n"
         "   - SubaccountId: Member / Usage Account ID or Project Name across AWS, Azure, GCP. In MULTICLOUD_FOCUS_COST_AND_USAGE, represents AWS Account IDs, GCP Projects, or Azure Subscriptions. Synonyms: 'account', 'subaccount', 'sub-account', 'member account', 'linked account', 'usage account', 'project', 'subscription', 'cloud account', 'account id', 'account name'. Use for 'by account', 'account names', 'per project', 'by subscription', 'member accounts'.\n"
         "   - BillingAccountId: Root / Payer / Management Account ID. In MULTICLOUD_FOCUS_COST_AND_USAGE, represents the parent billing container. Synonyms: 'billing account', 'payer account', 'master account', 'root account', 'management account', 'billing container', 'parent account', 'payer id', 'billing account id'. Use for 'by billing account', 'payer account', 'master account', 'root account'.\n"
         "   - ServiceCategory: FOCUS 1.2 Macro category (Compute, Storage, Database, Networking, AI & Machine Learning, Management & Governance). Synonyms: 'service category', 'macro service', 'service family', 'category', 'domain', 'service domain', 'cloud domain'. Use for 'by category', 'service category', 'by domain', 'service family'.\n"
-        "   - ServiceSubcategory: FOCUS 1.2 Granular category (Virtual Machines, Object Storage, Relational Database, NAT Gateway). Synonyms: 'service subcategory', 'granular service', 'sub service', 'sub-service', 'subcategory', 'meter category', 'meter subcategory', 'service component'. Use for 'by subcategory', 'service subcategory', 'by sub service', 'granular services'.\n"
+        "   - ServiceSubcategory: FOCUS 1.2 Granular category (Virtual Machines, Object Storage, Relational Database, NAT Gateway). Synonyms: 'service subcategory', 'granular service', 'sub service', 'sub-service', 'subcategory', 'service component'. Use for 'by subcategory', 'service subcategory', 'by sub service', 'granular services'.\n"
+        "   - MeterSubCategory / MeterCategory / MeterName: Azure native meter dimensions in AZURE_COST_USAGE. When the user explicitly requests 'Meter Sub Category', 'Meter Category', or 'Meter Name', DO NOT query FOCUS dataset; query AZURE_COST_USAGE instead.\n"
         "   - PricingCategory: FOCUS commercial model (On-Demand, Committed, Dynamic, Spot). Synonyms: 'pricing category', 'pricing model', 'commercial model', 'contract type', 'pricing type', 'commitment type', 'charge type'. Use for 'by pricing category', 'pricing model', 'commercial model'.\n"
         "   - LeaseType / Purchase Option: Lease model analyzed via AWS_CUR (pricing_term & lineItem_LineItemType). Synonyms: 'lease type', 'purchase option', 'capacity type', 'ondemand', 'reservation', 'savings plan', 'spot'.\n"
         "   - RegionId: Geographic cloud location code (e.g. us-east-1, eastus). Synonyms: 'region', 'location', 'cloud region', 'datacenter', 'data center', 'geography', 'geo', 'zone'. Use for 'by region', 'regional breakdown', 'by location', 'by datacenter'.\n"
@@ -825,11 +1039,12 @@ class AIClient:
         if not hasattr(self, "_account_name_cache"):
             self._account_name_cache = {}
         if not self._account_name_cache and mcp:
+            # 1. AWS Usage Accounts
             try:
                 res = mcp.call_tool("execute_datasource_query", {
                     "queryInput": {
                         "sqlStatement": "SELECT CloudId AS id, AmazonName AS amazon_name, Name AS name FROM LOGICAL_ASSET_AWS_USAGE_ACCOUNT",
-                        "limit": 100
+                        "limit": 2000
                     },
                     "requestInfo": {"sourceType": "API", "caller": "mcp"}
                 })
@@ -842,7 +1057,28 @@ class AIClient:
                         if acc_id and acc_name:
                             self._account_name_cache[acc_id] = acc_name
             except Exception as e:
-                logger.debug(f"[Account Name Lookup] {e}")
+                logger.debug(f"[Account Name Lookup AWS] {e}")
+
+            # 2. Azure Subscriptions
+            try:
+                res = mcp.call_tool("execute_datasource_query", {
+                    "queryInput": {
+                        "sqlStatement": "SELECT SubscriptionId AS id, Name AS name FROM LOGICAL_ASSET_AZURE_SUBSCRIPTION",
+                        "limit": 2000
+                    },
+                    "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                })
+                content_txt = res.get("content", [{}])[0].get("text", "")
+                raw_csv = json.loads(content_txt).get("csv", "")
+                if raw_csv:
+                    for r in csv.DictReader(io.StringIO(raw_csv)):
+                        sub_id = (r.get("id") or "").strip()
+                        sub_name = (r.get("name") or "").strip()
+                        if sub_id and sub_name:
+                            self._account_name_cache[sub_id] = sub_name
+            except Exception as e:
+                logger.debug(f"[Account Name Lookup Azure] {e}")
+
         return getattr(self, "_account_name_cache", {})
 
     def _call_active_llm(self, messages: list[dict], stats_out: dict = None, on_token = None) -> tuple[str, str]:
@@ -1076,7 +1312,7 @@ class AIClient:
             "CRITICAL RULES:\n"
             "1. GENERAL FINOPS ADVISORY (NO DATA FETCH): Set intent to 'general_finops_advisory' and is_new_data_fetch to false if the user asks a conceptual FinOps, architectural, best practice, or educational question (e.g. 'What is the difference between EffectiveCost and BilledCost?', 'How to optimize NAT gateways?', 'Explain FinOps framework phases', 'Savings Plans vs RIs', 'What is FOCUS?', 'FinOps best practices on egress'). These questions DO NOT require pulling data from CloudHealth.\n"
             "2. DATA FETCH & COMPARISON: Set intent to 'fetch_data' and is_new_data_fetch to true if the user asks to see, show, fetch, get, compare, analyze, or chart their costs, usage, spend, run-rate, or data from cloud providers (AWS, Azure, GCP), even if their prompt has typos (e.g. 'shw me jne 2026 cst for awz').\n"
-            "   - CRITICAL: Any request asking to compare costs, calculate projected costs, compare previous month with current month, or asking about a specific customer / organization / tenant (e.g. 'ABC Coffee Mugs', 'Lundbeck') MUST ALWAYS be classified as 'fetch_data' with is_new_data_fetch=true! NEVER classify customer spend queries or cost comparisons as general advisory.\n"
+            "   - CRITICAL: Any request asking to compare costs, calculate projected costs, compare previous month with current month, or asking about a specific customer / organization / tenant (e.g. 'ABC Coffee Mugs', 'Customer A') MUST ALWAYS be classified as 'fetch_data' with is_new_data_fetch=true! NEVER classify customer spend queries or cost comparisons as general advisory.\n"
             "3. TYPO CORRECTION & NORMALIZATION: In corrected_query, fix all spelling mistakes, typos in services (e.g. 'awz' -> 'AWS', 'rds' -> 'RDS', 'jne' -> 'June'), and clarify the sentence. In 'cloud', normalize to 'aws', 'azure', 'gcp', or 'all'. In 'service', normalize to canonical names like 'AmazonEC2', 'AmazonRDS', 'AmazonS3', 'Support', 'AWSSupportEnterprise'. For cloud support charges across clouds or general support, set 'service': 'Support', 'services': ['Support'], target_dimension='ServiceName'. For AWS support specifically, use 'AWSSupportEnterprise'. NEVER invent hallucinated service names like 'AmazonSupport' or 'GCPSupport'. If multiple services are requested (e.g. 'RDS and S3'), list them all in 'services': ['AmazonRDS', 'AmazonS3'] and set 'service': 'AmazonRDS'. If the query asks about AI models, LLMs, foundation models, token costs, or multi-cloud AI spend, set 'service' to null (do NOT set AmazonRDS or other infrastructure services unless explicitly named). In 'target_ym', extract normalized 'YYYY-MM' (e.g. '2026-06').\n"
             "4. METRIC TYPE (QUANTITY VS COST): Set metric_type='quantity' if user asks for volume, count, operational capacity, or physical usage (e.g. 'number of ec2 instances', 'how many vms', 'instance hours', 'storage used in GB', 'how many invocations', 'count of databases'). Set metric_type='cost' (default) if user asks for financial spend, dollars, cost, or bill.\n"
             "5. MULTI-CLOUD BEST DEFAULT DIMENSIONS: When grouping dimension is not specified by the user:\n"
@@ -1090,7 +1326,7 @@ class AIClient:
             "   - For AI / Foundation Models: target_dimension='Model', breakdowns=['model'] (set service=null unless Bedrock is explicitly named)\n"
             "   - For Multi-Cloud / Top Services: target_dimension='ServiceName', breakdowns=['service']\n"
             "   - CRITICAL: NEVER default to 'region' or 'location' unless the user explicitly requested region or location! Only include 'region' if user explicitly asked to break down by region.\n"
-            "6. REFORMAT ONLY: is_new_data_fetch is false and intent is 'reformat_previous' ONLY when the user asks purely to re-render the immediately preceding table into a different chart format (e.g. 'show that as a pie chart', 'give me the waterfall chart for the above') without requesting new data or changing service.\n"
+            "6. REFORMAT ONLY: is_new_data_fetch is false and intent is 'reformat_previous' ONLY when the user asks purely to re-render the immediately preceding table into a different chart format (e.g. 'show that as a pie chart', 'give me the waterfall chart for the above') without requesting new data or changing service. NEVER classify requests to break down, group, slice, or split by a new dimension (e.g. 'break down the above data again by Account Names', 'group by account', 'split by instance type') as reformat_previous! Those require new data or new aggregation, so set intent='fetch_data' and is_new_data_fetch=true.\n"
             "7. UNSUPPORTED CAPABILITY: Set intent to 'unsupported_capability' and is_new_data_fetch to false if user asks for tenant users, user accounts, IAM users, passwords, or identity management in the tenant (CloudHealth MCP does not manage user accounts).\n"
             "8. NEGATIVE CONSTRAINTS & FORMATTING: Set 'include_chart'=false if the user says 'without chart', 'no chart', 'without mom chart', 'table only', 'only table', 'skip chart', 'do not chart'. Set 'include_mom'=false if user says 'without mom', 'no mom', 'without mom chart', 'without variance', 'no variance'. Default both to true when not excluded. When user asks for a waterfall chart, variance chart, or bridge chart (including typos like 'waterfal'), set chart_types=['waterfall'].\n"
             "9. CONVERSATIONAL CONTINUATION & COMPARATIVE QUERIES ('similar data for X', 'same for Y', 'what about Z'):\n"
@@ -1098,10 +1334,14 @@ class AIClient:
             "   Inherit the exact query intent (e.g. if prior was a 2027 forecast, current is ALSO a 2027 forecast; if prior was a 6-month monthly trend, current is a 6-month trend), timeframe, and breakdown structure, updating ONLY the entity specified by the user (e.g. cloud provider changed to Azure).\n"
             "   In 'corrected_query', write out the fully expanded contextual question (e.g. 'forecast for Azure cost for FY 2027 and break it down monthly').\n"
             "10. COMPREHENSIVE MULTI-CLOUD & FOCUS 1.2 DIMENSIONAL TAXONOMY (NATURAL LANGUAGE SYNONYMS):\n"
-            "   - Account / Projects: 'account', 'accounts', 'account names', 'projects', 'subscriptions', 'subaccounts', 'member accounts', 'linked accounts', 'usage accounts', 'cloud account' -> target_dimension='SubaccountId', breakdowns=['account']. NEVER classify 'account' or 'account names' as 'customer'! 'customer' is strictly for MSP channel clients / organizations.\n"
+            "   - Perspective Dimensions (CloudHealth FlexReports): When the user asks about 'team', 'teams', 'project', 'projects', 'cost center', 'environment', 'line of business', 'department', 'owner', 'function', or explicitly mentions 'perspective', map to the corresponding Perspective column (e.g. 'team' -> target_dimension='Perspective_Kubernetes Teams', breakdowns=['perspective_team']; 'project' -> target_dimension='Perspective_Project', breakdowns=['perspective_project']; 'cost center' -> target_dimension='Perspective_Cost Center', breakdowns=['perspective_cost_center']; 'environment' -> target_dimension='Perspective_Environment', breakdowns=['perspective_environment']). Analyzed via AWS_COST_HISTORY, AZURE_COST_HISTORY, GCP_COST_HISTORY. NEVER map 'project' or 'team' to SubaccountId (Account Name / ID)!\n"
+            "   - Tags Dimensions: ONLY when the user specifically mentions 'tag', 'tags', 'tag team', 'tag teams', 'tag project', 'virtual tag', or 'tag <name>', map to the corresponding Tag column (e.g. 'tag teams' -> target_dimension='Tags', breakdowns=['tag_team']). Do NOT route to tag columns unless 'tag' is explicitly requested; use Perspective columns for team/project by default.\n"
+            "   - Account / Subaccounts: 'account', 'accounts', 'account names', 'subscriptions', 'subaccounts', 'member accounts', 'linked accounts', 'usage accounts', 'cloud account' -> target_dimension='SubaccountId', breakdowns=['account']. NEVER classify 'account' or 'account names' as 'customer'! 'customer' is strictly for MSP channel clients / organizations.\n"
             "   - Billing Account: 'billing account', 'payer account', 'master account', 'root account', 'management account', 'billing container', 'parent account' -> target_dimension='BillingAccountId', breakdowns=['billing_account'].\n"
-            "   - Service Category: 'service category', 'macro service', 'service family', 'category', 'domain', 'service domain', 'cloud domain' -> target_dimension='ServiceCategory', breakdowns=['service_category'].\n"
-            "   - Service Subcategory: 'service subcategory', 'granular service', 'sub service', 'sub-service', 'meter category', 'meter subcategory', 'service component' -> target_dimension='ServiceSubcategory', breakdowns=['service_subcategory'].\n"
+            "   - Service Subcategory: 'service subcategory', 'granular service', 'sub service', 'sub-service', 'service component' -> target_dimension='ServiceSubcategory', breakdowns=['service_subcategory'].\n"
+            "   - Meter Subcategory (Azure): 'meter sub category', 'meter subcategory', 'by meter subcategory', 'by meter sub category' -> target_dimension='MeterSubCategory', breakdowns=['meter_subcategory']. Query via AZURE_COST_USAGE.\n"
+            "   - Meter Category (Azure): 'meter category', 'by meter category' -> target_dimension='MeterCategory', breakdowns=['meter_category']. Query via AZURE_COST_USAGE.\n"
+            "   - Meter Name (Azure): 'meter name', 'by meter name' -> target_dimension='MeterName', breakdowns=['meter_name']. Query via AZURE_COST_USAGE.\n"
             "   - Pricing Category: 'pricing category', 'pricing model', 'commercial model', 'contract type', 'pricing type', 'commitment type', 'charge type' -> target_dimension='PricingCategory', breakdowns=['pricing_category'].\n"
             "   - Lease Type / Purchase Option: 'lease type', 'by lease', 'purchase option', 'capacity type', 'ondemand', 'reservation', 'savings plan', 'spot' -> target_dimension='LeaseType', breakdowns=['lease_type']. Analyzed via AWS_CUR & CloudHealth FlexReports.\n"
             "   - Storage Class / Tier: 'storage class', 'storage tier', 's3 tier', 's3 storage class', 'lifecycle tier' -> target_dimension='product_storageClass', breakdowns=['storage_class'].\n"
@@ -1156,12 +1396,16 @@ class AIClient:
                 logger.info(f"[LLM-First Intent Analysis] Parsed: {parsed}")
                 if "is_new_data_fetch" in parsed and "intent" in parsed:
                     bdowns = parsed.get("breakdowns") or det_info["breakdowns"]
-                    # Sanitize: account vs customer disambiguation
-                    is_account_trigger = any(w in low for w in [
-                        "by account", "per account", "account name", "account names", "account breakdown",
-                        "breakdown by account", "each account", "subaccount", "sub-account",
-                        "by project", "per project", "by subscription", "per subscription"
-                    ]) or any(b in ("account", "SubaccountId") for b in bdowns)
+                    is_account_trigger = (
+                        any(w in low for w in [
+                            "by account", "per account", "account name", "account names", "account breakdown",
+                            "breakdown by account", "each account", "for all accounts", "all accounts",
+                            "all account", "across all accounts", "by accounts", "per accounts",
+                            "for each account", "for accounts", "accounts", "account",
+                            "subaccount", "sub-account", "by subscription", "per subscription"
+                        ])
+                        and not any(w in low for w in ["storage account", "storage accounts", "user account", "user accounts", "service account"])
+                    ) or any(b in ("account", "SubaccountId") for b in bdowns)
                     if is_account_trigger:
                         bdowns = [b for b in bdowns if b != "customer"]
                         if "account" not in bdowns:
@@ -1193,12 +1437,16 @@ class AIClient:
                         parsed["is_new_data_fetch"] = True
 
                     # Sanitize: Lease Type / Purchase Option (On-Demand, RI, Savings Plan, Spot)
-                    is_lease_type_trigger = any(w in low for w in [
-                        "lease type", "leasetype", "by lease", "lease breakdown", "lease types",
-                        "purchase option", "purchase options", "purchase option breakdown", "by purchase option",
-                        "pricing model", "pricing models", "pricing model breakdown", "by pricing model",
-                        "capacity type", "by capacity type"
-                    ]) or (any(w in low for w in ["ondemand", "on-demand", "reservation", "savings plan", "savingsplan", "spot"]) and any(w in low for w in ["breakdown", "break down", "split", "by", "usage", "cost", "spend", "lease", "above"]))
+                    is_lease_type_trigger = (
+                        cont_ctx.get("prior_query_type") == "coverage_breakdown" or
+                        any(w in low for w in [
+                            "lease type", "leasetype", "by lease", "lease breakdown", "lease types",
+                            "purchase option", "purchase options", "purchase option breakdown", "by purchase option",
+                            "pricing model", "pricing models", "pricing model breakdown", "by pricing model",
+                            "capacity type", "by capacity type",
+                            "coverage type", "coveragetype", "by coverage", "coverage breakdown"
+                        ]) or (any(w in low for w in ["ondemand", "on-demand", "reservation", "savings plan", "savingsplan", "spot"]) and any(w in low for w in ["breakdown", "break down", "split", "by", "usage", "cost", "spend", "lease", "above"]))
+                    )
                     if is_lease_type_trigger:
                         if "lease_type" not in bdowns:
                             bdowns.append("lease_type")
@@ -1219,9 +1467,14 @@ class AIClient:
                             logger.info(f"[Sanitize] Cleared hallucinated service '{parsed.get('service')}' for AI models query")
                             parsed["service"] = None
 
-                    if parsed.get("service") == "AmazonRDS" and not any(w in low for w in ["rds", "database", "aurora", "relational", "postgres", "mysql"]) and not det_info.get("service"):
+                    if parsed.get("service") == "AmazonRDS" and not any(w in low for w in ["rds", "database", "aurora", "relational", "postgres", "mysql"]) and not det_info.get("service") and not (cont_ctx.get("is_continuation") and cont_ctx.get("new_service") == "AmazonRDS"):
                         logger.info(f"[Sanitize] Cleared unsupported AmazonRDS service not found in prompt or context")
                         parsed["service"] = None
+
+                    if not parsed.get("service") and cont_ctx.get("is_continuation") and cont_ctx.get("new_service"):
+                        parsed["service"] = cont_ctx.get("new_service")
+                    if not parsed.get("cloud") and cont_ctx.get("is_continuation") and cont_ctx.get("new_cloud"):
+                        parsed["cloud"] = cont_ctx.get("new_cloud")
 
                     inc_chart = bool(parsed.get("include_chart", det_info["include_chart"])) and not is_no_chart_requested(low)
                     inc_mom = bool(parsed.get("include_mom", det_info["include_mom"])) and not is_no_mom_requested(low)
@@ -1275,6 +1528,13 @@ class AIClient:
                     min_impact_val = parsed.get("min_impact") if parsed.get("min_impact") is not None else (det_info.get("min_impact") or (thresh_from_msg.get("min") if (parsed.get("intent") == "anomalies" or "impact" in low) else None))
                     max_impact_val = parsed.get("max_impact") if parsed.get("max_impact") is not None else (det_info.get("max_impact") or (thresh_from_msg.get("max") if (parsed.get("intent") == "anomalies" or "impact" in low) else None))
 
+                    res_target_dim = parsed.get("target_dimension") or det_info.get("target_dimension")
+                    is_pure_time_trend = any(w in low for w in ["month", "monthly", "trend", "mom", "progression", "over time", "history", "by month"]) and not any(w in low for w in ["service", "services", "product", "top", "subcategory", "meter"])
+                    if is_pure_time_trend:
+                        if res_target_dim in ("ServiceName", "service", "ServiceSubcategory", "service_subcategory"):
+                            res_target_dim = None
+                        bdowns = [b for b in bdowns if b not in ("service", "services", "service_subcategory")]
+
                     return {
                         "intent": parsed.get("intent", det_info["intent"]),
                         "cloud": parsed.get("cloud") or det_info.get("cloud"),
@@ -1282,7 +1542,7 @@ class AIClient:
                         "services": parsed.get("services") or det_info.get("services") or ([parsed.get("service")] if parsed.get("service") else []),
                         "customer": parsed.get("customer") or det_info["customer"],
                         "metric_type": parsed.get("metric_type") or det_info.get("metric_type", "cost"),
-                        "target_dimension": parsed.get("target_dimension") or det_info.get("target_dimension"),
+                        "target_dimension": res_target_dim,
                         "target_ym": parsed.get("target_ym") or det_info.get("target_ym"),
                         "timeframe_months": parsed.get("timeframe_months") or det_info["timeframe_months"],
                         "timeframe_days": parsed.get("timeframe_days") or det_info["timeframe_days"],
@@ -1311,6 +1571,13 @@ class AIClient:
                     }
         except Exception as ex:
             logger.warning(f"[LLM-First Intent Analysis] Fallback to deterministic: {ex}")
+
+        is_pure_time_trend = any(w in low for w in ["month", "monthly", "trend", "mom", "progression", "over time", "history", "by month"]) and not any(w in low for w in ["service", "services", "product", "top", "subcategory", "meter"])
+        if is_pure_time_trend:
+            if det_info.get("target_dimension") in ("ServiceName", "service", "ServiceSubcategory", "service_subcategory"):
+                det_info["target_dimension"] = None
+            if det_info.get("breakdowns"):
+                det_info["breakdowns"] = [b for b in det_info["breakdowns"] if b not in ("service", "services", "service_subcategory")]
 
         return det_info
 
@@ -1960,12 +2227,22 @@ class AIClient:
         # but it comes from an LLM call (or a deterministic fallback) that can misjudge it, so
         # also require the CURRENT message itself not contain an explicit new timeframe or
         # provider — a redundant, always-on safety net independent of that classification.
+        is_explicit_above = any(w in low for w in ["above data", "above table", "previous data", "previous table", "for the above", "for above", "the above"])
+        is_breakdown_requested = not is_explicit_above and (any(w in low for w in [
+            "break down", "breakdown", "by account", "by subaccount", "by region", "by service",
+            "by instance", "by type", "by category", "by meter", "group by", "slice by", "per account",
+            "account name", "account names"
+        ]) or bool(intent_info.get("breakdowns")) or (intent_info.get("target_dimension") not in (None, "")))
+
         has_new_scope_signal = bool(re.search(r'\d+\s*(months?|days?|years?|weeks?)\b', low)) or any(
             w in low for w in ["azure", "aws", "gcp", "last month", "this month", "last year",
                                 "this year", "last quarter", "this quarter", "q1", "q2", "q3", "q4"]
         )
-        is_pure_reformat = (intent_info.get("intent") == "reformat_previous" or is_chart_transform) and not intent_info.get("is_new_data_fetch") and not has_new_scope_signal
-        is_hist_qa = (intent_info.get("intent") == "history_qa" or is_data_qa_followup) and not intent_info.get("is_new_data_fetch") and not has_new_scope_signal
+        is_pure_reformat = (intent_info.get("intent") == "reformat_previous" or is_chart_transform) and not intent_info.get("is_new_data_fetch") and not has_new_scope_signal and not is_breakdown_requested
+        is_hist_qa = (intent_info.get("intent") == "history_qa" or is_data_qa_followup) and not intent_info.get("is_new_data_fetch") and not has_new_scope_signal and not is_breakdown_requested
+        if is_breakdown_requested and not intent_info.get("is_new_data_fetch"):
+            intent_info["is_new_data_fetch"] = True
+            intent_info["intent"] = "fetch_data"
 
         if (is_pure_reformat or is_hist_qa) and prior_assistant_msgs and not intent_info.get("is_new_data_fetch"):
             parsed_hist = None
@@ -2759,14 +3036,16 @@ class AIClient:
                 and not is_future_forecast
                 and not is_ai_models_query
                 and not (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") in ("top_services", "service_breakdown", "multi_service"))
-                and not any(b in ("service", "service_category", "service_subcategory") for b in (intent_info.get("breakdowns") or []))
+                and not any(b in ("service", "service_category", "service_subcategory", "account", "billing_account", "region", "resource") for b in (intent_info.get("breakdowns") or []))
+                and not intent_info.get("target_dimension")
                 and not bool(re.search(r'\btop\s+(?:[\w-]+\s+)?services?\b', low))
                 and not any(w in low for w in [
                     "by service", "service level", "each service", "top services", "services across",
                     "service category", "service spend", "by product", "services by",
                     "service breakdown", "services breakdown", "breakdown by service",
                     "breakdown of service", "breakdown of services", "service-level", "per service",
-                    "by account", "per account", "by category", "by subcategory", "by pricing",
+                    "by account", "per account", "by accounts", "per accounts", "all accounts", "all account", "for all accounts", "across all accounts", "each account",
+                    "by category", "by subcategory", "by pricing",
                     "by billing account", "by model", "by resource", "by region", "by modality",
                     "by execution type", "by provider", "by hardware", "by token",
                     "account breakdown", "category breakdown", "model breakdown", "region breakdown"
@@ -2777,7 +3056,7 @@ class AIClient:
                         "monthly cost", "monthly spend", "monthly trend", "month trend", "3-month", "3 month", "3 months",
                         "month-over-month", "month over month", "mom variance", "mom change", "mom cost", "mom spend", "mom trend",
                         "waterfall", "trend over time", "spend over time", "cost over time",
-                        "last 3 months", "last 6 months", "last 12 months", "trailing months"
+                        "last 3 months", "last 6 months", "last 12 months", "last 13 months", "13 month", "13 months", "trailing months"
                     ])
                     or bool(re.search(r'\b(?:mom|dod|yoy)\b', low))
                     or bool(re.search(r'\b\d{1,2}\s*[- ]?months?\b', low))
@@ -5669,7 +5948,12 @@ class AIClient:
                     "coverage type", "coveragetype", "by coverage", "coverage breakdown", "coverage types", "commitment coverage", "coverage"
                 ]) or
                 (any(w in low for w in ["ondemand", "on-demand", "reservation", "savings plan", "savingsplan", "spot"]) and any(w in low for w in ["breakdown", "break down", "split", "by", "usage", "cost", "spend", "lease", "above", "count"])) or
-                (any(w in low for w in ["azure", "microsoft"]) and any(w in low for w in ["vm", "virtual machine", "vms"]) and any(w in low for w in ["instance type", "instancetype", "vm size", "vm type", "by instance", "by size", "by vm size"]))
+                (any(w in low for w in ["azure", "microsoft"]) and any(w in low for w in ["vm", "virtual machine", "vms"]) and any(w in low for w in ["instance type", "instancetype", "vm size", "vm type", "by instance", "by size", "by vm size"])) or
+                (
+                    is_followup and
+                    any(w in (prior_assistant_msgs[-1].lower() if prior_assistant_msgs else "") for w in ["coverage type", "lease type", "commitment breakdown"]) and
+                    (any(w in low for w in ["break down", "breakdown", "split", "by account", "account name", "account names", "subaccount", "accounts", "by instance"]) or bool(intent_info.get("breakdowns")))
+                )
             ) and not is_ai_models_query and not any(w in low for w in ["recommendation", "anomal", "spike"])
 
             if is_lease_type_request and mcp:
@@ -5693,11 +5977,20 @@ class AIClient:
                     or "instance_type" in (intent_info.get("breakdowns") or [])
                     or intent_info.get("target_dimension") == "ServiceSubcategory"
                 )
+                has_account = (
+                    any(w in low for w in ["account", "accounts", "account name", "account names", "subaccount", "subaccounts", "linked account", "usage account", "by account", "per account", "by subaccount"])
+                    or "account" in (intent_info.get("breakdowns") or [])
+                    or intent_info.get("target_dimension") in ("SubaccountId", "BillingAccountId", "lineItem_UsageAccountId", "SubscriptionName")
+                )
                 has_count = (
                     is_unique_instance_request(low)
                     or intent_info.get("metric_type") == "quantity"
                     or any(w in low for w in ["count", "number of", "how many", "unique", "distinct", "fleet", "vm count", "vms count", "instance count", "instances count"])
                 )
+                if not has_count and is_followup:
+                    hist_blob = " ".join(prior_cost_low.split() + [a.lower() for a in prior_assistant_msgs[-2:]])
+                    if any(w in hist_blob for w in ["instance count", "instances count", "active database instances", "active instances", "vm count"]):
+                        has_count = True
 
                 # 3. Target Service Resolution
                 target_svc = intent_info.get("service")
@@ -5802,7 +6095,25 @@ class AIClient:
                 # 6. Build SQL Query per Provider & Breakdowns
                 if cloud_target == "azure":
                     month_filter = f" AND timeInterval_Month = '{target_ym}'" if (is_specific and target_ym) else ""
-                    if has_it:
+                    if has_account and has_it:
+                        sql_stmt = (
+                            f"SELECT timeInterval_Month AS month, PricingModel AS pricing_category, MeterSubCategory AS meter_subcategory, MeterName AS meter_name, SubscriptionName AS account_id, "
+                            f"COUNT(DISTINCT ResourceId) AS vm_count, SUM(CostInBillingCurrency) AS cost, SUM(Quantity) AS usage_amount "
+                            f"FROM {source_ds} "
+                            f"{where_svc}{month_filter} "
+                            f"GROUP BY timeInterval_Month, PricingModel, MeterSubCategory, MeterName, SubscriptionName "
+                            f"ORDER BY month ASC, cost DESC"
+                        )
+                    elif has_account:
+                        sql_stmt = (
+                            f"SELECT timeInterval_Month AS month, PricingModel AS pricing_category, SubscriptionName AS account_id, "
+                            f"COUNT(DISTINCT ResourceId) AS vm_count, SUM(CostInBillingCurrency) AS cost, SUM(Quantity) AS usage_amount "
+                            f"FROM {source_ds} "
+                            f"{where_svc}{month_filter} "
+                            f"GROUP BY timeInterval_Month, PricingModel, SubscriptionName "
+                            f"ORDER BY month ASC, cost DESC"
+                        )
+                    elif has_it:
                         sql_stmt = (
                             f"SELECT timeInterval_Month AS month, PricingModel AS pricing_category, MeterSubCategory AS meter_subcategory, MeterName AS meter_name, "
                             f"COUNT(DISTINCT ResourceId) AS vm_count, SUM(CostInBillingCurrency) AS cost, SUM(Quantity) AS usage_amount "
@@ -5822,7 +6133,25 @@ class AIClient:
                         )
                 elif cloud_target == "gcp":
                     month_filter = f" AND Month = '{target_ym}'" if (is_specific and target_ym) else ""
-                    if has_it:
+                    if has_account and has_it:
+                        sql_stmt = (
+                            f"SELECT Month AS month, PricingCategory AS pricing_category, ServiceSubcategory AS instance_type, SubaccountId AS account_id, "
+                            f"COUNT(DISTINCT ResourceId) AS vm_count, SUM(EffectiveCost) AS cost, SUM(PricingQuantity) AS usage_amount "
+                            f"FROM {source_ds} "
+                            f"{where_svc}{month_filter} "
+                            f"GROUP BY Month, PricingCategory, ServiceSubcategory, SubaccountId "
+                            f"ORDER BY month ASC, cost DESC"
+                        )
+                    elif has_account:
+                        sql_stmt = (
+                            f"SELECT Month AS month, PricingCategory AS pricing_category, SubaccountId AS account_id, "
+                            f"COUNT(DISTINCT ResourceId) AS vm_count, SUM(EffectiveCost) AS cost, SUM(PricingQuantity) AS usage_amount "
+                            f"FROM {source_ds} "
+                            f"{where_svc}{month_filter} "
+                            f"GROUP BY Month, PricingCategory, SubaccountId "
+                            f"ORDER BY month ASC, cost DESC"
+                        )
+                    elif has_it:
                         sql_stmt = (
                             f"SELECT Month AS month, PricingCategory AS pricing_category, ServiceSubcategory AS instance_type, "
                             f"COUNT(DISTINCT ResourceId) AS vm_count, SUM(EffectiveCost) AS cost, SUM(PricingQuantity) AS usage_amount "
@@ -5842,7 +6171,25 @@ class AIClient:
                         )
                 else:
                     month_filter = f" AND timeInterval_Month = '{target_ym}'" if (is_specific and target_ym) else ""
-                    if has_it:
+                    if has_account and has_it:
+                        sql_stmt = (
+                            f"SELECT timeInterval_Month AS month, pricing_term AS pricing_term, lineItem_LineItemType AS item_type, product_instanceType AS instance_type, lineItem_UsageAccountId AS account_id, "
+                            f"COUNT(DISTINCT lineItem_ResourceId) AS vm_count, SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_amount "
+                            f"FROM {source_ds} "
+                            f"{where_svc}{month_filter} "
+                            f"GROUP BY timeInterval_Month, pricing_term, lineItem_LineItemType, product_instanceType, lineItem_UsageAccountId "
+                            f"ORDER BY month ASC, cost DESC"
+                        )
+                    elif has_account:
+                        sql_stmt = (
+                            f"SELECT timeInterval_Month AS month, pricing_term AS pricing_term, lineItem_LineItemType AS item_type, lineItem_UsageAccountId AS account_id, "
+                            f"COUNT(DISTINCT lineItem_ResourceId) AS vm_count, SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_amount "
+                            f"FROM {source_ds} "
+                            f"{where_svc}{month_filter} "
+                            f"GROUP BY timeInterval_Month, pricing_term, lineItem_LineItemType, lineItem_UsageAccountId "
+                            f"ORDER BY month ASC, cost DESC"
+                        )
+                    elif has_it:
                         sql_stmt = (
                             f"SELECT timeInterval_Month AS month, pricing_term AS pricing_term, lineItem_LineItemType AS item_type, product_instanceType AS instance_type, "
                             f"COUNT(DISTINCT lineItem_ResourceId) AS vm_count, SUM(lineItem_UnblendedCost) AS cost, SUM(lineItem_UsageAmount) AS usage_amount "
@@ -5865,7 +6212,7 @@ class AIClient:
                     "queryInput": {
                         "sqlStatement": sql_stmt,
                         "dataGranularity": "MONTHLY",
-                        "limit": 500 if has_it else 300,
+                        "limit": 500 if (has_it or has_account) else 300,
                         "timeRange": query_tr
                     },
                     "requestInfo": {"sourceType": "API", "caller": "mcp"}
@@ -5885,6 +6232,9 @@ class AIClient:
                 # Dual breakdown tracking
                 it_lease_data = defaultdict(lambda: {"cost": 0.0, "hours": 0.0, "vms": 0})
                 it_totals = defaultdict(lambda: {"cost": 0.0, "hours": 0.0, "vms": 0})
+                acc_map = self._get_account_name_map(mcp) if (has_account and cloud_target == "aws") else {}
+                account_lease_data = defaultdict(lambda: defaultdict(lambda: {"cost": 0.0, "hours": 0.0, "vms": 0}))
+                account_totals = defaultdict(lambda: {"cost": 0.0, "hours": 0.0, "vms": 0})
 
                 def _parse_lease_csv(raw_csv, prov, cur_ds):
                     for r in csv.DictReader(io.StringIO(raw_csv)):
@@ -5894,6 +6244,13 @@ class AIClient:
                         vms = int(float(r.get("vm_count") or r.get("instance_count") or r.get("ResourceId") or 0))
                         subcat = (r.get("meter_subcategory") or r.get("MeterSubCategory") or "").strip()
                         mname = (r.get("meter_name") or r.get("MeterName") or "").strip()
+                        acc_id = (r.get("account_id") or r.get("lineItem_UsageAccountId") or r.get("SubscriptionName") or r.get("SubaccountId") or "").strip()
+                        if has_account and acc_id:
+                            acc_clean_name = acc_map.get(acc_id, acc_id) if acc_map else acc_id
+                            acc_display = f"{acc_clean_name} ({acc_id})" if (acc_clean_name != acc_id and acc_id not in acc_clean_name) else acc_clean_name
+                        else:
+                            acc_display = ""
+
                         if subcat or mname:
                             if mname and mname.lower() not in ("compute hours", "hours", "usage hours", "hour", ""):
                                 if subcat and subcat.lower() not in mname.lower():
@@ -5968,6 +6325,13 @@ class AIClient:
                                 it_totals[it_name]["cost"] += c
                                 it_totals[it_name]["hours"] += u
                                 it_totals[it_name]["vms"] += vms
+                            if has_account and acc_display:
+                                account_lease_data[acc_display][ltype]["cost"] += c
+                                account_lease_data[acc_display][ltype]["hours"] += u
+                                account_lease_data[acc_display][ltype]["vms"] += vms
+                                account_totals[acc_display]["cost"] += c
+                                account_totals[acc_display]["hours"] += u
+                                account_totals[acc_display]["vms"] += vms
                         elif ltype in ("Upfront Fees / Commitments", "Discounts & Offsets"):
                             monthly_lease[m][ltype] += c
                         monthly_net[m] += c
@@ -6159,6 +6523,68 @@ class AIClient:
                             f"| | **Top {min(len(sorted_it_pairs), 20)} Configurations Total** | | **{sum(v['vms'] for _, v in sorted_it_pairs[:20]):,}** | | **${sum(v['cost'] for _, v in sorted_it_pairs[:20]):,.2f}** | **{(sum(v['cost'] for _, v in sorted_it_pairs[:20])/total_compute*100) if total_compute > 0 else 0.0:.1f}%** | |\n"
                         )
 
+                    # Dual Breakdown Table: Account x Lease Type
+                    acc_table = ""
+                    if has_account and account_lease_data:
+                        sorted_accs = sorted(
+                            account_totals.items(),
+                            key=lambda item: item[1]["cost"] if not has_count else (item[1]["vms"], item[1]["cost"]),
+                            reverse=True
+                        )
+                        acc_rows_md = []
+                        acc_col_name = "Azure Subscription" if cloud_target == "azure" else ("GCP Project / Subaccount" if cloud_target == "gcp" else "AWS Account Name")
+
+                        for idx, (acc_name, t_vals) in enumerate(sorted_accs, 1):
+                            a_cost = t_vals["cost"]
+                            a_vms = t_vals["vms"]
+                            if cloud_target == "azure":
+                                od_sp = account_lease_data[acc_name]["On-Demand (Pay-As-You-Go)"]["cost"]
+                                od_vm = account_lease_data[acc_name]["On-Demand (Pay-As-You-Go)"]["vms"]
+                                ri_sp = account_lease_data[acc_name]["Azure Reservations / Savings Plans"]["cost"]
+                                ri_vm = account_lease_data[acc_name]["Azure Reservations / Savings Plans"]["vms"]
+                                spot_sp = account_lease_data[acc_name]["Spot VMs"]["cost"]
+                                spot_vm = account_lease_data[acc_name]["Spot VMs"]["vms"]
+                                a_cov = ((ri_sp) / a_cost * 100) if a_cost > 0 else 0.0
+                                acc_rows_md.append(
+                                    f"| {idx} | **`{acc_name}`** | ${od_sp:,.2f} | {od_vm:,} | ${ri_sp:,.2f} | {ri_vm:,} | ${spot_sp:,.2f} | {spot_vm:,} | **${a_cost:,.2f}** | **{a_vms:,}** | **{a_cov:.1f}%** |"
+                                )
+                            elif cloud_target == "gcp":
+                                od_sp = account_lease_data[acc_name]["On-Demand"]["cost"]
+                                od_vm = account_lease_data[acc_name]["On-Demand"]["vms"]
+                                cud_sp = account_lease_data[acc_name]["Committed Use Discounts (CUD)"]["cost"]
+                                cud_vm = account_lease_data[acc_name]["Committed Use Discounts (CUD)"]["vms"]
+                                spot_sp = account_lease_data[acc_name]["Spot VMs"]["cost"]
+                                spot_vm = account_lease_data[acc_name]["Spot VMs"]["vms"]
+                                a_cov = ((cud_sp) / a_cost * 100) if a_cost > 0 else 0.0
+                                acc_rows_md.append(
+                                    f"| {idx} | **`{acc_name}`** | ${od_sp:,.2f} | {od_vm:,} | ${cud_sp:,.2f} | {cud_vm:,} | ${spot_sp:,.2f} | {spot_vm:,} | **${a_cost:,.2f}** | **{a_vms:,}** | **{a_cov:.1f}%** |"
+                                )
+                            else:
+                                od_sp = account_lease_data[acc_name]["On-Demand"]["cost"]
+                                od_vm = account_lease_data[acc_name]["On-Demand"]["vms"]
+                                ri_sp = account_lease_data[acc_name]["Reserved Instances (RI)"]["cost"]
+                                ri_vm = account_lease_data[acc_name]["Reserved Instances (RI)"]["vms"]
+                                sp_sp = account_lease_data[acc_name]["Savings Plans"]["cost"]
+                                sp_vm = account_lease_data[acc_name]["Savings Plans"]["vms"]
+                                a_cov = ((ri_sp + sp_sp) / a_cost * 100) if a_cost > 0 else 0.0
+                                acc_rows_md.append(
+                                    f"| {idx} | **`{acc_name}`** | ${od_sp:,.2f} | {od_vm:,} | ${ri_sp:,.2f} | {ri_vm:,} | ${sp_sp:,.2f} | {sp_vm:,} | **${a_cost:,.2f}** | **{a_vms:,}** | **{a_cov:.1f}%** |"
+                                )
+
+                        if cloud_target == "azure":
+                            th_acc = f"| # | {acc_col_name} | Pay-As-You-Go Spend | PAYG {res_plural} | Reservations & Savings | Res {res_plural} | Spot Spend | Spot {res_plural} | Total Spend | Total {res_plural} | Commitment Coverage (%) |\n|:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|\n"
+                        elif cloud_target == "gcp":
+                            th_acc = f"| # | {acc_col_name} | On-Demand Spend | On-Demand {res_plural} | Committed Use (CUD) | CUD {res_plural} | Spot Spend | Spot {res_plural} | Total Spend | Total {res_plural} | Commitment Coverage (%) |\n|:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|\n"
+                        else:
+                            th_acc = f"| # | {acc_col_name} | On-Demand Spend | On-Demand {res_plural} | Reserved (RI) Spend | RI {res_plural} | Savings Plans Spend | SP {res_plural} | Total Spend | Total {res_plural} | Commitment Coverage (%) |\n|:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|\n"
+
+                        acc_table = (
+                            f"\n#### 🏢 Account Breakdown by Coverage Type & Commitment Posture\n\n"
+                            f"{th_acc}"
+                            f"{chr(10).join(acc_rows_md)}\n"
+                            f"| | **All {len(sorted_accs)} Accounts Total** | | | | | | | **${total_compute:,.2f}** | **{total_vms:,}** | **{coverage_pct:.1f}%** |\n"
+                        )
+
                     trend_table = ""
                     if len(sorted_months) > 1:
                         m_rows = []
@@ -6239,16 +6665,61 @@ class AIClient:
                         )
 
                     chart_md = ""
-                    if not is_no_chart_requested(low) and chart_rows:
-                        chart_md = _build_time_category_stacked_chart(
-                            f"{svc_disp} Spend by Lease Type & Month — {cust_label}",
-                            chart_rows,
-                            time_col="month",
-                            cat_col="category",
-                            cost_col="cost",
-                            time_format="month",
-                            max_cats=6
-                        )
+                    if not is_no_chart_requested(low):
+                        if has_account and account_lease_data:
+                            if cloud_target == "azure":
+                                chart_labels = ["On-Demand (Pay-As-You-Go)", "Azure Reservations / Savings Plans", "Spot VMs"]
+                            elif cloud_target == "gcp":
+                                chart_labels = ["On-Demand", "Committed Use Discounts (CUD)", "Spot VMs"]
+                            else:
+                                chart_labels = ["On-Demand", "Reserved Instances (RI)", "Savings Plans"]
+                            chart_labels = [lt for lt in chart_labels if lease_totals.get(lt, 0.0) > 0 or vm_totals.get(lt, 0) > 0]
+                            if not chart_labels:
+                                chart_labels = ["On-Demand", "Reserved Instances (RI)", "Savings Plans"]
+
+                            sorted_accs = sorted(account_totals.items(), key=lambda x: x[1]["cost"], reverse=True)
+                            max_acc_datasets = 12
+                            top_accs = sorted_accs[:max_acc_datasets]
+                            other_accs = sorted_accs[max_acc_datasets:]
+
+                            datasets = []
+                            for acc_name, _ in top_accs:
+                                d = [round(account_lease_data[acc_name][lt]["cost"], 2) for lt in chart_labels]
+                                datasets.append({
+                                    "label": acc_name,
+                                    "data": d
+                                })
+
+                            if other_accs:
+                                other_d = [
+                                    round(sum(account_lease_data[o_name][lt]["cost"] for o_name, _ in other_accs), 2)
+                                    for lt in chart_labels
+                                ]
+                                if any(v > 0 for v in other_d):
+                                    datasets.append({
+                                        "label": "Other Accounts",
+                                        "data": other_d
+                                    })
+
+                            chart_md = _chart_block(
+                                chart_type="bar",
+                                title=f"{svc_disp} Coverage Breakdown by Account — {prov_title}",
+                                labels=chart_labels,
+                                datasets=datasets,
+                                value_label="Cost ($)",
+                                stacked=True,
+                                horizontal=False
+                            )
+                        elif chart_rows:
+                            chart_md = _build_time_category_stacked_chart(
+                                f"{svc_disp} Spend by Lease Type & Month — {cust_label}",
+                                chart_rows,
+                                time_col="month",
+                                cat_col="category",
+                                cost_col="cost",
+                                time_format="month",
+                                max_cats=6
+                            )
 
                     od_key = "On-Demand (Pay-As-You-Go)" if cloud_target == "azure" else "On-Demand"
                     od_spend = lease_totals.get(od_key, 0.0)
@@ -6288,7 +6759,7 @@ class AIClient:
 
                     vms_bullet = f"- **Total Active {res_plural}**: **{total_vms:,}**\n" if (show_vm_col and total_vms > 0) else ""
 
-                    hdr_title = "Coverage Type & Commitment Breakdown" if is_coverage_term else "Lease Type & Pricing Model Breakdown"
+                    hdr_title = "Coverage Type & Commitment Breakdown by Account" if has_account else ("Coverage Type & Commitment Breakdown" if is_coverage_term else "Lease Type & Pricing Model Breakdown")
                     return (
                         f"### 📋 CloudHealth {hdr_title}: {svc_disp} ({prov_title})\n\n"
                         f"Queried live from standard dataset **`{source_ds}`** for **{cust_label}**:\n\n"
@@ -6296,6 +6767,7 @@ class AIClient:
                         f"- **Total Analyzed Compute Spend**: **${total_compute:,.2f}**\n"
                         f"{vms_bullet}\n"
                         f"{summary_table}\n"
+                        f"{acc_table}\n"
                         f"{it_table}\n"
                         f"{vm_trend_table}\n"
                         f"{trend_table}\n"
@@ -8383,13 +8855,17 @@ class AIClient:
                     monthly_sql = "SELECT Month AS month, SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE WHERE provider = 'AWS' GROUP BY Month ORDER BY month DESC"
                     scope_name = "AWS"
 
-                query_limit = max(limit, months_needed)
+                target_tr = dict(time_range) if isinstance(time_range, dict) else {"qualifier": "MONTH"}
+                if req_months and req_months > 1:
+                    target_tr["last"] = min(req_months, 12)
+                    target_tr["qualifier"] = "MONTH"
+                query_limit = max(limit, months_needed, req_months or 0, 15)
                 res = mcp.call_tool("execute_datasource_query", {
                     "queryInput": {
                         "sqlStatement": monthly_sql,
                         "dataGranularity": "MONTHLY",
                         "limit": query_limit,
-                        "timeRange": time_range
+                        "timeRange": target_tr
                     },
                     "requestInfo": {"sourceType": "API", "caller": "mcp"}
                 })
@@ -8403,6 +8879,8 @@ class AIClient:
                         # reformatting/guessing at numbers.
                         mom_rows = list(csv.DictReader(io.StringIO(c_json["csv"])))
                         mom_rows.reverse()  # oldest first, to compute deltas chronologically
+                        if req_months and req_months > 1 and len(mom_rows) > req_months:
+                            mom_rows = mom_rows[-req_months:]
                         tbl_lines = []
                         prev_cost = None
                         for r in mom_rows:
@@ -8436,8 +8914,7 @@ class AIClient:
                         chart_type = _detect_chart_type(low) or "waterfall"
                         chart_md = ""
                         if chart_type:
-                            m_rows = list(csv.DictReader(io.StringIO(c_json["csv"])))
-                            m_rows.reverse()  # chronological
+                            m_rows = list(mom_rows)  # already chronological and sliced to target timeframe
                             t_format = "quarter" if "quarter" in low else "month"
                             if chart_type == "waterfall" and len(m_rows) >= 2:
                                 wf_labels = [_format_time_label(m_rows[0]["month"], t_format) + " (Base)"]
@@ -8528,10 +9005,11 @@ class AIClient:
             is_explicit_comparison = any(w in low for w in ["compare", "comparison", "variance", "mom"]) or (
                 any(w in low for w in ["previous month", "last month", "prior month"]) and any(w in low for w in ["current month", "projected", "projection", "forecast", "run rate", "runrate", "mtd"])
             )
-            is_multi_month = not is_explicit_comparison and (
-                bool(req_months and req_months > 2) or any(w in low for w in ["12 month", "12 months", "6 month", "6 months", "3 month", "3 months", "over time", "trend", "timeline", "history", "annual", "by month", "each month"])
-            )
-            is_svc_comparison = not is_multi_month and (
+            is_multi_month = bool(req_months and req_months > 2) or any(w in low for w in [
+                "13 month", "13 months", "12 month", "12 months", "6 month", "6 months",
+                "3 month", "3 months", "over time", "trend", "timeline", "history", "annual", "by month", "each month"
+            ])
+            is_svc_comparison = not is_multi_month and not is_monthly_trend_query and (
                 any(w in low for w in ["service level", "each service"]) or
                 ("service" in low and any(w in low for w in ["compare", "comparison", "project", "projected", "forecast", "previous month", "last month", "run rate", "runrate", "variance"])) or
                 (any(w in low for w in ["by service", "service cost", "services cost"]) and any(w in low for w in ["compare", "comparison", "project", "projected", "forecast", "mom", "variance", "projection"]))
@@ -9551,10 +10029,26 @@ class AIClient:
                 )
 
             # 3c-1. Service Cost Comparison (MoM)
-            elif any(w in low for w in ["compare", "comparison"]) and (requested_service or active_cloud or any(w in low for w in [
-                "service", "product", "ec2", "s3", "rds", "bigquery", "vertex", "blob",
-                "azure", "gcp", "aws", "cloud", "breakdown"
-            ])):
+            elif (
+                not is_multi_month
+                and not is_monthly_trend_query
+                and any(w in low for w in ["compare", "comparison"])
+                and not any(w in low for w in [
+                    "by account", "per account", "account name", "account names", "for all accounts", "all accounts",
+                    "accounts", "account", "subaccount", "sub-account", "subscription",
+                    "team", "teams", "project", "projects", "cost center", "environment",
+                    "region", "tag", "tags", "pricing category"
+                ])
+                and not (intent_info.get("target_dimension") and intent_info.get("target_dimension") not in ("ServiceCategory", "ServiceName"))
+                and not any(b in (intent_info.get("breakdowns") or []) for b in [
+                    "account", "billing_account", "perspective_team", "perspective_project",
+                    "perspective_cost_center", "perspective_environment", "tag_team", "tag_project",
+                    "region", "pricing_category", "ai_model"
+                ])
+                and (requested_service or any(w in low for w in [
+                    "service", "services", "product", "ec2", "s3", "rds", "bigquery", "vertex", "blob"
+                ]))
+            ):
                 prov_filter = ""
                 cloud_target = active_cloud
                 if not cloud_target:
@@ -9670,7 +10164,7 @@ class AIClient:
                 )
 
             # 3c. Multi-Cloud & Provider Service & Dimensional Spend Breakdown (AWS, Azure, GCP, AI)
-            elif not is_monthly_trend_query and (requested_service or active_cloud or (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") in ("top_services", "service_breakdown", "multi_service")) or any(w in low for w in [
+            elif (not is_monthly_trend_query or intent_info.get("target_dimension") or intent_info.get("breakdowns")) and (requested_service or active_cloud or (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") in ("top_services", "service_breakdown", "multi_service")) or any(w in low for w in [
                 "service", "product", "ec2", "s3", "rds", "bigquery", "vertex", "blob",
                 "azure", "gcp", "aws", "cloud", "breakdown", "break down", "cost", "spend", "ai",
                 "category", "subcategory", "pricing", "account", "model", "resource", "region"
@@ -10038,9 +10532,48 @@ class AIClient:
                             "by service subcategory", "by subcategory", "by sub-category", "per subcategory",
                             "service subcategories", "subcategory breakdown", "breakdown by subcategory",
                             "by sub service", "per sub service", "sub-service", "sub service", "granular service",
-                            "service component", "meter category", "meter subcategory", "by meter",
-                            "component breakdown", "sub services", "granular services", "by meter category",
-                            "by meter subcategory"
+                            "service component", "component breakdown", "sub services", "granular services"
+                        ]
+                    },
+                    # Azure Native Dataset Dimensions
+                    {
+                        "id": "meter_subcategory",
+                        "column": "MeterSubCategory",
+                        "label": "Meter Subcategory",
+                        "dataset": "AZURE_COST_USAGE",
+                        "metric": "ActualCostInUsd",
+                        "provider_col": "Provider",
+                        "time_col": "timeInterval_Month",
+                        "triggers": [
+                            "by meter sub category", "by meter subcategory", "meter sub category",
+                            "meter subcategory", "metersubcategory", "by metersubcategory",
+                            "meter subcategories", "by meter subcategories", "breakdown by meter subcategory"
+                        ]
+                    },
+                    {
+                        "id": "meter_category",
+                        "column": "MeterCategory",
+                        "label": "Meter Category",
+                        "dataset": "AZURE_COST_USAGE",
+                        "metric": "ActualCostInUsd",
+                        "provider_col": "Provider",
+                        "time_col": "timeInterval_Month",
+                        "triggers": [
+                            "by meter category", "meter category", "metercategory", "by metercategory",
+                            "meter categories", "by meter categories", "breakdown by meter category"
+                        ]
+                    },
+                    {
+                        "id": "meter_name",
+                        "column": "MeterName",
+                        "label": "Meter Name",
+                        "dataset": "AZURE_COST_USAGE",
+                        "metric": "ActualCostInUsd",
+                        "provider_col": "Provider",
+                        "time_col": "timeInterval_Month",
+                        "triggers": [
+                            "by meter name", "meter name", "metername", "by metername",
+                            "meter names", "by meter names", "breakdown by meter name"
                         ]
                     },
                     {
@@ -10114,6 +10647,88 @@ class AIClient:
                             "by asset", "asset breakdown"
                         ]
                     },
+                    # Perspective Dimensions (CloudHealth FlexReports)
+                    {
+                        "id": "perspective_team",
+                        "column": "Perspective_Kubernetes Teams",
+                        "label": "Team (Perspective: Kubernetes Teams)",
+                        "dataset": "AWS_COST_HISTORY",
+                        "metric": "effective_cost",
+                        "provider_col": "provider",
+                        "is_perspective": True,
+                        "triggers": [
+                            "by team", "per team", "team breakdown", "which team", "team spent", "team spend",
+                            "spending by team", "by teams", "top teams", "perspective team", "perspective teams",
+                            "teams breakdown", "each team", "perspective_team", "perspective: team"
+                        ]
+                    },
+                    {
+                        "id": "perspective_project",
+                        "column": "Perspective_Project",
+                        "label": "Project (Perspective: Project)",
+                        "dataset": "AWS_COST_HISTORY",
+                        "metric": "effective_cost",
+                        "provider_col": "provider",
+                        "is_perspective": True,
+                        "triggers": [
+                            "by project", "per project", "project breakdown", "which project", "project spent", "project spend",
+                            "spending by project", "by projects", "top projects", "perspective project", "perspective projects",
+                            "projects breakdown", "each project", "perspective_project", "perspective: project"
+                        ]
+                    },
+                    {
+                        "id": "perspective_cost_center",
+                        "column": "Perspective_Cost Center",
+                        "label": "Cost Center (Perspective)",
+                        "dataset": "AWS_COST_HISTORY",
+                        "metric": "effective_cost",
+                        "provider_col": "provider",
+                        "is_perspective": True,
+                        "triggers": [
+                            "by cost center", "per cost center", "cost center breakdown", "cost center", "cost centers",
+                            "perspective cost center"
+                        ]
+                    },
+                    {
+                        "id": "perspective_environment",
+                        "column": "Perspective_Environment",
+                        "label": "Environment (Perspective)",
+                        "dataset": "AWS_COST_HISTORY",
+                        "metric": "effective_cost",
+                        "provider_col": "provider",
+                        "is_perspective": True,
+                        "triggers": [
+                            "by environment", "per environment", "environment breakdown", "environments",
+                            "perspective environment"
+                        ]
+                    },
+                    # Tags Dimensions (CloudHealth FlexReports & Native)
+                    {
+                        "id": "tag_team",
+                        "column": "Tags",
+                        "label": "Tag: Teams",
+                        "dataset": "AWS_COST_HISTORY",
+                        "metric": "effective_cost",
+                        "provider_col": "provider",
+                        "is_tag": True,
+                        "triggers": [
+                            "tag team", "tag teams", "tag:team", "tag:teams", "by tag team", "by tag teams",
+                            "tags team", "tags teams", "virtual tag team", "virtual tag teams"
+                        ]
+                    },
+                    {
+                        "id": "tag_project",
+                        "column": "Tags",
+                        "label": "Tag: Projects",
+                        "dataset": "AWS_COST_HISTORY",
+                        "metric": "effective_cost",
+                        "provider_col": "provider",
+                        "is_tag": True,
+                        "triggers": [
+                            "tag project", "tag projects", "tag:project", "tag:projects", "by tag project", "by tag projects",
+                            "tags project", "tags projects", "virtual tag project", "virtual tag projects"
+                        ]
+                    },
                     {
                         "id": "account",
                         "column": "SubaccountId",
@@ -10123,11 +10738,13 @@ class AIClient:
                         "provider_col": "provider",
                         "triggers": [
                             "by account", "per account", "account name", "account names", "account-level",
+                            "for all accounts", "all accounts", "all account", "across all accounts", "by accounts",
+                            "per accounts", "for each account", "for accounts", "accounts", "account",
                             "sub account", "subaccount", "sub-account", "breakdown by account", "account breakdown",
-                            "each account", "by project", "per project", "by subscription", "per subscription",
-                            "project breakdown", "subscription breakdown", "member account", "linked account",
+                            "each account", "by subscription", "per subscription",
+                            "subscription breakdown", "member account", "linked account",
                             "usage account", "cloud account", "by member account", "by linked account",
-                            "by usage account", "by cloud account", "subscription-level", "project-level",
+                            "by usage account", "by cloud account", "subscription-level",
                             "per cloud account", "linked accounts", "member accounts", "usage accounts"
                         ]
                     },
@@ -10258,6 +10875,11 @@ class AIClient:
                 for d_def in DIMENSIONAL_BREAKDOWNS:
                     if d_def["id"] == "commitment_plan" and any(w in low for w in ["hybrid discount", "hybrid discounts", "azure hybrid benefit", "ahb", "hybrid benefit"]):
                         continue
+                    if d_def["id"] == "account" and any(w in low for w in [
+                        "storage account", "storage accounts", "user account", "user accounts", "service account",
+                        "billing account", "payer account", "master account", "root account", "management account"
+                    ]):
+                        continue
                     if (target_dim and target_dim.lower() in (d_def["column"].lower(), d_def["id"].lower())) or \
                        (d_def["id"] in target_bdowns) or \
                        (d_def["id"].replace("ai_", "") in target_bdowns) or \
@@ -10269,35 +10891,118 @@ class AIClient:
                 if not matched_dim and is_ai_models_query:
                     matched_dim = next((d for d in DIMENSIONAL_BREAKDOWNS if d["id"] == "ai_model"), None)
 
+                # User, feedback instruction, or memory explicitly requested a native dataset (e.g. AZURE_COST_USAGE, AWS_CUR)
+                from cleo_query import extract_target_dataset
+                explicit_ds = intent_info.get("target_dataset") or extract_target_dataset(last_msg)
+                from cleo_query import DATASET_CLOUD_MAP
+                if not explicit_ds:
+                    try:
+                        from cleo_memory import _tokenize, _score
+                        active_corrs = get_memory().get_active_corrections(last_msg)
+                        q_tok = _tokenize(last_msg)
+                        for c in active_corrs:
+                            ds = c.get("target_dataset") or extract_target_dataset(c.get("instruction") or c.get("correction") or "")
+                            if ds:
+                                ds_cloud = DATASET_CLOUD_MAP.get(ds)
+                                if cloud_target and ds_cloud and ds_cloud != "all" and cloud_target != "all" and ds_cloud != cloud_target:
+                                    continue
+                                corr_q = c.get("query", "")
+                                if corr_q and _score(q_tok, _tokenize(corr_q)) < 0.2:
+                                    continue
+                                explicit_ds = ds
+                                break
+                    except Exception:
+                        pass
+                if not explicit_ds and messages:
+                    for m in reversed(messages[:-1]):
+                        if m.get("correction"):
+                            ds = extract_target_dataset(m.get("correction", ""))
+                            if ds:
+                                ds_cloud = DATASET_CLOUD_MAP.get(ds)
+                                if cloud_target and ds_cloud and ds_cloud != "all" and cloud_target != "all" and ds_cloud != cloud_target:
+                                    continue
+                                explicit_ds = ds
+                                break
+
+                if explicit_ds == "AZURE_COST_USAGE":
+                    cloud_target = "azure"
+                    active_cloud = "azure"
+                    cand_col = target_dim or "MeterSubCategory"
+                    if cand_col in ("ServiceSubcategory", "service_subcategory", "ServiceName", "service", "dimension", "unknown"):
+                        cand_col = "MeterSubCategory"
+                    matched_dim = {
+                        "id": cand_col.lower(),
+                        "column": cand_col,
+                        "label": "Meter Subcategory" if cand_col == "MeterSubCategory" else ("Meter Category" if cand_col == "MeterCategory" else cand_col),
+                        "dataset": "AZURE_COST_USAGE",
+                        "metric": "ActualCostInUsd",
+                        "provider_col": "Provider",
+                        "time_col": "timeInterval_Month",
+                        "triggers": ["azure_cost_usage"]
+                    }
+                elif explicit_ds and explicit_ds != "MULTICLOUD_FOCUS_COST_AND_USAGE":
+                    cand_col = target_dim or "lineItem_ProductCode"
+                    spec = CURATED_DATASET_SPECS.get(explicit_ds, {})
+                    priority_dims = spec.get("priority_dimensions", [])
+                    priority_measures = spec.get("priority_measures", [])
+                    col_to_use = cand_col if cand_col in priority_dims else (priority_dims[0] if priority_dims else "dimension")
+                    metric_to_use = priority_measures[0] if priority_measures else "EffectiveCost"
+                    matched_dim = {
+                        "id": col_to_use.lower(),
+                        "column": col_to_use,
+                        "label": col_to_use,
+                        "dataset": explicit_ds,
+                        "metric": metric_to_use,
+                        "provider_col": "Provider" if explicit_ds == "AZURE_COST_USAGE" else "provider",
+                        "time_col": "timeInterval_Month" if explicit_ds in ("AZURE_COST_USAGE", "AWS_CUR") else "Month",
+                        "triggers": [explicit_ds.lower()]
+                    }
+
+                # Dynamic column check across native datasets (e.g. AZURE_COST_USAGE, AWS_CUR) if user specified a column
+                if not matched_dim:
+                    cand_col = ""
+                    m_by = re.search(r"(?:break\s*it\s*down\s*by|break\s*down\s*by|broken\s*down\s*by|by|per)\s+([a-zA-Z0-9_\s]+)", low)
+                    if m_by:
+                        cand_col = m_by.group(1).strip()
+                    elif target_dim and target_dim.lower() not in ("servicename", "service", "service_name", "month", "monthly", "dimension", "unknown"):
+                        cand_col = target_dim
+
+                    if cand_col and cand_col.lower() not in ("servicename", "service", "service_name", "month", "monthly", "cloud", "provider"):
+                        found_ds = find_dataset_for_specific_column(cand_col, cloud=cloud_target)
+                        if found_ds:
+                            matched_dim = {
+                                "id": found_ds["column"].lower(),
+                                "column": found_ds["column"],
+                                "label": found_ds.get("displayName") or found_ds["column"],
+                                "dataset": found_ds["dataset"],
+                                "metric": found_ds.get("metric") or "ActualCostInUsd",
+                                "provider_col": found_ds.get("provider_col") or "Provider",
+                                "time_col": found_ds.get("time_col") or "Month",
+                                "triggers": [cand_col.lower()],
+                                "is_perspective": found_ds.get("is_perspective", False),
+                                "is_tag": found_ds.get("is_tag", False)
+                            }
+
                 if matched_dim:
                     dim_col = matched_dim["column"]
                     dim_label = matched_dim["label"]
                     dataset = matched_dim["dataset"]
                     metric_col = matched_dim["metric"]
                     prov_col = matched_dim.get("provider_col", "provider")
-                    is_cost = (metric_col == "EffectiveCost")
+                    time_col = matched_dim.get("time_col", "Month")
+                    is_cost = (metric_col in ("EffectiveCost", "ActualCostInUsd", "CostInBillingCurrency", "ActualCostInBillingCurrency", "lineItem_UnblendedCost", "effective_cost", "GcpCost"))
 
                     is_exclude_other = is_exclude_other_requested(low) or is_exclude_other_requested(intent_info.get("corrected_query", ""))
 
-                    where_clauses = []
-                    if cloud_target == "aws":
-                        where_clauses.append(f"{prov_col} = 'AWS'")
-                    elif cloud_target == "azure":
-                        where_clauses.append(f"{prov_col} = 'Azure'")
-                    elif cloud_target == "gcp":
-                        where_clauses.append(f"{prov_col} IN ('GCP', 'Google Cloud')")
+                    from cleo_query import extract_all_query_months
+                    comp_months = (
+                        time_ctx.get("comparison_months")
+                        or intent_info.get("comparison_months")
+                        or extract_all_query_months(last_msg)
+                    )
+                    has_two_comp_months = bool(comp_months and len(comp_months) >= 2)
 
-                    if matched_dim["id"] in ("ai_model", "ai_model_provider"):
-                        where_clauses.append(f"{dim_col} IS NOT NULL AND {dim_col} != ''")
-                    if is_exclude_other:
-                        where_clauses.append(f"LOWER({dim_col}) NOT IN ('other', 'unallocated', '(unallocated / other)', 'other services', 'other categories', 'other models') AND LOWER({dim_col}) NOT LIKE 'other %'")
-
-                    if requested_service and str(requested_service).lower() not in ("ai", "ai models", "ai_models", "models", "foundation models", "all", "cloud") and dataset in ("MULTICLOUD_FOCUS_COST_AND_USAGE", "MULTICLOUD_AI_COST_AND_USAGE"):
-                        where_clauses.append(f"ServiceName = '{requested_service}'")
-
-                    where_str = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
-
-                    is_multi_month_dim = not is_specific and (
+                    is_multi_month_dim = not is_specific and not has_two_comp_months and (
                         bool(req_months and req_months > 1)
                         or has_multi_month_kw
                         or any(w in low for w in ["monthly", "by month", "each month", "month over month", "over time", "trend"])
@@ -10305,87 +11010,403 @@ class AIClient:
                         or (isinstance(svc_time_range, dict) and "from" in svc_time_range and "to" in svc_time_range and svc_time_range["from"] != svc_time_range["to"])
                     )
 
-                    if is_multi_month_dim:
-                        dim_sql = (
-                            f"SELECT Month AS month, {prov_col} AS provider, {dim_col} AS dimension, "
-                            f"SUM({metric_col}) AS val "
-                            f"FROM {dataset} "
-                            f"{where_str} "
-                            f"GROUP BY Month, {prov_col}, {dim_col} "
-                            f"ORDER BY month ASC, val DESC"
-                        )
-                        q_limit = 500
+                    cache = get_cached_datasource_metadata() or {}
+                    is_persp = matched_dim.get("is_perspective", False) or "perspective" in matched_dim["id"] or dim_col.lower().startswith("perspective")
+
+                    # Identify datasets to query: multi-cloud perspectives query all clouds that contain this perspective
+                    datasets_to_query = []
+                    if is_persp and cloud_target == "all":
+                        for cand_ds, cand_m, cand_p in [
+                            ("AWS_COST_HISTORY", "effective_cost", "AWS"),
+                            ("AZURE_COST_HISTORY", "effective_cost", "Azure"),
+                            ("GCP_COST_HISTORY", "GcpCost", "GCP"),
+                        ]:
+                            ds_info = cache.get(cand_ds) or {}
+                            ds_cols = [c.get("name") for c in ds_info.get("columns", [])]
+                            spec_dims = CURATED_DATASET_SPECS.get(cand_ds, {}).get("priority_dimensions", [])
+                            if dim_col in ds_cols or dim_col in spec_dims or any(dim_col.lower() == c.lower() for c in ds_cols):
+                                datasets_to_query.append((cand_ds, cand_m, cand_p))
+                        if not datasets_to_query:
+                            datasets_to_query.append((dataset, metric_col, cloud_target.capitalize() if cloud_target != "all" else "Multi-Cloud"))
                     else:
-                        dim_sql = (
-                            f"SELECT {prov_col} AS provider, {dim_col} AS dimension, "
-                            f"SUM({metric_col}) AS val "
-                            f"FROM {dataset} "
-                            f"{where_str} "
-                            f"GROUP BY {prov_col}, {dim_col} "
-                            f"ORDER BY val DESC"
-                        )
-                        q_limit = min(limit, 15) if limit else 15
+                        default_p = "AWS" if "AWS" in dataset else ("Azure" if "AZURE" in dataset else ("GCP" if "GCP" in dataset else (cloud_target.capitalize() if cloud_target != "all" else "Multi-Cloud")))
+                        datasets_to_query.append((dataset, metric_col, default_p))
+
+                    col_expr = f'"{dim_col}"' if any(c in dim_col for c in (' ', '-', '[', ']', '<', '>', '/', '#', ':')) else dim_col
 
                     clean_rows = []
                     all_months = []
-                    try:
-                        res = mcp.call_tool("execute_datasource_query", {
-                            "queryInput": {
-                                "sqlStatement": dim_sql,
-                                "dataGranularity": svc_granularity,
-                                "limit": q_limit,
-                                "timeRange": svc_time_range
-                            },
-                            "requestInfo": {"sourceType": "API", "caller": "mcp"}
-                        })
-                        res_text = (res.get("content") or [{}])[0].get("text", "")
-                        res_json = json.loads(res_text) if res_text.startswith("{") else {}
-                        if "error" in res_json:
-                            logger.warning(f"[{dim_label} Query Error] Initial query returned error: {res_json['error']}. Retrying once...")
-                            time.sleep(1.0)
+
+                    for q_ds, q_metric, q_prov in datasets_to_query:
+                        ds_cols = [c.get("name") for c in cache.get(q_ds, {}).get("columns", [])]
+                        has_prov_col = any(c.lower() in ("provider", "providername") for c in ds_cols)
+                        has_time_col = any(c.lower() in (time_col.lower(), "month", "timeinterval_month") for c in ds_cols)
+
+                        where_clauses = []
+                        if has_prov_col:
+                            if cloud_target == "aws":
+                                where_clauses.append(f"{prov_col} = 'AWS'")
+                            elif cloud_target == "azure":
+                                where_clauses.append(f"{prov_col} = 'Azure'")
+                            elif cloud_target == "gcp":
+                                where_clauses.append(f"{prov_col} IN ('GCP', 'Google Cloud')")
+
+                        if matched_dim["id"] in ("ai_model", "ai_model_provider"):
+                            where_clauses.append(f"{col_expr} IS NOT NULL AND {col_expr} != ''")
+                        if is_exclude_other:
+                            where_clauses.append(f"LOWER({col_expr}) NOT IN ('other', 'unallocated', '(unallocated / other)', 'other services', 'other categories', 'other models') AND LOWER({col_expr}) NOT LIKE 'other %'")
+
+                        if requested_service and str(requested_service).lower() not in ("ai", "ai models", "ai_models", "models", "foundation models", "all", "cloud"):
+                            if q_ds in ("MULTICLOUD_FOCUS_COST_AND_USAGE", "MULTICLOUD_AI_COST_AND_USAGE"):
+                                where_clauses.append(f"ServiceName = '{requested_service}'")
+                            elif q_ds == "AZURE_COST_USAGE":
+                                svc_lower = str(requested_service).lower()
+                                if "storage" in svc_lower:
+                                    where_clauses.append("(MeterCategory = 'Storage' OR ConsumedService = 'Microsoft.Storage')")
+                                elif "compute" in svc_lower or "vm" in svc_lower or "virtual machine" in svc_lower:
+                                    where_clauses.append("(MeterCategory = 'Virtual Machines' OR ConsumedService = 'Microsoft.Compute')")
+                                elif "sql" in svc_lower or "database" in svc_lower:
+                                    where_clauses.append("(MeterCategory = 'SQL Database' OR ConsumedService = 'Microsoft.Sql')")
+                                else:
+                                    where_clauses.append(f"(MeterCategory = '{requested_service}' OR ConsumedService = '{requested_service}')")
+                            elif q_ds == "AWS_CUR":
+                                where_clauses.append(f"lineItem_ProductCode = '{requested_service}'")
+
+                        if has_two_comp_months and has_time_col:
+                            where_clauses.append(f"{time_col} IN ('{comp_months[0]}', '{comp_months[1]}')")
+                        elif is_specific and target_ym and not is_multi_month_dim and q_ds in ("AZURE_COST_USAGE", "AWS_CUR"):
+                            where_clauses.append(f"{time_col} = '{target_ym}'")
+
+                        where_str = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+                        if (is_multi_month_dim or has_two_comp_months) and has_time_col:
+                            if has_prov_col:
+                                dim_sql = (
+                                    f"SELECT {time_col} AS month, {prov_col} AS provider, {col_expr} AS dimension, "
+                                    f"SUM({q_metric}) AS val "
+                                    f"FROM {q_ds} "
+                                    f"{where_str} "
+                                    f"GROUP BY {time_col}, {prov_col}, {col_expr} "
+                                    f"ORDER BY month ASC, val DESC"
+                                )
+                            else:
+                                dim_sql = (
+                                    f"SELECT {time_col} AS month, {col_expr} AS dimension, "
+                                    f"SUM({q_metric}) AS val "
+                                    f"FROM {q_ds} "
+                                    f"{where_str} "
+                                    f"GROUP BY {time_col}, {col_expr} "
+                                    f"ORDER BY month ASC, val DESC"
+                                )
+                            q_limit = 2000 if has_two_comp_months else 500
+                        else:
+                            if has_prov_col:
+                                dim_sql = (
+                                    f"SELECT {prov_col} AS provider, {col_expr} AS dimension, "
+                                    f"SUM({q_metric}) AS val "
+                                    f"FROM {q_ds} "
+                                    f"{where_str} "
+                                    f"GROUP BY {prov_col}, {col_expr} "
+                                    f"ORDER BY val DESC"
+                                )
+                            else:
+                                dim_sql = (
+                                    f"SELECT {col_expr} AS dimension, "
+                                    f"SUM({q_metric}) AS val "
+                                    f"FROM {q_ds} "
+                                    f"{where_str} "
+                                    f"GROUP BY {col_expr} "
+                                    f"ORDER BY val DESC"
+                                )
+                            q_limit = min(limit, 50) if limit else 50
+
+                        cur_granularity = svc_granularity
+                        cur_time_range = svc_time_range
+                        if has_two_comp_months:
+                            cur_granularity = "MONTHLY"
+                            cur_time_range = {"from": min(comp_months[:2]), "to": max(comp_months[:2])}
+                        elif q_ds == "AZURE_COST_USAGE":
+                            if cur_granularity not in ("MONTHLY", "DAILY"):
+                                cur_granularity = "MONTHLY"
+                            if not cur_time_range:
+                                if is_specific and target_ym:
+                                    cur_time_range = {"from": target_ym, "to": target_ym}
+                                else:
+                                    cur_time_range = {"last": 3, "qualifier": "MONTH"}
+                            elif isinstance(cur_time_range, dict) and cur_time_range.get("qualifier") == "DAY":
+                                cur_granularity = "MONTHLY"
+                                cur_time_range = {"last": 3, "qualifier": "MONTH"}
+                        elif not cur_time_range:
+                            if is_specific and target_ym:
+                                cur_time_range = {"from": target_ym, "to": target_ym}
+                            elif is_multi_month_dim:
+                                cur_time_range = {"last": min(req_months or 3, 12), "qualifier": "MONTH"}
+                            else:
+                                cur_time_range = {"last": 1, "qualifier": "MONTH", "excludeCurrent": False}
+
+                        try:
                             res = mcp.call_tool("execute_datasource_query", {
                                 "queryInput": {
                                     "sqlStatement": dim_sql,
-                                    "dataGranularity": svc_granularity,
-                                    "limit": 200,
-                                    "timeRange": svc_time_range
+                                    "dataGranularity": cur_granularity,
+                                    "limit": q_limit,
+                                    "timeRange": cur_time_range
                                 },
                                 "requestInfo": {"sourceType": "API", "caller": "mcp"}
                             })
                             res_text = (res.get("content") or [{}])[0].get("text", "")
                             res_json = json.loads(res_text) if res_text.startswith("{") else {}
+                            if "error" in res_json:
+                                logger.warning(f"[{dim_label} Query Error] Query on {q_ds} returned error: {res_json['error']}. Retrying once...")
+                                time.sleep(1.0)
+                                res = mcp.call_tool("execute_datasource_query", {
+                                    "queryInput": {
+                                        "sqlStatement": dim_sql,
+                                        "dataGranularity": cur_granularity,
+                                        "limit": 200,
+                                        "timeRange": cur_time_range
+                                    },
+                                    "requestInfo": {"sourceType": "API", "caller": "mcp"}
+                                })
+                                res_text = (res.get("content") or [{}])[0].get("text", "")
+                                res_json = json.loads(res_text) if res_text.startswith("{") else {}
 
-                        raw_csv = res_json.get("csv", "")
-                        acc_map = self._get_account_name_map(mcp) if matched_dim["id"] == "account" else {}
+                            raw_csv = res_json.get("csv", "")
+                            acc_map = self._get_account_name_map(mcp) if matched_dim["id"] == "account" else {}
 
-                        for r in csv.DictReader(io.StringIO(raw_csv)):
-                            v = float(r.get("val") or r.get("cost") or r.get("spend") or 0.0)
-                            d_val = (r.get("dimension") or r.get("service") or r.get("category") or "").strip()
-                            if not d_val:
-                                d_val = "(Unallocated / Other)"
-                            elif matched_dim["id"] == "account" and d_val in acc_map:
-                                d_val = f"{acc_map[d_val]} ({d_val})"
+                            for r in csv.DictReader(io.StringIO(raw_csv)):
+                                v = float(r.get("val") or r.get("cost") or r.get("spend") or 0.0)
+                                d_val = (r.get("dimension") or r.get("service") or r.get("category") or "").strip()
+                                if not d_val:
+                                    d_val = "(Unallocated / Other)"
+                                elif matched_dim["id"] == "account" and d_val in acc_map:
+                                    d_val = f"{acc_map[d_val]} ({d_val})"
 
-                            if is_exclude_other and (
-                                d_val.lower() in ("other", "(unallocated / other)", "unallocated", "other services", "other (combined)", "other categories", "other models")
-                                or d_val.lower().startswith("other ")
-                            ):
+                                if is_exclude_other and (
+                                    d_val.lower() in ("other", "(unallocated / other)", "unallocated", "other services", "other (combined)", "other categories", "other models")
+                                    or d_val.lower().startswith("other ")
+                                ):
+                                    continue
+
+                                prov = (r.get("provider") or "").strip()
+                                if not prov:
+                                    prov = q_prov
+                                m_val = str(r.get("month") or "").strip()
+
+                                if v > 0:
+                                    clean_rows.append({"month": m_val, "provider": prov, "dimension": d_val, "val": v})
+
+                        except Exception as e:
+                            logger.warning(f"[{dim_label} Query on {q_ds}] {e}")
+
+                    if is_multi_month_dim or has_two_comp_months:
+                        all_months = sorted(list(set(r["month"] for r in clean_rows if r["month"])))
+
+                    if has_two_comp_months and clean_rows:
+                        # ── Dedicated 2-Month Comparative Breakdown (e.g. August 2026 vs September 2026) ──
+                        m1 = comp_months[0]
+                        m2 = comp_months[1]
+                        MONTH_FULL = {
+                            1: "January", 2: "February", 3: "March", 4: "April", 5: "May", 6: "June",
+                            7: "July", 8: "August", 9: "September", 10: "October", 11: "November", 12: "December"
+                        }
+                        def _get_m_lbl(ym_str):
+                            try:
+                                yr_p, mo_p = ym_str.split("-")
+                                return f"{MONTH_FULL.get(int(mo_p), ym_str)} {yr_p}"
+                            except Exception:
+                                return ym_str
+
+                        m1_label = _get_m_lbl(m1)
+                        m2_label = _get_m_lbl(m2)
+
+                        item_map = {}
+                        for r in clean_rows:
+                            m = r["month"]
+                            d = r["dimension"]
+                            p = r["provider"]
+                            v = r["val"]
+                            key = (p, d)
+                            if key not in item_map:
+                                item_map[key] = {
+                                    "provider": p,
+                                    "dimension": d,
+                                    "m1_val": 0.0,
+                                    "m2_val": 0.0
+                                }
+                            if m == m1:
+                                item_map[key]["m1_val"] += v
+                            elif m == m2:
+                                item_map[key]["m2_val"] += v
+
+                        all_items = list(item_map.values())
+
+                        # Apply exclusions and cost filters
+                        filtered_items = []
+                        for item in all_items:
+                            c = max(item["m2_val"], item["m1_val"])
+                            d_name = item["dimension"]
+                            p_name = item["provider"].lower()
+                            if min_cost is not None and c < min_cost:
                                 continue
+                            if max_cost is not None and c > max_cost:
+                                continue
+                            if exclusions:
+                                if any(ex.lower() in d_name.lower() or ex.lower() in p_name for ex in exclusions):
+                                    continue
+                            filtered_items.append(item)
+                        all_items = filtered_items
 
-                            prov = (r.get("provider") or "").strip()
-                            if not prov:
-                                prov = cloud_target.capitalize() if cloud_target != "all" else "Multi-Cloud"
-                            m_val = str(r.get("month") or "").strip()
+                        if sort_ref and sort_ref.get("direction") == "asc":
+                            all_items.sort(key=lambda x: max(x["m2_val"], x["m1_val"]))
+                        else:
+                            all_items.sort(key=lambda x: max(x["m2_val"], x["m1_val"]), reverse=True)
 
-                            if v > 0:
-                                clean_rows.append({"month": m_val, "provider": prov, "dimension": d_val, "val": v})
+                        total_count = len(all_items)
+                        total_m1 = sum(item["m1_val"] for item in all_items)
+                        total_m2 = sum(item["m2_val"] for item in all_items)
+                        total_delta = total_m2 - total_m1
+                        total_pct = (total_delta / total_m1 * 100) if total_m1 > 0 else (100.0 if total_m2 > 0 else 0.0)
+                        tot_sign = "+" if total_delta > 0 else ("-" if total_delta < 0 else "")
+                        tot_icon = "🔺" if total_delta > 0 else ("🔻" if total_delta < 0 else "")
+                        tot_delta_str = f"{tot_sign}${abs(total_delta):,.2f}" if is_cost else f"{tot_sign}{abs(total_delta):,.2f}"
+                        tot_pct_str = f"{total_pct:+.1f}% {tot_icon}" if total_m1 > 0 or total_m2 > 0 else "—"
+                        scope_disp = cloud_target.upper() if cloud_target != "all" else "Multi-Cloud"
+                        unit_str = matched_dim.get("unit", "$")
 
-                        if is_multi_month_dim:
-                            all_months = sorted(list(set(r["month"] for r in clean_rows if r["month"])))
-                    except Exception as e:
-                        logger.warning(f"[{dim_label} Query] {e}")
+                        # Handle large fleets (e.g. 450+ accounts)
+                        if total_count > 15:
+                            top_items = all_items[:15]
+                            other_items = all_items[15:]
 
-                    if is_multi_month_dim and len(all_months) > 1 and clean_rows:
+                            other_m1 = sum(x["m1_val"] for x in other_items)
+                            other_m2 = sum(x["m2_val"] for x in other_items)
+                            other_delta = other_m2 - other_m1
+                            other_pct = (other_delta / other_m1 * 100) if other_m1 > 0 else (100.0 if other_m2 > 0 else 0.0)
+                            other_sign = "+" if other_delta > 0 else ("-" if other_delta < 0 else "")
+                            other_icon = "🔺" if other_delta > 0 else ("🔻" if other_delta < 0 else "")
+                            other_delta_str = f"{other_sign}${abs(other_delta):,.2f}" if is_cost else f"{other_sign}{abs(other_delta):,.2f}"
+                            other_pct_str = f"{other_pct:+.1f}% {other_icon}" if other_m1 > 0 or other_m2 > 0 else "—"
+
+                            tbl_lines = []
+                            for item in top_items:
+                                p = item["provider"]
+                                d = item["dimension"]
+                                v1 = item["m1_val"]
+                                v2 = item["m2_val"]
+                                diff = v2 - v1
+                                pct = (diff / v1 * 100) if v1 > 0 else (100.0 if v2 > 0 else 0.0)
+                                sign = "+" if diff > 0 else ("-" if diff < 0 else "")
+                                icon = "🔺" if diff > 0 else "🔻"
+                                delta_str = f"{sign}${abs(diff):,.2f}" if is_cost else f"{sign}{abs(diff):,.2f}"
+                                pct_str = f"{pct:+.1f}% {icon}" if (v1 > 0 or v2 > 0) else "—"
+                                v1_str = f"${v1:,.2f}" if is_cost else f"{v1:,.2f}"
+                                v2_str = f"${v2:,.2f}" if is_cost else f"{v2:,.2f}"
+                                tbl_lines.append(f"| {p} | `{d}` | {v1_str} | {v2_str} | {delta_str} | {pct_str} |")
+
+                            other_name = f"Other Accounts ({len(other_items):,} accounts consolidated)" if matched_dim["id"] == "account" else f"Other {dim_label} ({len(other_items):,} items consolidated)"
+                            other_v1_str = f"${other_m1:,.2f}" if is_cost else f"{other_m1:,.2f}"
+                            other_v2_str = f"${other_m2:,.2f}" if is_cost else f"{other_m2:,.2f}"
+                            tbl_lines.append(f"| Multi-Cloud | **{other_name}** | {other_v1_str} | {other_v2_str} | {other_delta_str} | {other_pct_str} |")
+
+                            full_tbl_lines = []
+                            for item in all_items:
+                                p = item["provider"]
+                                d = item["dimension"]
+                                v1 = item["m1_val"]
+                                v2 = item["m2_val"]
+                                diff = v2 - v1
+                                pct = (diff / v1 * 100) if v1 > 0 else (100.0 if v2 > 0 else 0.0)
+                                sign = "+" if diff > 0 else ("-" if diff < 0 else "")
+                                icon = "🔺" if diff > 0 else "🔻"
+                                delta_str = f"{sign}${abs(diff):,.2f}" if is_cost else f"{sign}{abs(diff):,.2f}"
+                                pct_str = f"{pct:+.1f}% {icon}" if (v1 > 0 or v2 > 0) else "—"
+                                v1_str = f"${v1:,.2f}" if is_cost else f"{v1:,.2f}"
+                                v2_str = f"${v2:,.2f}" if is_cost else f"{v2:,.2f}"
+                                full_tbl_lines.append(f"| {p} | `{d}` | {v1_str} | {v2_str} | {delta_str} | {pct_str} |")
+
+                            target_word = "accounts" if matched_dim["id"] == "account" else dim_label
+                            details_accordion = (
+                                f"\n\n<details>\n"
+                                f"<summary><b>🔍 Show all {total_count:,} {target_word}</b> (click to expand full list)</summary>\n\n"
+                                f"| Cloud Provider | {dim_label} | {m1_label} | {m2_label} | MoM Variance ($) | MoM Variance (%) |\n"
+                                f"|:---|:---|:---|:---|:---|:---|\n"
+                                f"{chr(10).join(full_tbl_lines)}\n\n"
+                                f"| **Total** | | **{f'${total_m1:,.2f}' if is_cost else f'{total_m1:,.2f}'}** | **{f'${total_m2:,.2f}' if is_cost else f'{total_m2:,.2f}'}** | **{tot_delta_str}** | **{tot_pct_str}** |\n"
+                                f"</details>"
+                            )
+                        else:
+                            tbl_lines = []
+                            for item in all_items:
+                                p = item["provider"]
+                                d = item["dimension"]
+                                v1 = item["m1_val"]
+                                v2 = item["m2_val"]
+                                diff = v2 - v1
+                                pct = (diff / v1 * 100) if v1 > 0 else (100.0 if v2 > 0 else 0.0)
+                                sign = "+" if diff > 0 else ("-" if diff < 0 else "")
+                                icon = "🔺" if diff > 0 else "🔻"
+                                delta_str = f"{sign}${abs(diff):,.2f}" if is_cost else f"{sign}{abs(diff):,.2f}"
+                                pct_str = f"{pct:+.1f}% {icon}" if (v1 > 0 or v2 > 0) else "—"
+                                v1_str = f"${v1:,.2f}" if is_cost else f"{v1:,.2f}"
+                                v2_str = f"${v2:,.2f}" if is_cost else f"{v2:,.2f}"
+                                tbl_lines.append(f"| {p} | `{d}` | {v1_str} | {v2_str} | {delta_str} | {pct_str} |")
+                            details_accordion = ""
+
+                        table = (
+                            f"| Cloud Provider | {dim_label} | {m1_label} | {m2_label} | MoM Variance ($) | MoM Variance (%) |\n"
+                            f"|:---|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(tbl_lines)}\n\n"
+                            f"| **Total** | | **{f'${total_m1:,.2f}' if is_cost else f'{total_m1:,.2f}'}** | **{f'${total_m2:,.2f}' if is_cost else f'{total_m2:,.2f}'}** | **{tot_delta_str}** | **{tot_pct_str}** |"
+                        )
+
+                        chart_md = ""
+                        if not is_no_chart_requested(low):
+                            chart_labels = [item["dimension"] for item in all_items[:10]]
+                            datasets = [
+                                {"label": m1_label, "data": [round(item["m1_val"], 2) for item in all_items[:10]]},
+                                {"label": m2_label, "data": [round(item["m2_val"], 2) for item in all_items[:10]]}
+                            ]
+                            chart_md = _chart_block(
+                                "bar",
+                                f"{scope_disp} Top 10 {dim_label}: {m1_label} vs {m2_label}",
+                                chart_labels,
+                                datasets=datasets,
+                                horizontal=True,
+                                stacked=False,
+                                value_label="Cost ($)" if is_cost else unit_str
+                            )
+                            if chart_md:
+                                chart_md = f"\n\n{chart_md}"
+
+                        insight_md = ""
+                        if self.engine != "direct" and not is_no_insights_requested(low):
+                            try:
+                                summary_top = "\n".join([f"- {it['dimension']} ({it['provider']}): {m1_label} ${it['m1_val']:,.2f} -> {m2_label} ${it['m2_val']:,.2f} (diff ${it['m2_val'] - it['m1_val']:,.2f})" for it in all_items[:5]])
+                                sys_msg = {
+                                    "role": "system",
+                                    "content": (
+                                        "You are Cleo, an expert FinOps AI. Analyze this Month-over-Month cost comparison by account / dimension. "
+                                        "Provide 2 concise, actionable FinOps insights explaining the top account drivers, biggest cost spikes, and recommendations."
+                                    )
+                                }
+                                user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nTop {dim_label} MoM ({m1_label} vs {m2_label}):\n{summary_top}\nTotal: {m1_label} ${total_m1:,.2f} -> {m2_label} ${total_m2:,.2f} ({tot_pct_str})"}
+                                llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
+                                if llm_ans:
+                                    insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
+                            except Exception as e:
+                                logger.debug(f"[LLM Commentary] {e}")
+
+                        return (
+                            f"### 📊 CloudHealth Spend Analysis: {scope_disp} Cost by {dim_label} — {m1_label} vs {m2_label}\n\n"
+                            f"{table}"
+                            f"{details_accordion}"
+                            f"{chart_md}"
+                            f"{insight_md}\n\n"
+                            f"💡 *Live FinOps data from `{dataset}` via CloudHealth FlexReports.*"
+                        )
+
+                    elif is_multi_month_dim and len(all_months) > 1 and clean_rows:
                         # Multi-month dimensional analysis: Show Monthly Spend History + Overall Breakdown + Stacked Bar Chart
                         month_totals = defaultdict(float)
                         month_dim_totals = defaultdict(lambda: defaultdict(float))
@@ -10481,10 +11502,27 @@ class AIClient:
 
                     elif clean_rows:
                         # Single-month or flat dimensional breakdown
-                        dim_rows = _apply_row_filters([(r["provider"], r["dimension"], r["val"]) for r in clean_rows])
+                        agg_dim_rows = defaultdict(float)
+                        for r in clean_rows:
+                            agg_dim_rows[(r["provider"], r["dimension"])] += r["val"]
+                        dim_rows = _apply_row_filters([(prov, d_val, v) for (prov, d_val), v in agg_dim_rows.items()])
+                        dim_rows.sort(key=lambda x: x[2], reverse=True)
                         total_val = sum(r[2] for r in dim_rows)
                         scope_disp = cloud_target.upper() if cloud_target != "all" else "Multi-Cloud"
                         unit_str = matched_dim.get("unit", "$")
+
+                        # Top driver callout for questions like "Which team spent the most?", "Which project is spending more?"
+                        top_callout = ""
+                        if dim_rows and any(w in low for w in ["which team", "which project", "spent the most", "spending more", "spending the most", "highest spend", "top team", "top project"]):
+                            top_p, top_d, top_v = dim_rows[0]
+                            top_pct = (top_v / total_val * 100) if total_val else 0.0
+                            top_prov_str = f" ({top_p})" if cloud_target == "all" else ""
+                            top_val_str = f"${top_v:,.2f}" if is_cost else f"{top_v:,.2f} {unit_str}"
+                            top_callout = (
+                                f"> 🏆 **Top Cost Driver**: **`{top_d}`**{top_prov_str} spent the most in {svc_scope_label} at "
+                                f"**{top_val_str}** ({top_pct:.1f}% of total {dim_label} spend).\n\n"
+                            )
+
                         has_enough_mtd = is_mtd_scope and not used_fallback and days_elapsed >= 3 and is_cost and total_val > 0
                         if has_enough_mtd:
                             total_val_fc = total_val * runrate_factor
@@ -10534,6 +11572,7 @@ class AIClient:
                         return (
                             f"### 📊 CloudHealth Spend Analysis: {scope_disp} Cost by {dim_label} — {svc_scope_label}\n\n"
                             f"{partial_notice}"
+                            f"{top_callout}"
                             f"{table}"
                             f"{chart_md}\n\n"
                             f"💡 *Live FinOps data from `{dataset}` via CloudHealth FlexReports.*"
@@ -11541,6 +12580,23 @@ class AIClient:
 
             # 3d. General Monthly Spend (partner totals — provider-aware)
             else:
+                wants_prov_breakdown = any(w in low for w in [
+                    "by provider", "per provider", "by cloud", "per cloud", "each cloud",
+                    "each provider", "by each cloud", "by each provider", "provider breakdown", "cloud breakdown",
+                    "providers breakdown", "clouds breakdown", "across providers", "across each cloud"
+                ])
+                wants_waterfall_or_mom = (
+                    _detect_chart_type(low) == "waterfall"
+                    or any(w in low for w in [
+                        "waterfall", "by mom", "mom comparison", "mom change", "mom progression",
+                        "spend progression", "cost progression"
+                    ])
+                    or (any(w in low for w in ["monthly cost", "monthly spend", "month cost", "month spend"]) and any(w in low for w in ["mom", "month-over-month", "month over month"]))
+                )
+                if wants_waterfall_or_mom and not wants_prov_breakdown:
+                    target_scope = active_cloud if (active_cloud and active_cloud != "all") else "all"
+                    return _monthly_trend_markdown(target_scope)
+
                 # "all clouds" → multi-line chart (one line per provider) + per-cloud MoM table.
                 # Single query grouped by provider+month is cleaner than 3 separate calls.
                 if active_cloud in (None, "all") or any(w in low for w in ["all cloud", "all clouds", "multi-cloud", "multicloud", "every cloud"]):

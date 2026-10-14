@@ -4,6 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <base href="/">
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('cleo_theme');
+        var prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+        var theme = saved || (prefersLight ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
   <title>Cleo (Beta) — CloudHealth FinOps AI Command Center</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpolygon points='24,4 42,14 24,24 6,14' fill='%2338bdf8'/%3E%3Cpolygon points='6,14 24,24 24,44 6,34' fill='%23818cf8'/%3E%3Cpolygon points='42,14 42,34 24,44 24,24' fill='%2334d399'/%3E%3Ccircle cx='24' cy='24' r='5' fill='%23ffffff'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -27,29 +39,71 @@
       --text: #f8fafc;
       --text-muted: #94a3b8;
       --text-dim: #64748b;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --surface-2: #1e293b;
       --danger: #f87171;
       --warning: #fbbf24;
       --success: #34d399;
       --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
       --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
       --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.65);
+      color-scheme: dark;
+    }
+
+    :root[data-theme="light"] {
+      --bg-base: #f3efe6;
+      --bg-surface: #f8f6f0;
+      --bg-card: #fdfcf9;
+      --bg-card-hover: #eae4d6;
+      --border: #d8d1c2;
+      --border-subtle: rgba(45, 38, 30, 0.08);
+      --border-focus: #0284c7;
+      --primary: #0284c7;
+      --primary-hover: #0369a1;
+      --accent-azure: #0284c7;
+      --accent-emerald: #059669;
+      --text: #1c1917;
+      --text-muted: #44403c;
+      --text-dim: #78716c;
+      --text-primary: #1c1917;
+      --text-secondary: #44403c;
+      --surface-2: #fdfcf9;
+      --danger: #dc2626;
+      --warning: #d97706;
+      --success: #059669;
+      --shadow-sm: 0 1px 3px rgba(45, 38, 30, 0.06);
+      --shadow-md: 0 4px 16px rgba(45, 38, 30, 0.07);
+      --shadow-lg: 0 12px 32px rgba(45, 38, 30, 0.10);
+      color-scheme: light;
     }
 
     @media (prefers-color-scheme: light) {
       :root:not([data-theme="dark"]) {
-        --bg-base: #f8fafc;
-        --bg-surface: #ffffff;
-        --bg-card: #f1f5f9;
-        --bg-card-hover: #e2e8f0;
-        --border: #cbd5e1;
-        --border-subtle: rgba(0, 0, 0, 0.08);
+        --bg-base: #f3efe6;
+        --bg-surface: #f8f6f0;
+        --bg-card: #fdfcf9;
+        --bg-card-hover: #eae4d6;
+        --border: #d8d1c2;
+        --border-subtle: rgba(45, 38, 30, 0.08);
         --border-focus: #0284c7;
-        --text: #0f172a;
-        --text-muted: #475569;
-        --text-dim: #64748b;
-        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
-        --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);
-        --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.15);
+        --primary: #0284c7;
+        --primary-hover: #0369a1;
+        --accent-azure: #0284c7;
+        --accent-emerald: #059669;
+        --text: #1c1917;
+        --text-muted: #44403c;
+        --text-dim: #78716c;
+        --text-primary: #1c1917;
+        --text-secondary: #44403c;
+        --surface-2: #fdfcf9;
+        --danger: #dc2626;
+        --warning: #d97706;
+        --success: #059669;
+        --shadow-sm: 0 1px 3px rgba(45, 38, 30, 0.06);
+        --shadow-md: 0 4px 16px rgba(45, 38, 30, 0.07);
+        --shadow-lg: 0 12px 32px rgba(45, 38, 30, 0.10);
+        color-scheme: light;
       }
     }
 
@@ -71,6 +125,7 @@
       flex-direction: column;
       overflow: hidden;
       -webkit-font-smoothing: antialiased;
+      transition: background-color 0.2s ease, color 0.2s ease;
     }
 
     /* ── Command Header ── */
@@ -84,6 +139,7 @@
       z-index: 20;
       height: 52px;
       gap: 14px;
+      transition: background-color 0.2s ease, border-color 0.2s ease;
     }
     .brand-section {
       display: flex;
@@ -426,11 +482,893 @@
       border-color: rgba(255, 255, 255, 0.2);
     }
 
+    /* ── Theme Switch Button ── */
+    .theme-switch-btn {
+      background: transparent;
+      border: none;
+      padding: 2px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 20px;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+      user-select: none;
+      outline: none;
+      flex-shrink: 0;
+    }
+    .theme-switch-btn:hover {
+      transform: scale(1.04);
+    }
+    .theme-switch-btn:active {
+      transform: scale(0.96);
+    }
+    .theme-switch-btn:focus-visible {
+      outline: 2px solid var(--accent-azure);
+      outline-offset: 2px;
+    }
+    .theme-switch-track {
+      position: relative;
+      width: 52px;
+      height: 28px;
+      border-radius: 14px;
+      background: #151d2d;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 6px;
+      transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+    }
+    .theme-switch-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      z-index: 1;
+      pointer-events: none;
+      transition: color 0.2s ease, opacity 0.2s ease;
+    }
+    .theme-switch-icon.sun {
+      color: #f59e0b;
+      opacity: 0.65;
+    }
+    .theme-switch-icon.moon {
+      color: #38bdf8;
+      opacity: 0.95;
+    }
+    .theme-switch-thumb {
+      position: absolute;
+      top: 3px;
+      left: 4px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #0284c7;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 8px rgba(2, 132, 199, 0.4);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.25s ease, box-shadow 0.25s ease;
+      transform: translateX(24px); /* Dark mode: thumb sits on right (moon) */
+    }
+
+    /* Light mode track & thumb */
+    :root[data-theme="light"] .theme-switch-track {
+      background: #eae7de;
+      border-color: #d6d2c4;
+      box-shadow: inset 0 1px 2px rgba(45, 38, 30, 0.08);
+    }
+    :root[data-theme="light"] .theme-switch-icon.sun {
+      color: #d97706;
+      opacity: 1;
+    }
+    :root[data-theme="light"] .theme-switch-icon.moon {
+      color: #78716c;
+      opacity: 0.5;
+    }
+    :root[data-theme="light"] .theme-switch-thumb {
+      background: #ffffff;
+      box-shadow: 0 1px 3px rgba(45, 38, 30, 0.15), 0 0 6px rgba(217, 119, 6, 0.25);
+      transform: translateX(0); /* Light mode: thumb sits on left (sun) */
+    }
+
+    /* ── Light Mode Polish Rules (Warm Bone / Linen Editorial Palette) ── */
+    :root[data-theme="light"] .brand-name {
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .brand-tag {
+      background: rgba(45, 38, 30, 0.04);
+      border-color: rgba(45, 38, 30, 0.1);
+      color: #57534e;
+    }
+    :root[data-theme="light"] .icon-btn {
+      background: #ffffff;
+      border-color: var(--border);
+      color: var(--text-muted);
+    }
+    :root[data-theme="light"] .icon-btn:hover {
+      background: #f2f0ea;
+      color: var(--text);
+      border-color: #a8a29e;
+    }
+    :root[data-theme="light"] .btn-secondary {
+      background: #ffffff;
+      color: #292524;
+      border-color: var(--border);
+      box-shadow: 0 1px 2px rgba(45, 38, 30, 0.04);
+    }
+    :root[data-theme="light"] .btn-secondary:hover {
+      background: #f7f6f2;
+      color: #1c1917;
+      border-color: #a8a29e;
+    }
+    :root[data-theme="light"] .btn-logs {
+      background: #ffffff;
+      border-color: var(--border);
+      color: var(--text-muted);
+    }
+    :root[data-theme="light"] .btn-logs:hover {
+      background: #f7f6f2;
+      border-color: #a8a29e;
+      color: var(--text);
+    }
+    :root[data-theme="light"] .ch-status-btn {
+      background: #ffffff;
+      border-color: var(--border);
+      color: var(--text-muted);
+    }
+    :root[data-theme="light"] .ch-status-btn:hover {
+      background: #f7f6f2;
+      border-color: #a8a29e;
+    }
+    :root[data-theme="light"] .ch-status-btn.connected {
+      background: rgba(16, 185, 129, 0.08);
+      border-color: rgba(16, 185, 129, 0.3);
+      color: #059669;
+    }
+    :root[data-theme="light"] .ch-status-btn.disconnected {
+      background: rgba(220, 38, 38, 0.08);
+      border-color: rgba(220, 38, 38, 0.3);
+      color: #dc2626;
+    }
+    :root[data-theme="light"] .ch-dropdown {
+      background: #ffffff;
+      border-color: var(--border);
+      box-shadow: 0 10px 25px -5px rgba(45, 38, 30, 0.1), 0 8px 10px -6px rgba(45, 38, 30, 0.06);
+    }
+    :root[data-theme="light"] .ch-menu-item {
+      color: #292524;
+    }
+    :root[data-theme="light"] .ch-menu-item:hover {
+      background: #f2f0ea;
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .sidebar-tabs {
+      background: #f4f3ee;
+      border-bottom-color: var(--border);
+    }
+    :root[data-theme="light"] .sidebar-tab-btn:hover {
+      background: rgba(45, 38, 30, 0.05);
+      color: var(--text);
+    }
+    :root[data-theme="light"] .sidebar-tab-btn.active {
+      background: #ffffff;
+      border-color: var(--border);
+      color: #0284c7;
+      box-shadow: 0 1px 3px rgba(45, 38, 30, 0.05);
+    }
+    :root[data-theme="light"] .search-input {
+      background: #ffffff;
+      border-color: var(--border);
+      color: var(--text);
+    }
+    :root[data-theme="light"] .search-input:focus {
+      background: #ffffff;
+      border-color: #0284c7;
+      box-shadow: 0 0 0 1px #0284c7;
+    }
+    :root[data-theme="light"] .sidebar-new-btn {
+      background: #ffffff;
+      border-color: var(--border);
+      color: #78716c;
+    }
+    :root[data-theme="light"] .sidebar-new-btn:hover {
+      background: #f0f7ff;
+      border-color: #0284c7;
+      color: #0284c7;
+    }
+    :root[data-theme="light"] .history-select-btn {
+      background: #ffffff;
+      border-color: var(--border);
+      color: #78716c;
+    }
+    :root[data-theme="light"] .history-select-btn:hover {
+      background: #f5f5f4;
+      color: #292524;
+    }
+    :root[data-theme="light"] .history-select-btn.active {
+      background: #e0f2fe;
+      border-color: #0284c7;
+      color: #0284c7;
+    }
+    :root[data-theme="light"] .history-batch-bar {
+      background: #f8fafc;
+      border-color: var(--border);
+      color: #64748b;
+    }
+    :root[data-theme="light"] .history-item {
+      background: #ffffff;
+      border-color: var(--border);
+    }
+    :root[data-theme="light"] .history-item.is-selected {
+      background: #f0fdf4 !important;
+      border-color: #0284c7 !important;
+      box-shadow: 0 0 8px rgba(2, 132, 199, 0.15) !important;
+    }
+    :root[data-theme="light"] .history-item:hover {
+      background: #f9f8f5;
+      border-color: #a8a29e;
+    }
+    :root[data-theme="light"] .history-item.active {
+      background: #f0f7ff;
+      border-color: #0284c7;
+      box-shadow: 0 0 12px rgba(2, 132, 199, 0.12);
+    }
+    :root[data-theme="light"] .history-item-title {
+      color: #292524;
+    }
+    :root[data-theme="light"] .history-item.active .history-item-title {
+      color: #0284c7;
+    }
+    :root[data-theme="light"] .history-item-guid {
+      background: #f2f0ea;
+      border-color: #e2dfd6;
+      color: #78716c;
+    }
+    :root[data-theme="light"] .history-item-guid:hover {
+      background: #e0f2fe;
+      color: #0284c7;
+    }
+    :root[data-theme="light"] .cleo .avatar {
+      background: #ffffff;
+      border-color: var(--border);
+    }
+    :root[data-theme="light"] .cleo .bubble {
+      background: #ffffff;
+      border-color: var(--border);
+      border-top: 1px solid rgba(2, 132, 199, 0.35);
+      box-shadow: 0 1px 3px rgba(45, 38, 30, 0.05);
+    }
+    :root[data-theme="light"] .user .bubble {
+      background: #0284c7;
+      border-color: #0284c7;
+      color: #ffffff;
+      box-shadow: 0 1px 3px rgba(2, 132, 199, 0.2);
+    }
+    :root[data-theme="light"] .bubble-header {
+      border-bottom-color: rgba(45, 38, 30, 0.08);
+    }
+    :root[data-theme="light"] .bubble-header-title {
+      color: #57534e;
+    }
+    :root[data-theme="light"] .bubble-header-time {
+      color: #78716c;
+    }
+    :root[data-theme="light"] .bubble-header-dur {
+      color: #292524;
+    }
+    :root[data-theme="light"] .bubble-header-tokens {
+      background: rgba(2, 132, 199, 0.08);
+      border-color: rgba(2, 132, 199, 0.25);
+      color: #0284c7;
+    }
+    :root[data-theme="light"] .bubble-header-tps {
+      background: rgba(5, 150, 105, 0.08);
+      border-color: rgba(5, 150, 105, 0.25);
+      color: #059669;
+    }
+    :root[data-theme="light"] .bubble h1,
+    :root[data-theme="light"] .bubble h2,
+    :root[data-theme="light"] .bubble h3,
+    :root[data-theme="light"] .bubble h4 {
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .bubble table {
+      background: #ffffff;
+      border-color: var(--border);
+    }
+    :root[data-theme="light"] .bubble th {
+      background: #f7f6f2;
+      color: #57534e;
+      border-color: var(--border);
+      border-right-color: #e2dfd6;
+    }
+    :root[data-theme="light"] .bubble td {
+      color: #292524;
+      border-bottom-color: #e2dfd6;
+      border-right-color: #e2dfd6;
+    }
+    :root[data-theme="light"] .bubble tbody tr:hover {
+      background: #f9f8f5;
+    }
+    :root[data-theme="light"] .bubble tbody tr:nth-child(even) {
+      background: #faf9f6;
+    }
+    :root[data-theme="light"] .bubble li {
+      color: #292524;
+    }
+    :root[data-theme="light"] .bubble code {
+      background: #f2f0ea;
+      color: #0369a1;
+      border: 1px solid #e2dfd6;
+    }
+    :root[data-theme="light"] .bubble pre {
+      background: #f7f6f2;
+      border-color: var(--border);
+    }
+    :root[data-theme="light"] .bubble pre code {
+      background: transparent;
+      border: none;
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .bubble blockquote {
+      background: rgba(2, 132, 199, 0.05);
+      border-left-color: #0284c7;
+      color: #57534e;
+    }
+    :root[data-theme="light"] .welcome-hero {
+      background: linear-gradient(180deg, #ffffff 0%, #f7f6f2 100%);
+      border-color: var(--border);
+      box-shadow: 0 4px 16px rgba(45, 38, 30, 0.05);
+    }
+    :root[data-theme="light"] .welcome-hero-title {
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .welcome-card {
+      background: #ffffff;
+      border-color: var(--border);
+      box-shadow: 0 1px 2px rgba(45, 38, 30, 0.03);
+    }
+    :root[data-theme="light"] .welcome-card:hover {
+      background: #faf9f6;
+      border-color: #0284c7;
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.1);
+    }
+    :root[data-theme="light"] .cleo-chart-wrap {
+      background: #fdfcf9;
+      border-color: var(--border);
+      box-shadow: 0 1px 4px rgba(45, 38, 30, 0.05);
+    }
+    :root[data-theme="light"] .cleo-chart-title {
+      color: #1c1917;
+      font-weight: 700;
+    }
+    :root[data-theme="light"] .cleo-chart-action-btn {
+      background: #fdfcf9;
+      border-color: var(--border);
+      color: #44403c;
+    }
+    :root[data-theme="light"] .cleo-chart-action-btn:hover {
+      background: #eae4d6;
+      border-color: #0284c7;
+      color: #0284c7;
+    }
+    :root[data-theme="light"] .cleo-chart-loading-placeholder {
+      background: #f3efe6;
+      border-color: rgba(2, 132, 199, 0.35);
+      color: #78716c;
+    }
+    :root[data-theme="light"] .chips-row {
+      background: var(--bg-surface);
+      border-top-color: var(--border);
+    }
+    :root[data-theme="light"] .chip {
+      background: #ffffff;
+      border-color: var(--border);
+      color: #292524;
+      box-shadow: 0 1px 2px rgba(45, 38, 30, 0.03);
+    }
+    :root[data-theme="light"] .chip:hover {
+      background: #f2f0ea;
+      border-color: #a8a29e;
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .chip-btn {
+      background: #ffffff;
+      border-color: var(--border);
+      color: #292524;
+    }
+    :root[data-theme="light"] .chip-btn:hover {
+      background: #f2f0ea;
+      border-color: #0284c7;
+      color: #0284c7;
+    }
+    :root[data-theme="light"] footer {
+      background: var(--bg-surface);
+      border-top-color: var(--border);
+    }
+    :root[data-theme="light"] .input-form {
+      background: #ffffff;
+      border-color: #d6d2c4;
+      box-shadow: 0 2px 10px rgba(45, 38, 30, 0.05);
+    }
+    :root[data-theme="light"] .input-form:focus-within {
+      border-color: #0284c7;
+      box-shadow: 0 0 0 1px #0284c7, 0 4px 16px -2px rgba(2, 132, 199, 0.12);
+    }
+    :root[data-theme="light"] .kbd-hint {
+      background: #f2f0ea;
+      border-color: #e2dfd6;
+      color: #78716c;
+    }
+    :root[data-theme="light"] .send-btn:disabled {
+      background: #f2f0ea;
+      border-color: #e2dfd6;
+      color: #a8a29e;
+    }
+    :root[data-theme="light"] .tool-item {
+      background: #fdfcf9;
+      border-color: var(--border);
+      color: #292524;
+    }
+    :root[data-theme="light"] .modal-overlay {
+      background: rgba(28, 25, 23, 0.45);
+    }
+    :root[data-theme="light"] .modal-box {
+      background: #faf7f2;
+      border-color: #d8d1c2;
+      box-shadow: 0 20px 48px -12px rgba(45, 38, 30, 0.22);
+    }
+    :root[data-theme="light"] .modal-header {
+      background: transparent;
+      border-bottom-color: var(--border);
+    }
+    :root[data-theme="light"] .modal-title {
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .modal-subtitle {
+      color: #57534e;
+    }
+    :root[data-theme="light"] .modal-title-icon {
+      color: #0284c7;
+    }
+    :root[data-theme="light"] .close-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: #78716c;
+      box-shadow: none;
+    }
+    :root[data-theme="light"] .close-btn svg {
+      stroke: #78716c;
+    }
+    :root[data-theme="light"] .close-btn:hover {
+      background: #eae4d6;
+      border-color: var(--border);
+      color: #1c1917;
+      box-shadow: none;
+    }
+    :root[data-theme="light"] .close-btn:hover svg {
+      stroke: #1c1917;
+    }
+    :root[data-theme="light"] .system-hw-card {
+      background: #f4f0e6;
+      border: 1px solid #dcd5c5;
+      box-shadow: 0 1px 3px rgba(45, 38, 30, 0.04);
+    }
+    :root[data-theme="light"] .system-hw-title {
+      color: #0369a1;
+      font-weight: 700;
+    }
+    :root[data-theme="light"] .system-hw-badge {
+      background: #e0f2fe;
+      color: #0369a1;
+      border: 1px solid #7dd3fc;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .system-hw-recommendation {
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      color: #065f46;
+    }
+    :root[data-theme="light"] .system-hw-rec-text > div:first-child {
+      color: #1c1917 !important;
+    }
+    :root[data-theme="light"] #system-rec-model-name {
+      color: #047857 !important;
+      font-weight: 700;
+    }
+    :root[data-theme="light"] #system-rec-reason {
+      color: #44403c !important;
+    }
+    :root[data-theme="light"] .engine-section-title {
+      color: #292524;
+      font-weight: 700;
+    }
+    :root[data-theme="light"] .engine-section-title svg {
+      color: #0284c7;
+    }
+    :root[data-theme="light"] .engine-section-desc {
+      color: #57534e;
+    }
+    :root[data-theme="light"] .engine-pill {
+      background: #eeeae0;
+      color: #292524;
+      border: 1px solid #d5cec0;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .status-indicator-pill.online {
+      background: #ecfdf5;
+      color: #047857;
+      border-color: #a7f3d0;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .status-indicator-pill.standby {
+      background: #e0f2fe;
+      color: #0369a1;
+      border-color: #7dd3fc;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .status-indicator-pill.offline {
+      background: #fef2f2;
+      color: #b91c1c;
+      border-color: #fecaca;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .model-row {
+      background: #fdfcf9;
+      border-color: #d8d1c2;
+    }
+    :root[data-theme="light"] .model-row:hover {
+      background: #f4f0e6;
+      border-color: #a8a29e;
+    }
+    :root[data-theme="light"] .model-row.active {
+      background: #f0fdf4;
+      border-color: #86efac;
+    }
+    :root[data-theme="light"] .model-name {
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .model-size-badge {
+      color: #57534e;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .model-desc-text {
+      color: #57534e;
+    }
+    :root[data-theme="light"] .tier-tag-rec {
+      background: #ecfdf5;
+      color: #047857;
+      border: 1px solid #a7f3d0;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .tier-tag-subtle {
+      background: #eeeae0;
+      color: #292524;
+      border: 1px solid #d5cec0;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .btn-status-active {
+      background: #ecfdf5;
+      color: #047857;
+      border-color: #a7f3d0;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .btn-status-selected {
+      background: #fffbeb;
+      color: #b45309;
+      border-color: #fde68a;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .btn-model-action {
+      background: #ffffff;
+      border: 1px solid #d5cec0;
+      color: #292524;
+    }
+    :root[data-theme="light"] .btn-model-action:hover {
+      background: #f4f0e6;
+      border-color: #a8a29e;
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .auth-info-card {
+      background: #e0f2fe;
+      border-color: #bae6fd;
+      color: #0369a1;
+    }
+    :root[data-theme="light"] .auth-info-card strong {
+      color: #0284c7;
+    }
+    :root[data-theme="light"] .auth-divider {
+      background: #d8d1c2 !important;
+    }
+    :root[data-theme="light"] #token-modal-desc {
+      color: #57534e !important;
+    }
+    :root[data-theme="light"] #token-modal-label {
+      color: #44403c !important;
+    }
+    :root[data-theme="light"] #app-dialog-title {
+      color: #1c1917 !important;
+    }
+    :root[data-theme="light"] #app-dialog-message {
+      color: #44403c !important;
+    }
+    :root[data-theme="light"] .app-dialog-footer {
+      border-top-color: #d8d1c2 !important;
+    }
+    :root[data-theme="light"] .sidebar-persistence-text {
+      color: #44403c !important;
+    }
+    :root[data-theme="light"] .chart-modal-toolbar,
+    :root[data-theme="light"] .ch-report-toolbar {
+      background: #f8fafc;
+      border-color: var(--border);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    }
+    :root[data-theme="light"] .chart-modal-label,
+    :root[data-theme="light"] .ch-label {
+      color: #64748b;
+    }
+    :root[data-theme="light"] .chart-modal-divider,
+    :root[data-theme="light"] .ch-divider {
+      background: var(--border);
+    }
+    :root[data-theme="light"] .chart-modal-select,
+    :root[data-theme="light"] .ch-select {
+      background-color: #ffffff;
+      color: #0f172a;
+      border-color: #cbd5e1;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 7px center;
+    }
+    :root[data-theme="light"] .chart-modal-select:hover,
+    :root[data-theme="light"] .chart-modal-select:focus,
+    :root[data-theme="light"] .ch-select:hover,
+    :root[data-theme="light"] .ch-select:focus {
+      background-color: #f1f5f9;
+      border-color: #94a3b8;
+    }
+    :root[data-theme="light"] .ch-toolbar-btn {
+      background-color: #ffffff;
+      background-image: none;
+      color: #0f172a;
+      border-color: #cbd5e1;
+    }
+    :root[data-theme="light"] .ch-toolbar-btn:hover {
+      background-color: #f1f5f9;
+      border-color: #94a3b8;
+    }
+    :root[data-theme="light"] .ch-val {
+      color: #0284c7;
+    }
+    :root[data-theme="light"] .ch-caret {
+      color: #64748b;
+    }
+    :root[data-theme="light"] .ch-options-popover {
+      background: #ffffff;
+      border-color: var(--border);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.06);
+    }
+    :root[data-theme="light"] .ch-options-menu-item {
+      color: #1e293b;
+    }
+    :root[data-theme="light"] .ch-options-menu-item:hover {
+      background: #f1f5f9;
+      color: #0284c7;
+    }
+    :root[data-theme="light"] .ch-options-menu-item.active {
+      color: #0284c7;
+      background: #e0f2fe;
+    }
+    :root[data-theme="light"] .ch-opt-badge {
+      background: #f1f5f9;
+      color: #64748b;
+    }
+    :root[data-theme="light"] .ch-options-menu-item.active .ch-opt-badge {
+      background: #bae6fd;
+      color: #0369a1;
+    }
+    :root[data-theme="light"] .ch-options-menu-divider {
+      background: var(--border);
+    }
+    :root[data-theme="light"] .chart-modal-dim-popover {
+      background: #ffffff;
+      border-color: var(--border);
+      box-shadow: var(--shadow-lg);
+    }
+    :root[data-theme="light"] .chart-modal-dim-header {
+      border-bottom-color: var(--border);
+    }
+    :root[data-theme="light"] .chart-modal-dim-title {
+      color: #0f172a;
+    }
+    :root[data-theme="light"] .chart-modal-dim-section-title {
+      color: #64748b;
+      border-top-color: var(--border);
+    }
+    :root[data-theme="light"] .chart-modal-dim-item {
+      color: #292524;
+    }
+    :root[data-theme="light"] .chart-modal-dim-item:hover {
+      background: #f2f0ea;
+    }
+    :root[data-theme="light"] .btn-dim-quick {
+      background: #ffffff;
+      border-color: var(--border);
+      color: #44403c;
+    }
+    :root[data-theme="light"] .btn-dim-quick:hover {
+      background: #eae4d6;
+      color: #0284c7;
+    }
+    :root[data-theme="light"] .chart-modal-dim-search-input {
+      background: #f7f6f2;
+      border-color: var(--border);
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .history-footer {
+      background: #f4f3ee;
+      border-top-color: var(--border);
+    }
+    :root[data-theme="light"] .btn-link-danger {
+      color: #78716c;
+    }
+    :root[data-theme="light"] .btn-link-danger:hover:not(:disabled) {
+      color: #dc2626;
+    }
+    :root[data-theme="light"] .btn-link-danger:disabled {
+      color: #b5b0a4;
+    }
+    :root[data-theme="light"] .persist-hint {
+      color: #78716c;
+    }
+    :root[data-theme="light"] .clear-confirm-face {
+      background: #ffffff;
+      border-color: #fca5a5;
+      box-shadow: 0 12px 32px rgba(45, 38, 30, 0.15), 0 0 20px rgba(239, 68, 68, 0.08);
+    }
+    :root[data-theme="light"] .clear-confirm-header {
+      color: #dc2626;
+    }
+    :root[data-theme="light"] .clear-confirm-header-success {
+      color: #059669 !important;
+    }
+    :root[data-theme="light"] .clear-confirm-text {
+      color: #44403c;
+    }
+    :root[data-theme="light"] .clear-confirm-btn {
+      background: #f2f0ea;
+      border-color: #d8d1c2;
+      color: #44403c;
+    }
+    :root[data-theme="light"] .clear-confirm-btn:hover {
+      background: #e5e0d3;
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .clear-confirm-btn-danger {
+      background: #fee2e2;
+      border-color: #fca5a5;
+      color: #dc2626;
+    }
+    :root[data-theme="light"] .clear-confirm-btn-danger:hover {
+      background: #fecaca;
+      color: #b91c1c;
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+    }
+    :root[data-theme="light"] .mcp-endpoint-url {
+      background: #ffffff !important;
+      color: #0284c7 !important;
+      border-color: var(--border) !important;
+    }
+    :root[data-theme="light"] .log-container {
+      background: #f7f6f2;
+      border-color: var(--border);
+      color: #292524;
+    }
+    :root[data-theme="light"] .cloud-service-badge.aws {
+      background: rgba(234, 88, 12, 0.08);
+      border-color: rgba(234, 88, 12, 0.28);
+      color: #c2410c;
+    }
+    :root[data-theme="light"] .cloud-service-badge.azure {
+      background: rgba(2, 132, 199, 0.08);
+      border-color: rgba(2, 132, 199, 0.28);
+      color: #0369a1;
+    }
+    :root[data-theme="light"] .cloud-service-badge.gcp {
+      background: rgba(37, 99, 235, 0.08);
+      border-color: rgba(37, 99, 235, 0.28);
+      color: #1d4ed8;
+    }
+    :root[data-theme="light"] .cloud-service-badge.multicloud {
+      background: rgba(124, 58, 237, 0.08);
+      border-color: rgba(124, 58, 237, 0.28);
+      color: #6d28d9;
+    }
+    :root[data-theme="light"] .cloud-region-badge {
+      background: rgba(120, 113, 108, 0.08);
+      border-color: rgba(120, 113, 108, 0.22);
+      color: #57534e;
+    }
+    :root[data-theme="light"] .assistant-more-menu {
+      background: #ffffff;
+      border-color: var(--border);
+      box-shadow: var(--shadow-lg);
+    }
+    :root[data-theme="light"] .assistant-menu-item {
+      color: #292524;
+    }
+    :root[data-theme="light"] .assistant-menu-item:hover {
+      background: #f0f7ff;
+      color: #0284c7;
+    }
+    :root[data-theme="light"] .copy-btn {
+      background: #ffffff;
+      border-color: var(--border);
+      color: #78716c;
+    }
+    :root[data-theme="light"] .copy-btn:hover {
+      background: #f2f0ea;
+      color: #1c1917;
+      border-color: #a8a29e;
+    }
+    :root[data-theme="light"] .assistant-action-btn:hover {
+      background: rgba(45, 38, 30, 0.05);
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .user-action-btn {
+      background: rgba(45, 38, 30, 0.04);
+      border-color: rgba(45, 38, 30, 0.1);
+      color: #78716c;
+    }
+    :root[data-theme="light"] .user-action-btn:hover {
+      background: #f2f0ea;
+      border-color: #a8a29e;
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .user-action-btn:hover svg {
+      stroke: #1c1917;
+    }
+    :root[data-theme="light"] .export-csv-btn {
+      background: #f7f6f2;
+      border-color: var(--border);
+      color: #57534e;
+    }
+    :root[data-theme="light"] .export-csv-btn:hover {
+      background: #f2f0ea;
+      border-color: #a8a29e;
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .export-csv-btn svg {
+      stroke: #57534e;
+    }
+    :root[data-theme="light"] .export-csv-btn:hover svg {
+      stroke: #1c1917;
+    }
+    :root[data-theme="light"] .feedback-btn {
+      background: #ffffff;
+      border-color: var(--border);
+      color: #78716c;
+    }
+    :root[data-theme="light"] .feedback-btn svg {
+      stroke: #78716c;
+    }
+    :root[data-theme="light"] .feedback-btn:hover {
+      background: #f2f0ea;
+      border-color: #a8a29e;
+      color: #1c1917;
+    }
+    :root[data-theme="light"] .feedback-btn:hover svg {
+      stroke: #1c1917;
+    }
+
     /* ── Main Layout: 3 Panes ── */
     .main-container {
       display: flex;
       flex: 1;
-      height: calc(100vh - 58px);
+      height: calc(100vh - 52px);
+      min-height: 0;
       overflow: hidden;
       position: relative;
     }
@@ -561,6 +1499,143 @@
       color: #64748b;
       font-size: 0.76rem;
     }
+    .search-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .search-row .search-input {
+      flex: 1;
+      min-width: 0;
+    }
+    .history-select-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 7px;
+      color: var(--text-dim);
+      font-size: 0.72rem;
+      font-weight: 500;
+      padding: 6px 9px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+      height: 31px;
+      flex-shrink: 0;
+    }
+    .history-select-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+    .history-select-btn.active {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: rgba(56, 189, 248, 0.4);
+      color: #38bdf8;
+    }
+    .history-batch-bar {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      margin: 4px 12px 2px 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      font-size: 0.74rem;
+      color: var(--text-dim);
+    }
+    .history-batch-bar.visible {
+      display: flex;
+    }
+    .history-batch-left {
+      display: flex;
+      align-items: center;
+    }
+    .history-batch-select-all {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+      font-weight: 500;
+    }
+    .history-batch-select-all input[type="checkbox"] {
+      cursor: pointer;
+      accent-color: var(--accent-azure);
+      width: 13px;
+      height: 13px;
+    }
+    .history-batch-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-batch-delete {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+      border-radius: 5px;
+      padding: 3px 8px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-batch-delete:hover:not(:disabled) {
+      background: rgba(239, 68, 68, 0.25);
+      border-color: #ef4444;
+      color: #fca5a5;
+    }
+    .btn-batch-delete:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .btn-batch-cancel {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 0.72rem;
+      cursor: pointer;
+      padding: 3px 6px;
+      border-radius: 4px;
+      transition: color 0.15s ease;
+    }
+    .btn-batch-cancel:hover {
+      color: var(--text);
+    }
+    .history-item-cb {
+      display: none;
+      margin-top: 3px;
+      cursor: pointer;
+      accent-color: var(--accent-azure);
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+    }
+    .history-list.select-mode .history-item-cb {
+      display: block;
+    }
+    .history-list.select-mode .history-item-actions {
+      display: none !important;
+    }
+    .history-item.is-selected {
+      background: rgba(56, 189, 248, 0.12) !important;
+      border-color: rgba(56, 189, 248, 0.5) !important;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.2) !important;
+    }
+    .history-item-inner {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
     #sidebar-pane-telemetry .telemetry-content {
       flex: 1;
       overflow-y: auto;
@@ -639,8 +1714,9 @@
       transition: all 0.15s ease;
       position: relative;
       display: flex;
-      flex-direction: column;
-      gap: 4px;
+      flex-direction: row;
+      align-items: flex-start;
+      gap: 8px;
     }
     .history-item:hover {
       background: var(--bg-card-hover);
@@ -1546,18 +2622,17 @@
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
-    .chart-modal-toolbar {
+    .chart-modal-toolbar, .ch-report-toolbar {
       display: flex;
       align-items: center;
-      justify-content: space-between;
       flex-wrap: wrap;
-      gap: 10px;
-      padding: 7px 12px;
-      background: rgba(15, 23, 42, 0.7);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      gap: 12px;
+      padding: 8px 14px;
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 8px;
-      margin-bottom: 10px;
-      font-size: 0.75rem;
+      margin-bottom: 12px;
+      font-size: 0.73rem;
       user-select: none;
     }
     .chart-modal-toolbar-group {
@@ -1566,36 +2641,137 @@
       gap: 8px;
       flex-wrap: wrap;
     }
-    .chart-modal-control-item {
+    .chart-modal-control-item, .ch-toolbar-item {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
     }
-    .chart-modal-label {
-      font-size: 0.72rem;
+    .chart-modal-label, .ch-label {
+      font-size: 0.69rem;
+      font-weight: 700;
       color: #94a3b8;
-      font-weight: 500;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      white-space: nowrap;
     }
-    .chart-modal-divider {
+    .chart-modal-divider, .ch-divider {
       width: 1px;
-      height: 16px;
-      background: rgba(255, 255, 255, 0.1);
+      height: 18px;
+      background: rgba(255, 255, 255, 0.12);
       margin: 0 4px;
     }
-    .chart-modal-select {
+    .chart-modal-select, .ch-select {
       background: #0d131f;
       color: #f1f5f9;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 6px;
-      padding: 4px 8px;
-      font-size: 0.73rem;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 5px;
+      padding: 4px 22px 4px 8px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
       font-family: inherit;
       cursor: pointer;
       outline: none;
       transition: all 0.15s ease;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 7px center;
     }
-    .chart-modal-select:hover, .chart-modal-select:focus {
-      border-color: rgba(56, 189, 248, 0.4);
+    .chart-modal-select:hover, .chart-modal-select:focus,
+    .ch-select:hover, .ch-select:focus {
+      border-color: rgba(56, 189, 248, 0.5);
+      background-color: #131c2e;
+    }
+    .ch-toolbar-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #0d131f;
+      color: #f1f5f9;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 5px;
+      padding: 4px 9px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+    .ch-toolbar-btn:hover {
+      border-color: rgba(56, 189, 248, 0.5);
+      background-color: #131c2e;
+    }
+    .ch-val {
+      color: #38bdf8;
+      font-weight: 600;
+    }
+    .ch-caret {
+      color: #94a3b8;
+    }
+    .ch-options-popover {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 220px;
+      background: #0d131f;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.75);
+      z-index: 155;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .ch-options-menu-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 7px 10px;
+      background: transparent;
+      border: none;
+      border-radius: 5px;
+      color: #e2e8f0;
+      font-size: 0.73rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s ease;
+    }
+    .ch-options-menu-item:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #38bdf8;
+    }
+    .ch-options-menu-item.active {
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.1);
+    }
+    .ch-opt-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ch-opt-badge {
+      font-size: 0.65rem;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.06);
+      color: #94a3b8;
+    }
+    .ch-options-menu-item.active .ch-opt-badge {
+      background: rgba(56, 189, 248, 0.2);
+      color: #38bdf8;
+      font-weight: 600;
+    }
+    .ch-options-menu-divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.08);
+      margin: 4px 0;
     }
     .chart-modal-dim-popover {
       position: absolute;
@@ -1619,6 +2795,11 @@
       justify-content: space-between;
       padding-bottom: 6px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .chart-modal-dim-title {
+      font-weight: 600;
+      font-size: 0.74rem;
+      color: #f1f5f9;
     }
     .chart-modal-dim-quick-actions {
       display: flex;
@@ -1663,6 +2844,21 @@
       flex-direction: column;
       gap: 3px;
       padding-right: 2px;
+    }
+    .chart-modal-dim-section-title {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #64748b;
+      padding: 6px 6px 2px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      margin-top: 4px;
+    }
+    .chart-modal-dim-section-title:first-child {
+      border-top: none;
+      margin-top: 0;
+      padding-top: 2px;
     }
     .chart-modal-dim-item {
       display: flex;
@@ -2273,6 +3469,147 @@
       margin-bottom: 5px;
     }
 
+    /* ── Telemetry Datasets & Schema Explorer ── */
+    .telemetry-dataset-select {
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 7px 10px;
+      font-size: 0.76rem;
+      color: var(--text);
+      font-family: inherit;
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      box-sizing: border-box;
+    }
+    .telemetry-dataset-select:focus {
+      border-color: rgba(56, 189, 248, 0.45);
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.25);
+    }
+    .telemetry-dataset-select optgroup {
+      background: var(--bg-card);
+      color: var(--accent-azure);
+      font-weight: 700;
+      font-size: 0.74rem;
+    }
+    .telemetry-dataset-select option {
+      background: var(--bg-surface);
+      color: var(--text);
+      font-weight: normal;
+      padding: 4px 6px;
+    }
+    .telemetry-col-search {
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 24px 6px 9px;
+      font-size: 0.72rem;
+      color: var(--text);
+      outline: none;
+      font-family: inherit;
+      box-sizing: border-box;
+      transition: all 0.15s ease;
+    }
+    .telemetry-col-search:focus {
+      border-color: rgba(56, 189, 248, 0.45);
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.2);
+    }
+    .telemetry-col-search::placeholder {
+      color: var(--text-dim);
+      font-size: 0.7rem;
+    }
+    .telemetry-columns-list {
+      max-height: 250px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding-right: 2px;
+    }
+    .telemetry-col-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.12s ease, border-color 0.12s ease, transform 0.1s ease;
+      user-select: none;
+    }
+    .telemetry-col-item:hover {
+      background: var(--bg-card-hover);
+      border-color: rgba(56, 189, 248, 0.35);
+      transform: translateX(1px);
+    }
+    .telemetry-col-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--text);
+      word-break: break-all;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex: 1;
+      min-width: 0;
+    }
+    .telemetry-col-badge-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+      margin-left: 6px;
+    }
+    .telemetry-badge-measure {
+      font-size: 0.62rem;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .telemetry-badge-dimension {
+      font-size: 0.62rem;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: rgba(56, 189, 248, 0.12);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .telemetry-badge-persp {
+      font-size: 0.58rem;
+      font-weight: 600;
+      padding: 1px 4px;
+      border-radius: 3px;
+      background: rgba(168, 85, 247, 0.15);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+    .telemetry-badge-tag {
+      font-size: 0.58rem;
+      font-weight: 600;
+      padding: 1px 4px;
+      border-radius: 3px;
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .telemetry-col-datatype {
+      font-size: 0.62rem;
+      color: var(--text-dim);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
     /* ── Modals ── */
     .modal-overlay {
       position: fixed;
@@ -2760,6 +4097,30 @@
           </button>
         </div>
       </div>
+      <!-- Theme Switch Button (Light / Dark Mode) -->
+      <button class="theme-switch-btn" id="theme-toggle-btn" onclick="toggleTheme()" role="switch" aria-checked="false" title="Switch to Light Theme" aria-label="Switch between light and dark theme">
+        <span class="theme-switch-track">
+          <span class="theme-switch-icon sun" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4"></circle>
+              <line x1="12" y1="2" x2="12" y2="4"></line>
+              <line x1="12" y1="20" x2="12" y2="22"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="2" y1="12" x2="4" y2="12"></line>
+              <line x1="20" y1="12" x2="22" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+          </span>
+          <span class="theme-switch-icon moon" aria-hidden="true">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+          </span>
+          <span class="theme-switch-thumb"></span>
+        </span>
+      </button>
       <button class="btn btn-primary" onclick="newSession()" style="padding: 6px 14px;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -2811,7 +4172,33 @@
       <!-- Pane 1: Chat Sessions -->
       <div id="sidebar-pane-chats" class="sidebar-pane active">
         <div class="search-container">
-          <input id="history-search-input" class="search-input" placeholder="Search chats..." oninput="filterHistory(this.value)" autocomplete="off" aria-label="Search chat sessions">
+          <div class="search-row">
+            <input id="history-search-input" class="search-input" placeholder="Search chats..." oninput="filterHistory(this.value)" autocomplete="off" aria-label="Search chat sessions">
+            <button type="button" id="btn-toggle-select-mode" class="history-select-btn" onclick="toggleHistorySelectMode()" title="Select multiple chats to clear or manage">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 11 12 14 22 4"></polyline>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+              </svg>
+              <span>Select</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Multi-select Batch Action Bar -->
+        <div id="history-batch-bar" class="history-batch-bar">
+          <div class="history-batch-left">
+            <label class="history-batch-select-all" title="Select or deselect all visible chats">
+              <input type="checkbox" id="history-select-all-cb" onchange="toggleSelectAllHistories(this.checked)">
+              <span id="history-selected-count">0 selected</span>
+            </label>
+          </div>
+          <div class="history-batch-actions">
+            <button type="button" id="btn-delete-selected-histories" class="btn-batch-delete" onclick="deleteSelectedHistories()" disabled title="Clear selected conversations">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              <span>Clear</span>
+            </button>
+            <button type="button" class="btn-batch-cancel" onclick="exitHistorySelectMode()" title="Exit selection mode">Done</button>
+          </div>
         </div>
         <div id="history-list" class="history-list">
           <div class="history-empty">Loading chat history...</div>
@@ -2862,7 +4249,7 @@
                 Disconnect
               </button>
             </div>
-            <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #94a3b8; word-break: break-all; background: rgba(0,0,0,0.25); padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border);">
+            <div class="mcp-endpoint-url" style="font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #94a3b8; word-break: break-all; background: rgba(0,0,0,0.25); padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border);">
               https://apps.cloudhealthtech.com/mcp
             </div>
           </div>
@@ -2888,9 +4275,52 @@
             </div>
           </div>
 
+          <!-- Available Datasets & Columns Explorer -->
+          <div class="card" id="telemetry-datasets-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div class="card-title" style="margin-bottom: 0;">Available Datasets</div>
+              <span id="telemetry-dataset-count" style="color: var(--accent-azure); font-size: 0.74rem; font-weight: 600;">0 datasets</span>
+            </div>
+            
+            <div style="position: relative; margin-bottom: 8px;">
+              <select id="telemetry-dataset-select" class="telemetry-dataset-select" onchange="onTelemetryDatasetSelected(this.value)" aria-label="Select CloudHealth Dataset">
+                <option value="" disabled selected>Select a dataset to view columns...</option>
+              </select>
+            </div>
+
+            <!-- Columns Explorer Section (Revealed when dataset selected) -->
+            <div id="telemetry-columns-container" style="display: none; margin-top: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; padding-top: 8px; border-top: 1px solid var(--border);">
+                <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim);">
+                  Available Columns
+                </div>
+                <span id="telemetry-col-count" style="font-size: 0.7rem; color: var(--text-muted); font-weight: 500;">0 columns</span>
+              </div>
+
+              <!-- Quick Column Filter -->
+              <div style="position: relative; margin-bottom: 8px;">
+                <input 
+                  type="text" 
+                  id="telemetry-column-search" 
+                  placeholder="Filter columns (e.g. cost, team, tag)..." 
+                  class="telemetry-col-search" 
+                  oninput="filterTelemetryColumns(this.value)"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <button id="telemetry-col-search-clear" onclick="clearTelemetryColSearch()" style="display:none; position:absolute; right:7px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:0.75rem; padding:2px;" title="Clear search">✕</button>
+              </div>
+
+              <!-- Scrollable Columns List -->
+              <div id="telemetry-columns-list" class="telemetry-columns-list">
+                <!-- Dynamically rendered -->
+              </div>
+            </div>
+          </div>
+
           <div class="card">
             <div class="card-title">Chat Persistence</div>
-            <div style="font-size: 0.76rem; color: #cbd5e1; line-height: 1.5;">
+            <div class="sidebar-persistence-text" style="font-size: 0.76rem; color: #cbd5e1; line-height: 1.5;">
               Local LRU Store: <strong id="telemetry-session-count">0</strong> / 100 sessions<br>
               Storage: <code style="font-size:0.7em;">~/.cleo/sessions.json</code>
             </div>
@@ -2928,9 +4358,9 @@
               <div class="welcome-card-title">Channel Customers</div>
               <div class="welcome-card-desc">Partner customer spend breakdown across cloud infrastructure.</div>
             </div>
-            <div class="welcome-card" id="card-service-comparison" onclick="sendPrompt('Compare previous month service level cost for Lundbeck with current month projected cost across all clouds')">
-              <div class="welcome-card-title" id="card-comparison-title">Lundbeck Service Comparison</div>
-              <div class="welcome-card-desc" id="card-comparison-desc">Service run-rate forecast and variance breakdown for Lundbeck.</div>
+            <div class="welcome-card" id="card-ai-data-query" onclick="sendPrompt('Show AI spend by foundation model across all clouds')">
+              <div class="welcome-card-title">AI Data Query</div>
+              <div class="welcome-card-desc">Multi-cloud spend breakdown across AI models, LLMs, and data services.</div>
             </div>
             <div class="welcome-card" onclick="sendPrompt('What are our top cost optimization recommendations across all cloud providers?')">
               <div class="welcome-card-title">Waste Reclamation</div>
@@ -3014,7 +4444,7 @@
       <p style="color: var(--text-muted); font-size: 0.82rem; line-height: 1.5; margin-bottom: 14px;">
         Connect Cleo directly to CloudHealth via independent OAuth 2.0 PKCE. Zero third-party redirects or API keys required.
       </p>
-      <div style="background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.78rem; color: #cbd5e1; line-height: 1.45;">
+      <div class="auth-info-card" style="background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.78rem; color: #cbd5e1; line-height: 1.45;">
         <strong style="color: #38bdf8;">Direct 1-Click Connection:</strong> Opens CloudHealth login directly. Once authorized, CloudHealth redirects right back to Cleo.
       </div>
       <div style="display:flex; flex-direction:column; gap: 14px;">
@@ -3023,9 +4453,9 @@
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l9.2-9.2M17 17V7H7"/></svg>
         </button>
         <div style="display:flex; align-items:center; gap: 8px; margin: 4px 0;">
-          <div style="flex:1; height:1px; background:rgba(255,255,255,0.07);"></div>
+          <div class="auth-divider" style="flex:1; height:1px; background:rgba(255,255,255,0.07);"></div>
           <span style="font-size: 0.72rem; color: var(--text-muted);">or manual code paste</span>
-          <div style="flex:1; height:1px; background:rgba(255,255,255,0.07);"></div>
+          <div class="auth-divider" style="flex:1; height:1px; background:rgba(255,255,255,0.07);"></div>
         </div>
         <div style="display:flex; gap: 8px;">
           <input id="code-input" class="input-box" style="padding: 8px 12px; font-size: 0.8rem; font-family: 'JetBrains Mono', monospace;" placeholder="Paste authorization code or callback URL...">
@@ -3307,74 +4737,140 @@
         </div>
       </div>
 
-      <!-- Interactive Chart Customization Bar -->
-      <div id="chart-modal-toolbar" class="chart-modal-toolbar">
-        <div class="chart-modal-toolbar-group">
-          <!-- Chart Type Selector -->
-          <div class="chart-modal-control-item">
-            <label for="chart-modal-type-select" class="chart-modal-label">Type:</label>
-            <select id="chart-modal-type-select" class="chart-modal-select" onchange="onModalChartTypeChange(this.value)">
-              <option value="stacked_bar">Stacked Bar</option>
-              <option value="grouped_bar">Grouped Bar</option>
-              <option value="horizontal_bar">Horizontal Bar</option>
-              <option value="line">Line Chart</option>
-              <option value="area">Stacked Area</option>
-              <option value="pie">Pie Chart</option>
-              <option value="doughnut">Doughnut Chart</option>
-            </select>
-          </div>
+      <!-- Interactive CloudHealth-Style Analytics Control Bar -->
+      <div id="chart-modal-toolbar" class="chart-modal-toolbar ch-report-toolbar">
+        <!-- Table / Report Selector (shown only if multiple tables detected) -->
+        <div class="ch-toolbar-item" id="chart-modal-table-control" style="display: none;">
+          <label for="chart-modal-table-select" class="ch-label">REPORT:</label>
+          <select id="chart-modal-table-select" class="ch-select" style="max-width: 200px;" onchange="onModalTableChange(this.value)">
+          </select>
+        </div>
 
-          <div class="chart-modal-divider" id="chart-modal-axes-divider"></div>
+        <!-- Left: Filters Button (opens Series & Dimension Filter Drawer) -->
+        <div class="ch-toolbar-item" style="position: relative;">
+          <button class="ch-toolbar-btn ch-filters-btn" id="chart-modal-filters-btn" onclick="toggleModalDimMenu(event)" title="Filter visible dimensions and series">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+            </svg>
+            <span class="ch-label">FILTERS:</span>
+            <span class="ch-val" id="chart-modal-dim-badge">All</span>
+            <svg class="ch-caret" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
 
-          <!-- Axis & Orientation Controls -->
-          <div class="chart-modal-control-item" id="chart-modal-axes-controls">
-            <span class="chart-modal-label">Axes:</span>
-            <button class="cleo-chart-action-btn" id="chart-modal-swap-axes-btn" onclick="toggleModalChartTranspose()" title="Swap X and Y axes (transpose dimensions & time/categories)">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/>
-              </svg>
-              <span id="chart-modal-swap-axes-text">Swap X ⇄ Y</span>
-            </button>
-            <button class="cleo-chart-action-btn" id="chart-modal-orient-btn" onclick="toggleModalChartOrientation()" title="Toggle Vertical / Horizontal orientation">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
-                <path d="M7 12h10"></path>
-              </svg>
-              <span id="chart-modal-orient-text">Horizontal</span>
-            </button>
+          <!-- Dropdown Popover for Dimensions Selection -->
+          <div id="chart-modal-dim-popover" class="chart-modal-dim-popover" style="display: none;" onclick="event.stopPropagation()">
+            <div class="chart-modal-dim-header">
+              <span class="chart-modal-dim-title">Filter Dimensions</span>
+              <div class="chart-modal-dim-quick-actions">
+                <button type="button" class="btn-dim-quick" onclick="filterModalDimensions('all')">All</button>
+                <button type="button" class="btn-dim-quick" onclick="filterModalDimensions('top3')">Top 3</button>
+                <button type="button" class="btn-dim-quick" onclick="filterModalDimensions('top5')">Top 5</button>
+                <button type="button" class="btn-dim-quick" onclick="filterModalDimensions('clear')">Clear</button>
+              </div>
+            </div>
+            <div class="chart-modal-dim-search-wrap">
+              <input type="text" id="chart-modal-dim-search" placeholder="Search dimensions..." oninput="onModalDimSearch(this.value)" class="chart-modal-dim-search-input">
+            </div>
+            <div id="chart-modal-dim-list" class="chart-modal-dim-list"></div>
           </div>
         </div>
 
-        <!-- Dimensions Selector & Filter -->
-        <div class="chart-modal-toolbar-group" style="position: relative;">
-          <div class="chart-modal-control-item" style="position: relative;">
-            <label class="chart-modal-label">Dimensions:</label>
-            <button class="cleo-chart-action-btn" id="chart-modal-dim-dropdown-btn" onclick="toggleModalDimMenu(event)" title="Choose and filter visible dimensions">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-              </svg>
-              <span id="chart-modal-dim-badge">All</span>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </button>
+        <div class="ch-divider"></div>
 
-            <!-- Dropdown Popover for Dimensions Selection -->
-            <div id="chart-modal-dim-popover" class="chart-modal-dim-popover" style="display: none;" onclick="event.stopPropagation()">
-              <div class="chart-modal-dim-header">
-                <span style="font-weight: 600; font-size: 0.74rem; color: #f1f5f9;">Filter Dimensions</span>
-                <div class="chart-modal-dim-quick-actions">
-                  <button type="button" class="btn-dim-quick" onclick="filterModalDimensions('all')">All</button>
-                  <button type="button" class="btn-dim-quick" onclick="filterModalDimensions('top3')">Top 3</button>
-                  <button type="button" class="btn-dim-quick" onclick="filterModalDimensions('top5')">Top 5</button>
-                  <button type="button" class="btn-dim-quick" onclick="filterModalDimensions('clear')">Clear</button>
-                </div>
+        <!-- X-Axis Dimension Selector -->
+        <div class="ch-toolbar-item" id="chart-modal-xaxis-control">
+          <label for="chart-modal-xaxis-select" class="ch-label">X-AXIS:</label>
+          <select id="chart-modal-xaxis-select" class="ch-select" style="max-width: 220px;" onchange="onModalXAxisChange(this.value)">
+          </select>
+        </div>
+
+        <!-- Y-Axis Metric Selector -->
+        <div class="ch-toolbar-item" id="chart-modal-metric-control">
+          <label for="chart-modal-metric-select" class="ch-label">Y-AXIS:</label>
+          <select id="chart-modal-metric-select" class="ch-select" style="max-width: 220px;" onchange="onModalMetricChange(this.value)">
+          </select>
+        </div>
+
+        <!-- % of Total Aggregation Option (Avg vs Sum, shown when % metric is active) -->
+        <div class="ch-toolbar-item" id="chart-modal-pct-agg-control" style="display: none;">
+          <label for="chart-modal-pct-agg-select" class="ch-label">% AGG:</label>
+          <select id="chart-modal-pct-agg-select" class="ch-select" onchange="onModalPctAggChange(this.value)">
+            <option value="avg">Avg (%)</option>
+            <option value="sum">Sum (%)</option>
+          </select>
+        </div>
+
+        <!-- Category / View Selector -->
+        <div class="ch-toolbar-item" id="chart-modal-category-control">
+          <label for="chart-modal-category-select" class="ch-label">CATEGORY:</label>
+          <select id="chart-modal-category-select" class="ch-select" style="max-width: 240px;" onchange="onModalCategoryChange(this.value)">
+          </select>
+        </div>
+
+        <!-- Chart Type Selector -->
+        <div class="ch-toolbar-item" id="chart-modal-type-control">
+          <label for="chart-modal-type-select" class="ch-label">CHART TYPE:</label>
+          <select id="chart-modal-type-select" class="ch-select" onchange="onModalChartTypeChange(this.value)">
+            <option value="stacked_bar">STACKED BAR</option>
+            <option value="grouped_bar">GROUPED BAR</option>
+            <option value="horizontal_bar">HORIZONTAL BAR</option>
+            <option value="line">LINE</option>
+            <option value="area">AREA</option>
+            <option value="pie">PIE</option>
+            <option value="doughnut">DOUGHNUT</option>
+            <option value="waterfall">WATERFALL</option>
+          </select>
+        </div>
+
+        <!-- Options Dropdown Menu -->
+        <div class="ch-toolbar-item" style="position: relative;">
+          <button class="ch-toolbar-btn" id="chart-modal-options-btn" onclick="toggleModalOptionsMenu(event)" title="Axes, orientation, and curve options">
+            <span class="ch-label" style="color: inherit;">OPTIONS</span>
+            <svg class="ch-caret" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+          <div id="chart-modal-options-popover" class="ch-options-popover" style="display: none;" onclick="event.stopPropagation()">
+            <button class="ch-options-menu-item" id="opt-swap-axes" onclick="toggleModalChartTranspose()">
+              <div class="ch-opt-left">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/>
+                </svg>
+                <span>Swap X ⇄ Y</span>
               </div>
-              <div class="chart-modal-dim-search-wrap">
-                <input type="text" id="chart-modal-dim-search" placeholder="Search dimensions..." oninput="onModalDimSearch(this.value)" class="chart-modal-dim-search-input">
+              <span class="ch-opt-badge" id="opt-swap-axes-status">Off</span>
+            </button>
+            <button class="ch-options-menu-item" id="opt-orient" onclick="toggleModalChartOrientation()">
+              <div class="ch-opt-left">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                  <path d="M7 12h10"></path>
+                </svg>
+                <span id="opt-orient-text">Horizontal Layout</span>
               </div>
-              <div id="chart-modal-dim-list" class="chart-modal-dim-list"></div>
-            </div>
+              <span class="ch-opt-badge" id="opt-orient-status">Off</span>
+            </button>
+            <button class="ch-options-menu-item" id="opt-curve" onclick="toggleModalChartCurve()" style="display: none;">
+              <div class="ch-opt-left">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 12c4-8 8-8 12 0s8 8 12 0"/>
+                </svg>
+                <span>Curve Style</span>
+              </div>
+              <span class="ch-opt-badge" id="opt-curve-status">Smooth</span>
+            </button>
+            <div class="ch-options-menu-divider"></div>
+            <button class="ch-options-menu-item" onclick="resetAllModalDimensions()">
+              <div class="ch-opt-left">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                  <path d="M3 3v5h5"></path>
+                </svg>
+                <span>Reset Filters (Show All)</span>
+              </div>
+            </button>
           </div>
         </div>
       </div>
@@ -3401,7 +4897,7 @@
           <p id="app-dialog-message" style="margin: 0; font-size: 0.82rem; color: #94a3b8; line-height: 1.45; word-break: break-word;"></p>
         </div>
       </div>
-      <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.07);">
+      <div class="app-dialog-footer" style="display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.07);">
         <button id="app-dialog-cancel-btn" class="btn btn-secondary" onclick="closeAppDialog(false)" style="padding: 7px 14px; font-size: 0.8rem;">Cancel</button>
         <button id="app-dialog-confirm-btn" class="btn btn-danger" onclick="closeAppDialog(true)" style="padding: 7px 16px; font-size: 0.8rem;">Confirm</button>
       </div>
@@ -3710,6 +5206,169 @@
     }
 
     // ── History Management ──
+    let _historySelectMode = false;
+    const _selectedHistoryIds = new Set();
+
+    function toggleHistorySelectMode() {
+      if (_historySelectMode) {
+        exitHistorySelectMode();
+      } else {
+        enterHistorySelectMode();
+      }
+    }
+
+    function enterHistorySelectMode() {
+      _historySelectMode = true;
+      const listEl = document.getElementById('history-list');
+      const batchBar = document.getElementById('history-batch-bar');
+      const toggleBtn = document.getElementById('btn-toggle-select-mode');
+      if (listEl) listEl.classList.add('select-mode');
+      if (batchBar) batchBar.classList.add('visible');
+      if (toggleBtn) {
+        toggleBtn.classList.add('active');
+        const span = toggleBtn.querySelector('span');
+        if (span) span.textContent = 'Done';
+      }
+      updateHistoryBatchUI();
+    }
+
+    function exitHistorySelectMode() {
+      _historySelectMode = false;
+      _selectedHistoryIds.clear();
+      const listEl = document.getElementById('history-list');
+      const batchBar = document.getElementById('history-batch-bar');
+      const toggleBtn = document.getElementById('btn-toggle-select-mode');
+      if (listEl) {
+        listEl.classList.remove('select-mode');
+        listEl.querySelectorAll('.history-item').forEach(el => {
+          el.classList.remove('is-selected');
+          const cb = el.querySelector('.history-item-cb');
+          if (cb) cb.checked = false;
+        });
+      }
+      if (batchBar) batchBar.classList.remove('visible');
+      if (toggleBtn) {
+        toggleBtn.classList.remove('active');
+        const span = toggleBtn.querySelector('span');
+        if (span) span.textContent = 'Select';
+      }
+      const selectAllCb = document.getElementById('history-select-all-cb');
+      if (selectAllCb) {
+        selectAllCb.checked = false;
+        selectAllCb.indeterminate = false;
+      }
+    }
+
+    function handleHistoryItemClick(event, sid) {
+      if (_historySelectMode) {
+        if (event && event.target && event.target.tagName !== 'INPUT' && !event.target.closest('.history-item-cb')) {
+          toggleHistoryItemSelection(sid);
+        }
+        return;
+      }
+      switchSession(sid);
+    }
+
+    function handleHistoryCheckboxClick(event, sid) {
+      if (event) event.stopPropagation();
+      toggleHistoryItemSelection(sid);
+    }
+
+    function toggleHistoryItemSelection(sid) {
+      if (_selectedHistoryIds.has(sid)) {
+        _selectedHistoryIds.delete(sid);
+      } else {
+        _selectedHistoryIds.add(sid);
+      }
+      const itemEl = document.querySelector(`.history-item[data-id="${sid}"]`);
+      if (itemEl) {
+        const isSel = _selectedHistoryIds.has(sid);
+        itemEl.classList.toggle('is-selected', isSel);
+        const cb = itemEl.querySelector('.history-item-cb');
+        if (cb) cb.checked = isSel;
+      }
+      updateHistoryBatchUI();
+    }
+
+    function toggleSelectAllHistories(isChecked) {
+      const visibleItems = Array.from(document.querySelectorAll('.history-item')).filter(el => el.style.display !== 'none');
+      visibleItems.forEach(el => {
+        const sid = el.getAttribute('data-id');
+        if (!sid) return;
+        if (isChecked) {
+          _selectedHistoryIds.add(sid);
+          el.classList.add('is-selected');
+        } else {
+          _selectedHistoryIds.delete(sid);
+          el.classList.remove('is-selected');
+        }
+        const cb = el.querySelector('.history-item-cb');
+        if (cb) cb.checked = isChecked;
+      });
+      updateHistoryBatchUI();
+    }
+
+    function updateHistoryBatchUI() {
+      const countEl = document.getElementById('history-selected-count');
+      const delBtn = document.getElementById('btn-delete-selected-histories');
+      const selectAllCb = document.getElementById('history-select-all-cb');
+      const visibleItems = Array.from(document.querySelectorAll('.history-item')).filter(el => el.style.display !== 'none');
+
+      const count = _selectedHistoryIds.size;
+      if (countEl) {
+        countEl.textContent = `${count} selected`;
+      }
+      if (delBtn) {
+        delBtn.disabled = count === 0;
+        const span = delBtn.querySelector('span');
+        if (span) span.textContent = count > 0 ? `Clear (${count})` : 'Clear';
+      }
+      if (selectAllCb) {
+        if (visibleItems.length === 0) {
+          selectAllCb.checked = false;
+          selectAllCb.indeterminate = false;
+        } else {
+          const selectedVisibleCount = visibleItems.filter(el => _selectedHistoryIds.has(el.getAttribute('data-id'))).length;
+          selectAllCb.checked = selectedVisibleCount === visibleItems.length;
+          selectAllCb.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleItems.length;
+        }
+      }
+    }
+
+    async function deleteSelectedHistories() {
+      const count = _selectedHistoryIds.size;
+      if (count === 0) return;
+
+      const confirmed = await appConfirm(`Delete ${count} selected conversation${count > 1 ? 's' : ''} from disk? This cannot be undone.`, {
+        title: "Clear Selected Chats",
+        confirmText: `Clear (${count})`,
+        isDestructive: true
+      });
+      if (!confirmed) return;
+
+      try {
+        const sids = Array.from(_selectedHistoryIds);
+        const res = await fetch('/api/sessions/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_ids: sids })
+        });
+        if (res.ok) {
+          if (_selectedHistoryIds.has(currentSessionId)) {
+            newSession();
+          }
+          _selectedHistoryIds.clear();
+          await loadHistoryList();
+          exitHistorySelectMode();
+          showToast(`${count} conversation${count > 1 ? 's' : ''} deleted`, "info");
+        } else {
+          throw new Error(`HTTP ${res.status}`);
+        }
+      } catch (err) {
+        showToast(`Clear failed: ${err.message}`, "error");
+      }
+    }
+
     async function loadHistoryList() {
       try {
         const res = await fetch('/api/sessions');
@@ -3728,9 +5387,18 @@
         const clearBtn = document.getElementById('btn-clear-history');
         if (clearBtn) clearBtn.disabled = !data.sessions || data.sessions.length === 0;
 
+        const selectToggleBtn = document.getElementById('btn-toggle-select-mode');
+        if (selectToggleBtn) selectToggleBtn.style.display = (!data.sessions || data.sessions.length === 0) ? 'none' : 'inline-flex';
+
         if (!data.sessions || data.sessions.length === 0) {
+          exitHistorySelectMode();
           listEl.innerHTML = '<div class="history-empty">No saved chats yet.<br>Start asking Cleo questions to record sessions.</div>';
           return;
+        }
+
+        const existingIds = new Set(data.sessions.map(s => s.id));
+        for (const sid of _selectedHistoryIds) {
+          if (!existingIds.has(sid)) _selectedHistoryIds.delete(sid);
         }
 
         const pinned = data.sessions.filter(s => s.pinned);
@@ -3738,53 +5406,59 @@
 
         const renderItem = (s) => {
           const isActive = s.id === currentSessionId;
+          const isSelected = _selectedHistoryIds.has(s.id);
           const timeStr = formatTimeAgo(s.updated_at);
           const searchData = escapeAttr((s.title || '') + ' ' + (s.preview || '') + ' ' + (s.id || ''));
           const isPinned = Boolean(s.pinned);
           const shortGuid = s.id ? s.id.substring(0, 8) : '';
           return `
-            <div class="history-item ${isActive ? 'active' : ''} ${isPinned ? 'is-pinned' : ''}" 
+            <div class="history-item ${isActive ? 'active' : ''} ${isPinned ? 'is-pinned' : ''} ${isSelected ? 'is-selected' : ''}" 
                  data-id="${s.id}" 
                  data-search="${searchData}"
-                 onclick="switchSession('${s.id}')">
-              <div class="history-item-top">
-                <span class="history-item-title" title="${escapeAttr(s.title)} (GUID: ${s.id})">
-                  ${isPinned ? '<span class="pin-badge" title="Pinned chat">📌</span> ' : ''}${escapeHtml(s.title)}
-                </span>
-                <div class="history-item-actions">
-                  <button class="copy-link-btn" onclick="copySessionLink(event, '${s.id}')" title="Copy direct chat link (${s.id})">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                    </svg>
-                  </button>
-                  <button class="pin-btn ${isPinned ? 'active' : ''}" onclick="togglePinSession(event, '${s.id}')" title="${isPinned ? 'Unpin conversation' : 'Pin conversation'}">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="${isPinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="12" y1="17" x2="12" y2="22"></line>
-                      <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"></path>
-                    </svg>
-                  </button>
-                  <button class="export-btn" onclick="exportConversation(event, '${s.id}', '${escapeAttr(s.title)}')" title="Export conversation">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                      <polyline points="7 10 12 15 17 10"></polyline>
-                      <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
-                  </button>
-                  <button class="del-btn" onclick="deleteHistory(event, '${s.id}')" title="Delete conversation">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="3 6 5 6 21 6"></polyline>
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                    </svg>
-                  </button>
+                 onclick="handleHistoryItemClick(event, '${s.id}')">
+              <input type="checkbox" class="history-item-cb" ${isSelected ? 'checked' : ''} 
+                     onclick="handleHistoryCheckboxClick(event, '${s.id}')" 
+                     aria-label="Select conversation ${escapeAttr(s.title)}">
+              <div class="history-item-inner">
+                <div class="history-item-top">
+                  <span class="history-item-title" title="${escapeAttr(s.title)} (GUID: ${s.id})">
+                    ${isPinned ? '<span class="pin-badge" title="Pinned chat">📌</span> ' : ''}${escapeHtml(s.title)}
+                  </span>
+                  <div class="history-item-actions">
+                    <button class="copy-link-btn" onclick="copySessionLink(event, '${s.id}')" title="Copy direct chat link (${s.id})">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                      </svg>
+                    </button>
+                    <button class="pin-btn ${isPinned ? 'active' : ''}" onclick="togglePinSession(event, '${s.id}')" title="${isPinned ? 'Unpin conversation' : 'Pin conversation'}">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="${isPinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="17" x2="12" y2="22"></line>
+                        <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"></path>
+                      </svg>
+                    </button>
+                    <button class="export-btn" onclick="exportConversation(event, '${s.id}', '${escapeAttr(s.title)}')" title="Export conversation">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                      </svg>
+                    </button>
+                    <button class="del-btn" onclick="deleteHistory(event, '${s.id}')" title="Delete conversation">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
+                <div class="history-item-meta">
+                  <span>${s.message_count} msgs</span>
+                  <span class="history-item-guid" title="Chat GUID: ${s.id} (Click to copy)" onclick="copySessionGuid(event, '${s.id}')">#${shortGuid}</span>
+                  <span>${timeStr}</span>
+                </div>
+                ${s.preview ? `<div class="history-item-preview">${escapeHtml(s.preview)}</div>` : ''}
               </div>
-              <div class="history-item-meta">
-                <span>${s.message_count} msgs</span>
-                <span class="history-item-guid" title="Chat GUID: ${s.id} (Click to copy)" onclick="copySessionGuid(event, '${s.id}')">#${shortGuid}</span>
-                <span>${timeStr}</span>
-              </div>
-              ${s.preview ? `<div class="history-item-preview">${escapeHtml(s.preview)}</div>` : ''}
             </div>
           `;
         };
@@ -3801,6 +5475,12 @@
           html += recent.map(renderItem).join('');
         }
         listEl.innerHTML = html;
+        if (_historySelectMode) {
+          listEl.classList.add('select-mode');
+        } else {
+          listEl.classList.remove('select-mode');
+        }
+        updateHistoryBatchUI();
         updatePinButtonState();
 
         // Check if direct session was requested via URL (/chat/<guid> or ?chat=<guid>)
@@ -3981,15 +5661,6 @@
     }
 
     function getWelcomeHeroHTML() {
-      const topCust = (window.channelCustomers && window.channelCustomers.length > 0)
-        ? (window.channelCustomers.find(c => c.name === 'Lundbeck') ? 'Lundbeck' : window.channelCustomers[0].name)
-        : 'Lundbeck';
-      const compTitle = topCust ? `${topCust} Service Comparison` : 'Service Spend Comparison';
-      const compDesc = topCust ? `Service run-rate forecast and variance breakdown for ${topCust}.` : 'Service-by-service run-rate forecast and variance breakdown.';
-      const compPrompt = topCust
-        ? `Compare previous month service level cost for ${topCust} with current month projected cost across all clouds`
-        : 'Compare previous month service level cost with the current month projected cost across all clouds';
-
       const channelCardStyle = window.hasChannelCustomersTool ? '' : 'style="display: none;"';
 
       return `
@@ -4018,9 +5689,9 @@
               <div class="welcome-card-title">Channel Customers</div>
               <div class="welcome-card-desc">Partner customer spend breakdown across cloud infrastructure.</div>
             </div>
-            <div class="welcome-card" id="card-service-comparison" onclick="sendPrompt('${compPrompt}')">
-              <div class="welcome-card-title" id="card-comparison-title">${compTitle}</div>
-              <div class="welcome-card-desc" id="card-comparison-desc">${compDesc}</div>
+            <div class="welcome-card" id="card-ai-data-query" onclick="sendPrompt('Show AI spend by foundation model across all clouds')">
+              <div class="welcome-card-title">AI Data Query</div>
+              <div class="welcome-card-desc">Multi-cloud spend breakdown across AI models, LLMs, and data services.</div>
             </div>
             <div class="welcome-card" onclick="sendPrompt('What are our top cost optimization recommendations across all cloud providers?')">
               <div class="welcome-card-title">Waste Reclamation</div>
@@ -4074,6 +5745,7 @@
       try {
         const res = await fetch(`/api/session/${sid}`, { method: 'DELETE' });
         if (res.ok) {
+          _selectedHistoryIds.delete(sid);
           if (currentSessionId === sid) {
             newSession();
           }
@@ -4164,6 +5836,7 @@
       try {
         const res = await fetch('/api/sessions', { method: 'DELETE' });
         if (res.ok) {
+          exitHistorySelectMode();
           newSession();
           await loadHistoryList();
           if (popover) popover.classList.add('flipped');
@@ -4192,6 +5865,9 @@
       if (emptyEl) {
         emptyEl.style.display = (visible === 0 && items.length > 0) ? 'block' : 'none';
       }
+      if (_historySelectMode) {
+        updateHistoryBatchUI();
+      }
     }
 
     function switchSidebarTab(tab) {
@@ -4203,10 +5879,14 @@
       if (!tabChats || !tabTele || !paneChats || !paneTele) return;
 
       if (tab === 'telemetry') {
+        exitHistorySelectMode();
         tabChats.classList.remove('active');
         tabTele.classList.add('active');
         paneChats.classList.remove('active');
         paneTele.classList.add('active');
+        if (!telemetryDatasets || telemetryDatasets.length === 0) {
+          loadTelemetryDatasets();
+        }
       } else {
         tabTele.classList.remove('active');
         tabChats.classList.add('active');
@@ -5155,6 +6835,7 @@
           if (sidebarBadge) sidebarBadge.textContent = '0';
           renderTools([]);
         }
+        loadTelemetryDatasets();
       } catch (err) {
         console.error("Health check error:", err);
       }
@@ -5202,6 +6883,211 @@
           <strong>Authorization Error:</strong><br>${escapeHtml(err || 'Not authorized')}
         </div>
       `;
+    }
+
+    /* ── Telemetry Datasets & Schema Explorer Controller ── */
+    let telemetryDatasets = [];
+    let currentTelemetryDataset = null;
+    let currentTelemetryColumns = [];
+
+    async function loadTelemetryDatasets() {
+      try {
+        const res = await fetch('/api/datasets');
+        if (!res.ok) return;
+        const data = await res.json();
+        telemetryDatasets = data.datasets || [];
+
+        const countBadge = document.getElementById('telemetry-dataset-count');
+        if (countBadge) {
+          countBadge.textContent = `${telemetryDatasets.length} datasets`;
+        }
+
+        const select = document.getElementById('telemetry-dataset-select');
+        if (!select) return;
+
+        // Group datasets by category
+        const categories = {};
+        telemetryDatasets.forEach(ds => {
+          const cat = ds.category || 'General Telemetry';
+          if (!categories[cat]) categories[cat] = [];
+          categories[cat].push(ds);
+        });
+
+        // Preserve current selection if any
+        const prevVal = select.value;
+        select.innerHTML = '<option value="" disabled selected>Select a dataset to view columns...</option>';
+
+        const catOrder = [
+          'Multi-Cloud & Governance',
+          'AWS',
+          'Azure',
+          'Google Cloud',
+          'AI & Foundation Models',
+          'Kubernetes',
+          'General Telemetry'
+        ];
+
+        const allCats = Object.keys(categories);
+        const sortedCats = catOrder.filter(c => allCats.includes(c)).concat(allCats.filter(c => !catOrder.includes(c)));
+
+        sortedCats.forEach(cat => {
+          const group = document.createElement('optgroup');
+          group.label = cat;
+          categories[cat].forEach(ds => {
+            const opt = document.createElement('option');
+            opt.value = ds.name;
+            opt.textContent = `${ds.displayName} (${ds.columns_count} cols)`;
+            if (ds.name === prevVal) opt.selected = true;
+            group.appendChild(opt);
+          });
+          select.appendChild(group);
+        });
+
+        // If previous selection is valid, retain it; otherwise select MULTICLOUD_FOCUS_COST_AND_USAGE or first
+        if (prevVal && telemetryDatasets.some(d => d.name === prevVal)) {
+          select.value = prevVal;
+          onTelemetryDatasetSelected(prevVal);
+        } else if (telemetryDatasets.length > 0 && !select.value) {
+          const defaultDs = telemetryDatasets.find(d => d.name === 'MULTICLOUD_FOCUS_COST_AND_USAGE') || telemetryDatasets[0];
+          if (defaultDs) {
+            select.value = defaultDs.name;
+            onTelemetryDatasetSelected(defaultDs.name);
+          }
+        }
+      } catch (err) {
+        console.warn("[Telemetry] Failed to load datasets:", err);
+      }
+    }
+
+    async function onTelemetryDatasetSelected(datasetName) {
+      if (!datasetName) return;
+      const container = document.getElementById('telemetry-columns-container');
+      const listEl = document.getElementById('telemetry-columns-list');
+      const countEl = document.getElementById('telemetry-col-count');
+      const searchInput = document.getElementById('telemetry-column-search');
+
+      if (container) container.style.display = 'block';
+      if (searchInput) searchInput.value = '';
+      const clearBtn = document.getElementById('telemetry-col-search-clear');
+      if (clearBtn) clearBtn.style.display = 'none';
+
+      if (listEl) {
+        listEl.innerHTML = '<div style="font-size:0.72rem; color:var(--text-dim); padding:8px 4px;">Loading columns schema...</div>';
+      }
+
+      try {
+        const res = await fetch(`/api/datasets/${encodeURIComponent(datasetName)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        currentTelemetryDataset = data;
+        currentTelemetryColumns = data.columns || [];
+
+        renderTelemetryColumns(currentTelemetryColumns);
+      } catch (err) {
+        console.error("[Telemetry] Failed to load dataset columns:", err);
+        if (listEl) {
+          listEl.innerHTML = `<div style="font-size:0.72rem; color:var(--danger); padding:8px 4px;">Error loading columns: ${escapeHtml(err.message)}</div>`;
+        }
+      }
+    }
+
+    function renderTelemetryColumns(cols) {
+      const listEl = document.getElementById('telemetry-columns-list');
+      const countEl = document.getElementById('telemetry-col-count');
+      if (!listEl) return;
+
+      if (countEl && currentTelemetryDataset) {
+        const total = currentTelemetryColumns.length;
+        const showing = (cols || []).length;
+        countEl.textContent = showing === total ? `${total} columns` : `${showing} of ${total}`;
+      }
+
+      if (!cols || cols.length === 0) {
+        listEl.innerHTML = '<div style="font-size:0.72rem; color:var(--text-dim); padding:8px 4px;">No matching columns found.</div>';
+        return;
+      }
+
+      listEl.innerHTML = cols.map(c => {
+        const isMeasure = c.type === 'MEASURE';
+        const typeBadge = isMeasure
+          ? '<span class="telemetry-badge-measure" title="Measure (Numeric Cost / Usage Metric)">Measure</span>'
+          : '<span class="telemetry-badge-dimension" title="Dimension (Categorical Grouping)">Dim</span>';
+
+        const perspBadge = c.is_perspective
+          ? '<span class="telemetry-badge-persp" title="CloudHealth Perspective Dimension">Perspective</span>'
+          : '';
+
+        const tagBadge = c.is_tag
+          ? '<span class="telemetry-badge-tag" title="Resource or Virtual Tag">Tag</span>'
+          : '';
+
+        const priorityIcon = c.is_priority
+          ? '<span title="Priority Curated FinOps Column" style="color:#f59e0b; font-size:0.72rem;">★</span>'
+          : '';
+
+        const escapedName = escapeHtml(c.name);
+        const escapedDisp = escapeHtml(c.displayName || c.name);
+        const isDifferent = c.displayName && c.displayName !== c.name;
+        const titleTooltip = `${escapedName}${isDifferent ? ' (' + escapedDisp + ')' : ''} — ${c.type} (${c.dataType || 'STRING'}). Click to copy column name.`;
+
+        return `
+          <div class="telemetry-col-item" onclick="copyTelemetryColumn('${escapeHtml(c.name)}')" title="${titleTooltip}">
+            <div class="telemetry-col-name">
+              ${priorityIcon}
+              <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapedName}</span>
+              ${perspBadge}
+              ${tagBadge}
+            </div>
+            <div class="telemetry-col-badge-group">
+              <span class="telemetry-col-datatype">${escapeHtml(c.dataType || '')}</span>
+              ${typeBadge}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function filterTelemetryColumns(query) {
+      const q = (query || '').trim().toLowerCase();
+      const clearBtn = document.getElementById('telemetry-col-search-clear');
+      if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
+
+      if (!currentTelemetryColumns) return;
+      if (!q) {
+        renderTelemetryColumns(currentTelemetryColumns);
+        return;
+      }
+
+      const filtered = currentTelemetryColumns.filter(c => {
+        const name = (c.name || '').toLowerCase();
+        const disp = (c.displayName || '').toLowerCase();
+        const type = (c.type || '').toLowerCase();
+        const dtype = (c.dataType || '').toLowerCase();
+        return name.includes(q) || disp.includes(q) || type.includes(q) || dtype.includes(q);
+      });
+      renderTelemetryColumns(filtered);
+    }
+
+    function clearTelemetryColSearch() {
+      const input = document.getElementById('telemetry-column-search');
+      if (input) {
+        input.value = '';
+        filterTelemetryColumns('');
+        input.focus();
+      }
+    }
+
+    function copyTelemetryColumn(colName) {
+      if (!colName) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(colName).then(() => {
+          showToast(`Copied column "${colName}" to clipboard`, "info");
+        }).catch(() => {
+          showToast(`Column: ${colName}`, "info");
+        });
+      } else {
+        showToast(`Column: ${colName}`, "info");
+      }
     }
 
     function renderMcpDisconnectedNotice() {
@@ -5875,11 +7761,13 @@
       }
     }
 
-    // ── Chart Rendering ───────────────────────────────────────────────────────
-    function _formatAxisNumber(v, withCurrency) {
+    function _formatAxisNumber(v, withCurrency, isPercent) {
       const n = Number(v) || 0;
       const abs = Math.abs(n);
       const sign = n < 0 ? '-' : '';
+      if (isPercent) {
+        return `${sign}${(Math.round(abs * 10) / 10).toFixed(abs % 1 ? 1 : 0)}%`;
+      }
       const prefix = withCurrency ? '$' : '';
       if (abs >= 1e9) return `${sign}${prefix}${(abs / 1e9).toFixed(abs % 1e9 ? 1 : 0)}B`;
       if (abs >= 1e6) return `${sign}${prefix}${(abs / 1e6).toFixed(abs % 1e6 ? 1 : 0)}M`;
@@ -5887,7 +7775,17 @@
       return `${sign}${prefix}${abs}`;
     }
     function _formatAxisCurrency(v) {
-      return _formatAxisNumber(v, true);
+      return _formatAxisNumber(v, true, false);
+    }
+    function _isPercentMetricLabel(label) {
+      return /%|percent|coverage/i.test(label || '');
+    }
+    function _formatMetricBadge(v, withCurrency, isPercent) {
+      const n = Number(v) || 0;
+      if (isPercent) {
+        return `${(Math.round(n * 10) / 10).toFixed(1)}%`;
+      }
+      return _formatAxisNumber(n, withCurrency, false);
     }
     // A chart's value_label (e.g. "Cost ($)", "Instance Hours", "Instance Count") tells us
     // whether the Y-axis is actually a dollar metric — only prefix "$" when it is, so hours/
@@ -5971,6 +7869,7 @@
       return (chart) => {
         const chartType = chart.config?.type || chart.config?._config?.type || chart.type;
         const isPie = ['pie', 'doughnut'].includes(chartType);
+        const cfg = (typeof _getChartThemeConfig === 'function') ? _getChartThemeConfig() : { isLight: false, legendColor: '#cbd5e1' };
         if (isPie) {
           const datasets = chart.data?.datasets || [];
           const labels = chart.data?.labels || [];
@@ -5983,9 +7882,9 @@
             return {
               text: String(label !== undefined && label !== null && label !== '' ? label : `Item ${i + 1}`),
               fillStyle: color,
-              strokeStyle: '#0b0f17',
-              lineWidth: 1.5,
-              fontColor: '#cbd5e1',
+              strokeStyle: cfg.isLight ? color : '#0b0f17',
+              lineWidth: cfg.isLight ? 0 : 1.5,
+              fontColor: cfg.legendColor,
               pointStyle: 'circle',
               hidden: !chart.getDataVisibility(i),
               index: i,
@@ -5995,6 +7894,7 @@
         }
         const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
         return original.map(item => {
+          item.fontColor = cfg.legendColor;
           if (item.datasetIndex !== undefined) {
             const ds = chart.data.datasets[item.datasetIndex];
             if (ds) {
@@ -6016,6 +7916,121 @@
           return item;
         });
       };
+    }
+
+    // ── Light / Dark Theme Management ───────────────────────────────────────
+    function _getChartThemeConfig() {
+      const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+      return {
+        isLight,
+        gridColor: isLight ? 'rgba(45, 38, 30, 0.08)' : 'rgba(255, 255, 255, 0.05)',
+        tickColor: isLight ? '#44403c' : '#64748b',
+        legendColor: isLight ? '#1c1917' : '#94a3b8',
+        tooltipBg: isLight ? '#fdfcf9' : '#1e293b',
+        tooltipBorder: isLight ? '#d8d1c2' : 'rgba(255, 255, 255, 0.14)',
+        tooltipTitle: isLight ? '#1c1917' : '#f1f5f9',
+        tooltipBody: isLight ? '#292524' : '#cbd5e1',
+        pieBorderColor: isLight ? '#fdfcf9' : '#0b0f17',
+        stackedBorderColor: isLight ? '#fdfcf9' : 'rgba(11, 15, 23, 0.4)',
+        pointBorderColor: isLight ? '#fdfcf9' : '#0c111d',
+        exportBgColor: isLight ? '#fdfcf9' : '#0c111d'
+      };
+    }
+
+    function _refreshAllChartsTheme() {
+      if (typeof Chart === 'undefined') return;
+      const cfg = _getChartThemeConfig();
+      const instances = Chart.instances ? Object.values(Chart.instances) : [];
+      instances.forEach(chart => {
+        try {
+          if (!chart || !chart.options) return;
+          if (chart.options.scales) {
+            Object.values(chart.options.scales).forEach(scale => {
+              if (scale.grid) scale.grid.color = cfg.gridColor;
+              if (scale.ticks) scale.ticks.color = cfg.tickColor;
+            });
+          }
+          if (chart.options.plugins?.legend?.labels) {
+            chart.options.plugins.legend.labels.color = cfg.legendColor;
+          }
+          if (chart.options.plugins?.tooltip) {
+            chart.options.plugins.tooltip.backgroundColor = cfg.tooltipBg;
+            chart.options.plugins.tooltip.borderColor = cfg.tooltipBorder;
+            chart.options.plugins.tooltip.titleColor = cfg.tooltipTitle;
+            chart.options.plugins.tooltip.bodyColor = cfg.tooltipBody;
+          }
+
+          // Update dataset borders on theme change to prevent dark outlines from persisting in light mode
+          const chartType = chart.config?.type || chart.config?._config?.type || chart.type;
+          const isPie = ['pie', 'doughnut'].includes(chartType);
+          const isStacked = Boolean(chart.options?.scales?.x?.stacked || chart.options?.scales?.y?.stacked);
+
+          (chart.data?.datasets || []).forEach(ds => {
+            if (isPie) {
+              ds.borderColor = cfg.pieBorderColor;
+            } else if (isStacked) {
+              ds.borderColor = cfg.stackedBorderColor;
+            } else if (ds.borderColor === '#0b0f17' || ds.borderColor === 'rgba(11, 15, 23, 0.4)' || ds.borderColor === '#fdfcf9') {
+              ds.borderColor = cfg.isLight ? (ds._themeColor || cfg.gridColor) : 'rgba(11, 15, 23, 0.4)';
+            }
+            if (ds.pointBorderColor && (ds.pointBorderColor === '#0c111d' || ds.pointBorderColor === '#fdfcf9' || ds.pointBorderColor === '#0b0f17')) {
+              ds.pointBorderColor = cfg.pointBorderColor;
+            }
+          });
+
+          chart.update('none');
+        } catch (_) {}
+      });
+      if (_expandedChartInstance && typeof renderModalChart === 'function') {
+        try { renderModalChart(); } catch (_) {}
+      }
+    }
+
+    function getCurrentTheme() {
+      return document.documentElement.getAttribute('data-theme') || 'dark';
+    }
+
+    function applyTheme(theme, save = true) {
+      const nextTheme = theme === 'light' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', nextTheme);
+      if (save) {
+        try {
+          localStorage.setItem('cleo_theme', nextTheme);
+        } catch (_) {}
+      }
+      const btn = document.getElementById('theme-toggle-btn');
+      if (btn) {
+        const isLight = nextTheme === 'light';
+        btn.setAttribute('aria-checked', isLight ? 'true' : 'false');
+        btn.setAttribute('title', isLight ? 'Switch to Dark Theme' : 'Switch to Light Theme');
+        btn.setAttribute('aria-label', isLight ? 'Switch to Dark Theme' : 'Switch to Light Theme');
+      }
+      _refreshAllChartsTheme();
+    }
+
+    function toggleTheme() {
+      const current = getCurrentTheme();
+      const next = current === 'light' ? 'dark' : 'light';
+      applyTheme(next, true);
+    }
+
+    function initTheme() {
+      try {
+        const saved = localStorage.getItem('cleo_theme');
+        const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+        const initial = saved || (prefersLight ? 'light' : 'dark');
+        applyTheme(initial, false);
+
+        if (window.matchMedia) {
+          window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', e => {
+            if (!localStorage.getItem('cleo_theme')) {
+              applyTheme(e.matches ? 'light' : 'dark', false);
+            }
+          });
+        }
+      } catch (_) {
+        applyTheme('dark', false);
+      }
     }
 
     const _CHART_DEFAULTS = {
@@ -6101,8 +8116,305 @@
       isHorizontal: false,
       isTransposed: false,
       hiddenItems: new Set(),
-      tension: 0.35
+      filters: {},
+      tension: 0.35,
+      tableViews: [],
+      activeViewIndex: 0,
+      activeXDim: null,
+      activeCatDim: 'None',
+      activeMetricId: null,
+      activeDimName: null,
+      percentAggregation: 'avg',
+      usePreviewChart: true  // show original preview chart until user changes a control
     };
+
+    function _parseNumericValue(val) {
+      if (val === null || val === undefined) return 0;
+      if (typeof val === 'number') return isNaN(val) ? 0 : val;
+      let s = String(val).trim();
+      let isNeg = false;
+      if (s.startsWith('(') && s.endsWith(')')) {
+        isNeg = true;
+        s = s.slice(1, -1).trim();
+      } else if (s.startsWith('-')) {
+        isNeg = true;
+        s = s.slice(1).trim();
+      }
+      s = s.replace(/[$€£,]/g, '').replace(/\bhrs?\b/i, '').replace(/%/g, '').trim();
+      const n = parseFloat(s);
+      if (isNaN(n)) return 0;
+      return isNeg ? -n : n;
+    }
+
+    function _parseMoMValue(val) {
+      if (typeof val === 'number') return isNaN(val) ? 0 : val;
+      if (!val) return 0;
+      const s = String(val).replace(/[🔻🔺▼▲]/g, '').trim();
+      const dollarMatch = s.match(/([+-]?)\s*[$€£¥]\s*([\d,]+(?:\.\d+)?)/);
+      if (dollarMatch) {
+        const sign = dollarMatch[1] === '-' ? -1 : 1;
+        const num = parseFloat(dollarMatch[2].replace(/,/g, ''));
+        return sign * num;
+      }
+      const pctMatch = s.match(/([+-]?)\s*([\d,]+(?:\.\d+)?)\s*%/);
+      if (pctMatch) {
+        const sign = pctMatch[1] === '-' ? -1 : 1;
+        const num = parseFloat(pctMatch[2].replace(/,/g, ''));
+        return sign * num;
+      }
+      const clean = s.replace(/[^0-9.-]/g, '');
+      const n = parseFloat(clean);
+      return isNaN(n) ? 0 : n;
+    }
+
+    function _formatMetricHeaderName(header) {
+      const h = String(header || '').replace(/[*_`]/g, '').trim();
+      if (/^cost\b/i.test(h)) return 'Cost ($)';
+      if (/^spend\b/i.test(h)) return 'Spend ($)';
+      if (/% of total/i.test(h)) return '% of Total';
+      if (/^%|^percent\b/i.test(h)) return '%';
+      return h;
+    }
+
+    function _normalizeCoverageCategoryName(header) {
+      const h = String(header || '').toLowerCase();
+      if (h.includes('pay-as-you-go') || h.includes('payg') || h.includes('on-demand')) {
+        return 'Pay-As-You-Go';
+      }
+      if (h.includes('reservation') || h.includes('savings') || h.includes('res vms') || h.includes('ri ')) {
+        return 'Reservations & Savings';
+      }
+      if (h.includes('spot')) {
+        return 'Spot VMs';
+      }
+      return String(header || '').replace(/[*_`]/g, '')
+                   .replace(/\b(spend|cost|vms?|instances?|hours?|hrs?|usage|\$|%)\b/gi, '')
+                   .replace(/\s+/g, ' ')
+                   .replace(/^[&-_ ]+|[&-_ ]+$/g, '') || String(header || '');
+    }
+
+    function _formatCategoryTitle(v) {
+      if (!v) return 'SERVICE ITEMS';
+      let t = (v.title || '').replace(/^[#\s]+/, '').replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\s]+/u, '').trim();
+      t = t.replace(/^CloudHealth\s+/i, '').replace(/^Spend Analysis:\s*/i, '').replace(/\s*—.*$/, '').trim();
+      if (!t || /^table \d+$/i.test(t)) {
+        if (v.primaryDim?.header) {
+          t = `${v.primaryDim.header} Items`;
+        } else {
+          t = 'Service Items';
+        }
+      }
+      return cleanChartTitle(t) || 'Service Items';
+    }
+
+    function _extractTableViewsFromBubble(bubble, chartConfig) {
+      if (!bubble) return [];
+      const tables = Array.from(bubble.querySelectorAll('table'));
+      if (!tables.length) return [];
+
+      const views = [];
+
+      tables.forEach((table, tIdx) => {
+        let prev = table.closest('.table-container')?.previousElementSibling || table.previousElementSibling;
+        let heading = '';
+        while (prev && !heading) {
+          if (/^H[1-6]$/i.test(prev.tagName) || (prev.tagName === 'P' && prev.querySelector('strong, b'))) {
+            heading = prev.textContent.trim();
+          }
+          prev = prev.previousElementSibling;
+        }
+        if (!heading) heading = `Table ${tIdx + 1}`;
+        heading = heading.replace(/^[#\s]+/, '').trim();
+
+        let ths = table.querySelectorAll('thead th');
+        if (!ths || ths.length < 2) {
+          const firstTr = table.querySelector('tr');
+          ths = firstTr ? firstTr.querySelectorAll('th, td') : [];
+        }
+        const rawHeaders = Array.from(ths).map(th => th.textContent.replace(/[*_`]/g, '').trim());
+        if (rawHeaders.length < 2) return;
+
+        let trs = Array.from(table.querySelectorAll('tbody tr'));
+        if (!trs.length) {
+          trs = Array.from(table.querySelectorAll('tr')).slice(1);
+        }
+        const rawRows = [];
+        trs.forEach(tr => {
+          const tds = tr.querySelectorAll('td, th');
+          if (tds.length >= 2) {
+            const rowVals = Array.from(tds).map(td => td.textContent.replace(/[*_`]/g, '').trim());
+            const isTotalRow = rowVals.some(v => /^\s*(total|sum|overall|subtotal)\s*$/i.test(v));
+            if (!isTotalRow) {
+              rawRows.push(rowVals);
+            }
+          }
+        });
+        if (!rawRows.length) return;
+
+        let indexCol = -1;
+        const monthCols = [];
+        const dimCols = [];
+        const metricCols = [];
+
+        const monthRegex = /^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|sept|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[a-z]*[\s,-]+(?:\d{2}|\d{4})$|^\d{4}-(?:0[1-9]|1[0-2])$|^q[1-4][\s,-]+(?:\d{2}|\d{4})$/i;
+
+        rawHeaders.forEach((h, colIdx) => {
+          const lower = h.toLowerCase().trim();
+          if (indexCol === -1 && (lower === '#' || lower === 'no.' || lower === 'index' || lower === '')) {
+            indexCol = colIdx;
+            return;
+          }
+
+          if (monthRegex.test(h.trim())) {
+            monthCols.push({ colIdx, header: h.trim() });
+            return;
+          }
+
+          let numericCount = 0;
+          let nonNumericCount = 0;
+          rawRows.forEach(r => {
+            const cell = (r[colIdx] || '').trim();
+            if (!cell) return;
+            if (/^[$€£¥]\s*[\d,]+(\.\d+)?|\b[\d,]+(\.\d+)?%$/.test(cell)) {
+              numericCount++;
+            } else {
+              const cleaned = cell.replace(/[$€£¥,%\s]/g, '');
+              if (cleaned !== '' && !isNaN(Number(cleaned))) {
+                numericCount++;
+              } else {
+                nonNumericCount++;
+              }
+            }
+          });
+
+          const totalSampled = numericCount + nonNumericCount;
+          const isNumeric = totalSampled > 0 && (numericCount / totalSampled >= 0.6);
+          const isExplicitDim = /provider|account|service|name|region|resource|meter|category|type|tag|id|dimension|group|subgroup/i.test(lower) && !/spend|cost|\$|%|count|amount|total/i.test(lower);
+          const isExplicitMetric = /spend|cost|\$|%|percent|rate|amount|price|savings|usage|count|vms?|instances?|hours?|hrs?|quantity|bytes?|gb|tb|mb|mom|delta|change/i.test(lower);
+
+          if ((isExplicitMetric || isNumeric) && !isExplicitDim) {
+            metricCols.push({
+              colIdx,
+              header: h,
+              isCost: _isCostMetricLabel(h),
+              isPercent: _isPercentMetricLabel(h),
+              isMoM: /mom|month[\s-]*over[\s-]*month|change|delta/i.test(lower)
+            });
+          } else {
+            dimCols.push({ colIdx, header: h });
+          }
+        });
+
+        if (dimCols.length === 0 && metricCols.length > 0) {
+          dimCols.push(metricCols.shift());
+        } else if (metricCols.length === 0 && dimCols.length > 1) {
+          metricCols.push(dimCols.pop());
+        }
+
+        dimCols.forEach(d => {
+          const distinctVals = Array.from(new Set(rawRows.map(r => (r[d.colIdx] || '').trim()).filter(Boolean)));
+          d.distinctCount = distinctVals.length;
+          d.distinctVals = distinctVals;
+        });
+
+        const primaryDim = dimCols.reduce((best, cur) => cur.distinctCount > best.distinctCount ? cur : best, dimCols[0]);
+        const dimCol = primaryDim ? primaryDim.colIdx : 0;
+        const dimName = primaryDim ? primaryDim.header : (rawHeaders[dimCol] || 'Category');
+
+        const availableDims = [];
+        if (monthCols.length > 0) {
+          availableDims.push('Month');
+        }
+        dimCols.forEach(d => availableDims.push(d.header));
+
+        const availableMetrics = [];
+        if (monthCols.length > 0) {
+          const explicitTotal = metricCols.find(m => /total.*(spend|cost)|\b(spend|cost)\b/i.test(m.header));
+          availableMetrics.push({
+            id: 'total_spend',
+            name: 'Total Spend',
+            isCost: true,
+            isPercent: false,
+            colIdx: explicitTotal ? explicitTotal.colIdx : -1
+          });
+
+          const explicitMoM = metricCols.find(m => m.isMoM || /mom|month[\s-]*over[\s-]*month|change|delta/i.test(m.header));
+          if (explicitMoM || monthCols.length >= 2) {
+            availableMetrics.push({
+              id: 'mom_change',
+              name: 'MoM Change',
+              isCost: true,
+              isPercent: false,
+              isMoM: true,
+              colIdx: explicitMoM ? explicitMoM.colIdx : -1
+            });
+          }
+
+          const explicitPct = metricCols.find(m => m.isPercent || /%|percent|share/i.test(m.header));
+          availableMetrics.push({
+            id: 'pct_spend',
+            name: '% of Spend',
+            isCost: false,
+            isPercent: true,
+            colIdx: explicitPct ? explicitPct.colIdx : -1
+          });
+
+          metricCols.forEach(m => {
+            const added = (explicitTotal && m.colIdx === explicitTotal.colIdx) ||
+                          (explicitMoM && m.colIdx === explicitMoM.colIdx) ||
+                          (explicitPct && m.colIdx === explicitPct.colIdx);
+            if (!added) {
+              availableMetrics.push({
+                id: `col_${m.colIdx}`,
+                name: _formatMetricHeaderName(m.header),
+                isCost: m.isCost,
+                isPercent: m.isPercent,
+                isMoM: m.isMoM,
+                colIdx: m.colIdx
+              });
+            }
+          });
+        } else {
+          metricCols.forEach(m => {
+            availableMetrics.push({
+              id: `col_${m.colIdx}`,
+              name: _formatMetricHeaderName(m.header),
+              isCost: m.isCost,
+              isPercent: m.isPercent,
+              isMoM: m.isMoM,
+              colIdx: m.colIdx
+            });
+          });
+        }
+
+        if (availableMetrics.length === 0) {
+          availableMetrics.push({
+            id: 'metric_count',
+            name: 'Count',
+            isCost: false,
+            isPercent: false,
+            colIdx: -1
+          });
+        }
+
+        views.push({
+          id: `table_${tIdx}`,
+          title: heading || `Breakdown by ${dimName}`,
+          dimName,
+          dimCols,
+          monthCols,
+          metricCols,
+          primaryDim,
+          availableDims,
+          availableMetrics,
+          rawHeaders,
+          rawRows,
+          metrics: availableMetrics
+        });
+      });
+
+      return views;
+    }
 
     function openChartModal(config) {
       if (!config) return;
@@ -6114,6 +8426,75 @@
       if (titleEl) {
         titleEl.textContent = cleanChartTitle(config.title) || 'Expanded Chart View';
       }
+
+      // Discover table views from the source bubble or message
+      const bubble = config._bubble || (config._sourceWrap ? config._sourceWrap.closest('.bubble') : null) || document.querySelector('.chat-stream .message:last-child .bubble');
+      const discoveredViews = bubble ? _extractTableViewsFromBubble(bubble, config) : [];
+
+      const allViews = [];
+      const pairedTableView = discoveredViews[0];
+
+      let defaultMetrics = [];
+      if (pairedTableView && pairedTableView.metrics && pairedTableView.metrics.length > 0) {
+        defaultMetrics = pairedTableView.metrics;
+      } else {
+        defaultMetrics = [{
+          id: 'default_metric',
+          name: config.rawSpec?.value_label || config.options?.scales?.y?.title?.text || (config.title ? cleanChartTitle(config.title) : 'Cost'),
+          isCost: _isCostMetricLabel(config.rawSpec?.value_label || config.options?.scales?.y?.title?.text || 'Cost'),
+          isPercent: _isPercentMetricLabel(config.rawSpec?.value_label || config.options?.scales?.y?.title?.text || ''),
+          config: JSON.parse(JSON.stringify(config))
+        }];
+      }
+
+      if (discoveredViews.length === 0) {
+        allViews.push({
+          id: 'view_default',
+          title: cleanChartTitle(config.title) || 'Chart Overview',
+          isDefault: true,
+          dimCols: [],
+          monthCols: [],
+          metricCols: [],
+          primaryDim: null,
+          availableDims: [],
+          availableMetrics: defaultMetrics,
+          metrics: defaultMetrics
+        });
+      } else {
+        discoveredViews.forEach((v, idx) => {
+          allViews.push({
+            ...v,
+            title: v.title || (discoveredViews.length === 1 && config.title ? cleanChartTitle(config.title) : `Table ${idx + 1}`)
+          });
+        });
+      }
+
+      _modalState.tableViews = allViews;
+      _modalState.activeViewIndex = 0;
+      const currentView = allViews[0];
+
+      _modalState.filters = {};
+      if (currentView?.monthCols?.length > 0) {
+        _modalState.filters['Month'] = new Set(currentView.monthCols.map(m => m.header));
+      }
+      if (currentView?.dimCols?.length > 0) {
+        currentView.dimCols.forEach(d => {
+          _modalState.filters[d.header] = new Set(d.distinctVals);
+        });
+      }
+
+      const avDims = currentView?.availableDims || [];
+      if (currentView?.monthCols?.length > 0) {
+        _modalState.activeXDim = 'Month';
+        _modalState.activeCatDim = currentView.dimCols?.[0]?.header || 'None';
+      } else {
+        _modalState.activeXDim = avDims[0] || 'Category';
+        _modalState.activeCatDim = avDims.length > 1 ? avDims[1] : 'None';
+      }
+
+      const avMetrics = currentView?.availableMetrics || currentView?.metrics || [];
+      _modalState.activeMetricId = avMetrics[0]?.id || null;
+      _modalState.percentAggregation = 'avg';
 
       _modalState.originalConfig = {
         ...config,
@@ -6132,68 +8513,119 @@
 
       const isPie = ['pie', 'doughnut'].includes(config.type);
       const isLine = ['line', 'area'].includes(config.type);
+      const isWaterfallPreview = config.rawSpec?.type === 'waterfall' || config.type === 'waterfall' ||
+        (config.rawSpec?.class === 'waterfall') ||
+        (config.data?.datasets?.[0]?.data?.[0] !== undefined && Array.isArray(config.data?.datasets?.[0]?.data?.[0]));
       _modalState.isStacked = isPie ? false : Boolean(config.options?.scales?.y?.stacked || config.options?.scales?.x?.stacked || config.type === 'area');
       _modalState.isHorizontal = Boolean(config.options?.indexAxis === 'y');
-      _modalState.activeType = isPie ? config.type : (isLine ? (config.type === 'area' || _modalState.isStacked ? 'area' : 'line') : (_modalState.isHorizontal ? 'horizontal_bar' : (_modalState.isStacked ? 'stacked_bar' : 'grouped_bar')));
+      _modalState.activeType = isWaterfallPreview ? 'waterfall' : (isPie ? config.type : (isLine ? (config.type === 'area' || _modalState.isStacked ? 'area' : 'line') : (_modalState.isHorizontal ? 'horizontal_bar' : (_modalState.isStacked ? 'stacked_bar' : 'grouped_bar'))));
+      if (isPie && (!_modalState.activeCatDim || _modalState.activeCatDim === 'None')) {
+        _modalState.activeCatDim = currentView?.dimCols?.[0]?.header || avDims[0] || 'Category';
+      }
       _modalState.isTransposed = false;
       _modalState.hiddenItems.clear();
       _modalState.tension = config.data?.datasets?.[0]?.tension ?? ((localStorage.getItem('cleo_chart_curve') || 'smooth') === 'sharp' ? 0 : 0.35);
+      _modalState.usePreviewChart = true;  // show original chart on open; cleared on first user toolbar change
 
       modal.style.display = 'flex';
 
-      syncModalToolbarUI();
-      buildModalDimensionControls();
+      applyActiveViewAndMetric();
+    }
+
+    function toggleModalOptionsMenu(e) {
+      if (e) e.stopPropagation();
+      const pop = document.getElementById('chart-modal-options-popover');
+      if (!pop) return;
+      const isShown = pop.style.display !== 'none';
+      pop.style.display = isShown ? 'none' : 'flex';
+      if (!isShown) {
+        const dimPop = document.getElementById('chart-modal-dim-popover');
+        if (dimPop) dimPop.style.display = 'none';
+      }
+    }
+
+    function onModalTableChange(val) {
+      const idx = parseInt(val, 10) || 0;
+      _modalState.activeViewIndex = idx;
+      const currentView = _modalState.tableViews[idx];
+      if (!currentView) return;
+
+      _modalState.filters = {};
+      if (currentView?.monthCols?.length > 0) {
+        _modalState.filters['Month'] = new Set(currentView.monthCols.map(m => m.header));
+      }
+      if (currentView?.dimCols?.length > 0) {
+        currentView.dimCols.forEach(d => {
+          _modalState.filters[d.header] = new Set(d.distinctVals);
+        });
+      }
+
+      const avDims = currentView?.availableDims || [];
+      if (currentView?.monthCols?.length > 0) {
+        _modalState.activeXDim = 'Month';
+        _modalState.activeCatDim = currentView.dimCols?.[0]?.header || 'None';
+      } else {
+        _modalState.activeXDim = avDims[0] || 'Category';
+        _modalState.activeCatDim = avDims.length > 1 ? avDims[1] : 'None';
+      }
+
+      const avMetrics = currentView?.availableMetrics || currentView?.metrics || [];
+      _modalState.activeMetricId = avMetrics[0]?.id || null;
+
+      applyActiveViewAndMetric();
+    }
+
+    function onModalXAxisChange(val) {
+      _modalState.usePreviewChart = false;
+      _modalState.activeXDim = val;
+      if (_modalState.activeCatDim === val) {
+        _modalState.activeCatDim = 'None';
+      }
+      applyActiveViewAndMetric();
+    }
+
+    function onModalCategoryChange(val) {
+      _modalState.usePreviewChart = false;
+      _modalState.activeCatDim = val;
+      if (val !== 'None' && _modalState.activeXDim === val) {
+        const currentView = _modalState.tableViews[_modalState.activeViewIndex];
+        const remaining = (currentView?.availableDims || []).filter(d => d !== val);
+        _modalState.activeXDim = remaining[0] || 'Category';
+      }
+      applyActiveViewAndMetric();
+    }
+
+    function onModalDimensionChange(dimHeader) {
+      onModalXAxisChange(dimHeader);
+    }
+
+    function onModalMetricChange(metricId) {
+      _modalState.usePreviewChart = false;
+      _modalState.activeMetricId = metricId;
+      const currentView = _modalState.tableViews[_modalState.activeViewIndex];
+      const activeMetric = (currentView?.availableMetrics || []).find(m => m.id === metricId);
+      if (metricId === 'mom_change' || (activeMetric && activeMetric.isMoM)) {
+        _modalState.activeType = 'waterfall';
+        _modalState.isStacked = false;
+      }
+      applyActiveViewAndMetric();
+    }
+
+    function onModalYAxisChange(val) {
+      onModalMetricChange(val);
+    }
+
+    function onModalPctAggChange(aggVal) {
+      _modalState.usePreviewChart = false;
+      _modalState.percentAggregation = aggVal === 'sum' ? 'sum' : 'avg';
       renderModalChart();
     }
 
-    function syncModalToolbarUI() {
-      const typeSelect = document.getElementById('chart-modal-type-select');
-      if (typeSelect) {
-        typeSelect.value = _modalState.activeType;
-      }
-      const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
-      const axesControls = document.getElementById('chart-modal-axes-controls');
-      const axesDivider = document.getElementById('chart-modal-axes-divider');
-      if (axesControls) {
-        axesControls.style.setProperty('display', isPie ? 'none' : 'flex', 'important');
-      }
-      if (axesDivider) {
-        axesDivider.style.setProperty('display', isPie ? 'none' : 'block', 'important');
-      }
-      const swapBtn = document.getElementById('chart-modal-swap-axes-btn');
-      if (swapBtn) {
-        swapBtn.style.display = isPie ? 'none' : 'inline-flex';
-        if (_modalState.isTransposed) {
-          swapBtn.classList.add('active');
-        } else {
-          swapBtn.classList.remove('active');
-        }
-      }
-      const orientBtn = document.getElementById('chart-modal-orient-btn');
-      const orientText = document.getElementById('chart-modal-orient-text');
-      if (orientBtn && orientText) {
-        const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
-        orientBtn.style.display = isPie ? 'none' : 'inline-flex';
-        orientText.textContent = _modalState.isHorizontal ? 'Vertical ↕' : 'Horizontal ↔';
-        orientBtn.title = _modalState.isHorizontal ? 'Current: Horizontal (Click for Vertical)' : 'Current: Vertical (Click for Horizontal)';
-        if (_modalState.isHorizontal) {
-          orientBtn.classList.add('active');
-        } else {
-          orientBtn.classList.remove('active');
-        }
-      }
-      const curveBtn = document.getElementById('chart-modal-curve-btn');
-      if (curveBtn) {
-        const isLineChart = ['line', 'area'].includes(_modalState.activeType);
-        curveBtn.style.display = isLineChart ? 'inline-flex' : 'none';
-        if (isLineChart) {
-          updateModalCurveButton(_modalState.tension > 0.1 ? 'smooth' : 'sharp');
-        }
-      }
-    }
-
     function onModalChartTypeChange(newVal) {
+      _modalState.usePreviewChart = false;
       _modalState.activeType = newVal;
+      const currentView = _modalState.tableViews[_modalState.activeViewIndex];
+      const avDims = currentView?.availableDims || [];
       if (newVal === 'stacked_bar') {
         _modalState.isStacked = true;
         _modalState.isHorizontal = false;
@@ -6210,6 +8642,12 @@
         _modalState.isStacked = true;
         _modalState.isHorizontal = false;
       } else if (newVal === 'pie' || newVal === 'doughnut') {
+        _modalState.isStacked = false;
+        _modalState.isHorizontal = false;
+        if (!_modalState.activeCatDim || _modalState.activeCatDim === 'None') {
+          _modalState.activeCatDim = currentView?.dimCols?.[0]?.header || avDims[0] || 'Category';
+        }
+      } else if (newVal === 'waterfall') {
         _modalState.isStacked = false;
         _modalState.isHorizontal = false;
       }
@@ -6257,13 +8695,189 @@
           borderColor: rawColor,
           pointStyle: pStyle,
           pointBackgroundColor: rawColor,
-          pointBorderColor: isStrokedPoint ? rawColor : '#0c111d',
+          pointBorderColor: isStrokedPoint ? rawColor : _getChartThemeConfig().pointBorderColor,
           pointBorderWidth: isStrokedPoint ? 2.4 : 1.5,
           borderRadius: 0,
           borderWidth: 1
         };
       });
       return { labels: newLabels, datasets: newDatasets };
+    }
+
+    function syncModalToolbarUI() {
+      const typeSelect = document.getElementById('chart-modal-type-select');
+      if (typeSelect) {
+        typeSelect.value = _modalState.activeType;
+      }
+
+      // Options menu status indicators
+      const optSwapItem = document.getElementById('opt-swap-axes');
+      const optSwapStatus = document.getElementById('opt-swap-axes-status');
+      if (optSwapItem && optSwapStatus) {
+        if (_modalState.isTransposed) {
+          optSwapItem.classList.add('active');
+          optSwapStatus.textContent = 'Active';
+        } else {
+          optSwapItem.classList.remove('active');
+          optSwapStatus.textContent = 'Off';
+        }
+      }
+      const optOrientItem = document.getElementById('opt-orient');
+      const optOrientStatus = document.getElementById('opt-orient-status');
+      const optOrientText = document.getElementById('opt-orient-text');
+      if (optOrientItem && optOrientStatus && optOrientText) {
+        if (_modalState.isHorizontal) {
+          optOrientItem.classList.add('active');
+          optOrientStatus.textContent = 'Active';
+          optOrientText.textContent = 'Horizontal Layout';
+        } else {
+          optOrientItem.classList.remove('active');
+          optOrientStatus.textContent = 'Off';
+          optOrientText.textContent = 'Vertical Layout';
+        }
+      }
+      const optCurveItem = document.getElementById('opt-curve');
+      const optCurveStatus = document.getElementById('opt-curve-status');
+      if (optCurveItem && optCurveStatus) {
+        const isLineChart = ['line', 'area'].includes(_modalState.activeType);
+        optCurveItem.style.display = isLineChart ? 'flex' : 'none';
+        if (isLineChart) {
+          optCurveStatus.textContent = _modalState.tension > 0.1 ? 'Smooth' : 'Sharp';
+        }
+      }
+
+      const views = _modalState.tableViews || [];
+      const currentView = views[_modalState.activeViewIndex] || views[0];
+
+      // 0. REPORT / TABLE selector (shown only if multiple tables exist)
+      const tableControl = document.getElementById('chart-modal-table-control');
+      const tableSelect = document.getElementById('chart-modal-table-select');
+      if (tableControl && tableSelect) {
+        if (views.length > 1) {
+          tableSelect.innerHTML = '';
+          views.forEach((v, idx) => {
+            const opt = document.createElement('option');
+            opt.value = String(idx);
+            opt.textContent = _formatCategoryTitle(v).toUpperCase();
+            tableSelect.appendChild(opt);
+          });
+          tableSelect.value = String(_modalState.activeViewIndex || 0);
+          tableControl.style.display = 'flex';
+        } else {
+          tableControl.style.display = 'none';
+        }
+      }
+
+      const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
+
+
+      const avDims = currentView?.availableDims || [];
+
+      // 2. X-AXIS selector & 3. CATEGORY selector with mutual exclusion
+      const xAxisSelect = document.getElementById('chart-modal-xaxis-select');
+      const xAxisControl = document.getElementById('chart-modal-xaxis-control');
+      const catControl = document.getElementById('chart-modal-category-control');
+      const catSelect = document.getElementById('chart-modal-category-select');
+
+      if (isPie) {
+        // Pie / Donut: X-Axis is hidden, Category chooses the slice dimension!
+        if (xAxisControl) xAxisControl.style.display = 'none';
+        if (catControl && catSelect) {
+          catControl.style.display = 'flex';
+          catSelect.innerHTML = '';
+          avDims.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d;
+            opt.textContent = d.toUpperCase();
+            catSelect.appendChild(opt);
+          });
+          if (!_modalState.activeCatDim || _modalState.activeCatDim === 'None' || !avDims.includes(_modalState.activeCatDim)) {
+            _modalState.activeCatDim = currentView?.dimCols?.[0]?.header || avDims[0] || 'Category';
+          }
+          catSelect.value = _modalState.activeCatDim;
+        }
+      } else {
+        // Bar / Line / Area / Waterfall:
+        if (xAxisControl) xAxisControl.style.display = 'flex';
+        if (catControl) catControl.style.display = 'flex';
+
+        // X-Axis options: avDims EXCEPT activeCatDim (if activeCatDim !== 'None')
+        if (xAxisSelect && xAxisControl) {
+          xAxisSelect.innerHTML = '';
+          let allowedXDims = avDims.filter(d => _modalState.activeCatDim === 'None' || d !== _modalState.activeCatDim);
+          if (allowedXDims.length === 0) allowedXDims = [avDims[0] || 'Category'];
+          allowedXDims.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d;
+            opt.textContent = d.toUpperCase();
+            xAxisSelect.appendChild(opt);
+          });
+          if (!allowedXDims.includes(_modalState.activeXDim)) {
+            _modalState.activeXDim = allowedXDims[0];
+          }
+          xAxisSelect.value = _modalState.activeXDim;
+        }
+
+        // Category options: 'NONE' + avDims EXCEPT activeXDim
+        if (catSelect && catControl) {
+          catSelect.innerHTML = '';
+          const noneOpt = document.createElement('option');
+          noneOpt.value = 'None';
+          noneOpt.textContent = 'NONE';
+          catSelect.appendChild(noneOpt);
+
+          const allowedCatDims = avDims.filter(d => d !== _modalState.activeXDim);
+          allowedCatDims.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d;
+            opt.textContent = d.toUpperCase();
+            catSelect.appendChild(opt);
+          });
+          if (_modalState.activeCatDim !== 'None' && !allowedCatDims.includes(_modalState.activeCatDim)) {
+            _modalState.activeCatDim = 'None';
+          }
+          catSelect.value = _modalState.activeCatDim;
+        }
+      }
+
+      // 4. Y-AXIS selector & % AGGREGATION selector
+      const yAxisSelect = document.getElementById('chart-modal-metric-select') || document.getElementById('chart-modal-yaxis-select');
+      const pctAggControl = document.getElementById('chart-modal-pct-agg-control');
+      const pctAggSelect = document.getElementById('chart-modal-pct-agg-select');
+      const avMetrics = currentView?.availableMetrics || currentView?.metrics || [];
+
+      if (yAxisSelect) {
+        yAxisSelect.innerHTML = '';
+        let selectedVal = '';
+        avMetrics.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m.id;
+          opt.textContent = m.name.toUpperCase();
+          yAxisSelect.appendChild(opt);
+
+          if (_modalState.activeMetricId === m.id || !selectedVal) {
+            selectedVal = m.id;
+          }
+        });
+        if (!_modalState.activeMetricId && selectedVal) {
+          _modalState.activeMetricId = selectedVal;
+        }
+        if (_modalState.activeMetricId) {
+          yAxisSelect.value = _modalState.activeMetricId;
+        }
+      }
+
+      const activeMetric = avMetrics.find(m => m.id === _modalState.activeMetricId) || avMetrics[0];
+      if (pctAggControl && pctAggSelect) {
+        if (activeMetric && activeMetric.isPercent) {
+          pctAggControl.style.display = 'flex';
+          pctAggSelect.value = _modalState.percentAggregation || 'avg';
+        } else {
+          pctAggControl.style.display = 'none';
+        }
+      }
+
+      syncModalDimBadgeAndCheckboxes();
     }
 
     function toggleModalDimMenu(e) {
@@ -6295,11 +8909,14 @@
         return datasets.map((ds, i) => {
           const sum = (ds.data || []).reduce((acc, v) => acc + (Number(v) || 0), 0);
           const color = _resolveDatasetThemeColor(ds, i);
+          const count = (ds.data || []).filter(v => v !== null && v !== undefined).length || 1;
+          const avg = count > 0 ? (sum / count) : 0;
           return {
             id: String(ds.label || `Series ${i+1}`),
             name: String(ds.label || `Series ${i+1}`),
             color: color,
-            total: Math.round(sum * 100) / 100
+            total: Math.round(sum * 100) / 100,
+            avg: Math.round(avg * 100) / 100
           };
         });
       } else if (datasets.length === 1) {
@@ -6311,7 +8928,8 @@
             id: String(lbl),
             name: String(lbl),
             color: typeof color === 'string' ? color : _CHART_PALETTE[i % _CHART_PALETTE.length],
-            total: Math.round(val * 100) / 100
+            total: Math.round(val * 100) / 100,
+            avg: Math.round(val * 100) / 100
           };
         });
       }
@@ -6321,37 +8939,155 @@
     function buildModalDimensionControls() {
       const listEl = document.getElementById('chart-modal-dim-list');
       if (!listEl) return;
-      const items = getModalDimensionItems();
       listEl.innerHTML = '';
 
-      items.forEach(it => {
-        const isVisible = !_modalState.hiddenItems.has(it.id);
-        const itemEl = document.createElement('label');
-        itemEl.className = 'chart-modal-dim-item';
-        itemEl.innerHTML = `
-          <div style="display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
-            <input type="checkbox" class="chart-modal-dim-check" data-id="${escapeAttr(it.id)}" ${isVisible ? 'checked' : ''}>
-            <span class="chart-modal-dim-color-dot" style="background: ${it.color};"></span>
-            <span style="overflow: hidden; text-overflow: ellipsis;" title="${escapeAttr(it.name)}">${escapeHtml(it.name)}</span>
-          </div>
-          <span class="chart-modal-dim-val-badge">${_formatAxisCurrency(it.total)}</span>
-        `;
-        const checkEl = itemEl.querySelector('.chart-modal-dim-check');
-        checkEl.onchange = () => {
-          toggleModalDimensionItem(it.id, checkEl.checked);
-        };
-        listEl.appendChild(itemEl);
-      });
+      const currentView = _modalState.tableViews?.[_modalState.activeViewIndex];
+      if (!currentView || (!currentView.monthCols?.length && !currentView.dimCols?.length)) {
+        // Fall back to series/labels list if no tabular extraction
+        const items = getModalDimensionItems();
+        const axisLabel = _modalState.originalConfig?.rawSpec?.value_label ||
+                          _modalState.originalConfig?.options?.scales?.y?.title?.text ||
+                          _modalState.originalConfig?.options?.scales?.x?.title?.text || 'Cost';
+        const axisIsCost = _isCostMetricLabel(axisLabel);
+        const axisIsPercent = _isPercentMetricLabel(axisLabel);
+        const useAvg = axisIsPercent && _modalState.percentAggregation === 'avg';
+
+        items.forEach(it => {
+          const isVisible = !_modalState.hiddenItems.has(it.id);
+          const itemEl = document.createElement('label');
+          itemEl.className = 'chart-modal-dim-item';
+          const badgeVal = useAvg ? it.avg : it.total;
+          itemEl.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+              <input type="checkbox" class="chart-modal-dim-check" data-id="${escapeAttr(it.id)}" ${isVisible ? 'checked' : ''}>
+              <span class="chart-modal-dim-color-dot" style="background: ${it.color};"></span>
+              <span style="overflow: hidden; text-overflow: ellipsis;" title="${escapeAttr(it.name)}">${escapeHtml(it.name)}</span>
+            </div>
+            <span class="chart-modal-dim-val-badge">${_formatMetricBadge(badgeVal, axisIsCost, axisIsPercent)}</span>
+          `;
+          const checkEl = itemEl.querySelector('.chart-modal-dim-check');
+          checkEl.onchange = () => {
+            toggleModalDimensionItem(it.id, checkEl.checked);
+          };
+          listEl.appendChild(itemEl);
+        });
+        syncModalDimBadgeAndCheckboxes();
+        return;
+      }
+
+      // Section 1: MONTHS (if monthCols present)
+      if (currentView.monthCols && currentView.monthCols.length > 0) {
+        const secTitle = document.createElement('div');
+        secTitle.className = 'chart-modal-dim-section-title';
+        secTitle.textContent = 'MONTHS';
+        listEl.appendChild(secTitle);
+
+        if (!_modalState.filters['Month']) {
+          _modalState.filters['Month'] = new Set(currentView.monthCols.map(m => m.header));
+        }
+
+        currentView.monthCols.forEach(m => {
+          const isChecked = _modalState.filters['Month'].has(m.header);
+          const itemEl = document.createElement('label');
+          itemEl.className = 'chart-modal-dim-item';
+          itemEl.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+              <input type="checkbox" class="chart-modal-dim-check" data-section="Month" data-val="${escapeAttr(m.header)}" ${isChecked ? 'checked' : ''}>
+              <span style="overflow: hidden; text-overflow: ellipsis;" title="${escapeAttr(m.header)}">${escapeHtml(m.header)}</span>
+            </div>
+          `;
+          const chk = itemEl.querySelector('input');
+          chk.onchange = () => toggleFilterItem('Month', m.header, chk.checked);
+          listEl.appendChild(itemEl);
+        });
+      }
+
+      // Section 2+: Each dimension (e.g. CLOUD PROVIDER, SERVICE CATEGORY, etc.)
+      if (currentView.dimCols && currentView.dimCols.length > 0) {
+        currentView.dimCols.forEach(d => {
+          const secTitle = document.createElement('div');
+          secTitle.className = 'chart-modal-dim-section-title';
+          secTitle.textContent = d.header.toUpperCase();
+          listEl.appendChild(secTitle);
+
+          if (!_modalState.filters[d.header]) {
+            _modalState.filters[d.header] = new Set(d.distinctVals);
+          }
+
+          d.distinctVals.forEach(val => {
+            const isChecked = _modalState.filters[d.header].has(val);
+            const itemEl = document.createElement('label');
+            itemEl.className = 'chart-modal-dim-item';
+            itemEl.innerHTML = `
+              <div style="display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+                <input type="checkbox" class="chart-modal-dim-check" data-section="${escapeAttr(d.header)}" data-val="${escapeAttr(val)}" ${isChecked ? 'checked' : ''}>
+                <span style="overflow: hidden; text-overflow: ellipsis;" title="${escapeAttr(val)}">${escapeHtml(val)}</span>
+              </div>
+            `;
+            const chk = itemEl.querySelector('input');
+            chk.onchange = () => toggleFilterItem(d.header, val, chk.checked);
+            listEl.appendChild(itemEl);
+          });
+        });
+      }
 
       syncModalDimBadgeAndCheckboxes();
     }
 
+    function toggleFilterItem(section, val, isChecked) {
+      _modalState.usePreviewChart = false;
+      if (!_modalState.filters[section]) {
+        _modalState.filters[section] = new Set();
+      }
+      const set = _modalState.filters[section];
+      if (isChecked) {
+        set.add(val);
+      } else {
+        if (set.size > 1) {
+          set.delete(val);
+        }
+      }
+      syncModalDimBadgeAndCheckboxes();
+      renderModalChart();
+    }
+
     function syncModalDimBadgeAndCheckboxes() {
-      const items = getModalDimensionItems();
-      const total = items.length;
-      const visible = items.filter(it => !_modalState.hiddenItems.has(it.id)).length;
+      const currentView = _modalState.tableViews?.[_modalState.activeViewIndex];
       const badge = document.getElementById('chart-modal-dim-badge');
-      if (badge) {
+      if (!badge) return;
+
+      if (currentView && (currentView.monthCols?.length || currentView.dimCols?.length)) {
+        let totalPossible = 0;
+        let totalSelected = 0;
+        if (currentView.monthCols?.length > 0) {
+          totalPossible += currentView.monthCols.length;
+          totalSelected += (_modalState.filters['Month']?.size || currentView.monthCols.length);
+        }
+        if (currentView.dimCols?.length > 0) {
+          currentView.dimCols.forEach(d => {
+            totalPossible += d.distinctVals.length;
+            totalSelected += (_modalState.filters[d.header]?.size || d.distinctVals.length);
+          });
+        }
+        if (totalSelected === totalPossible) {
+          badge.textContent = `All (${totalPossible})`;
+          badge.style.color = '#94a3b8';
+        } else {
+          badge.textContent = `${totalSelected} of ${totalPossible}`;
+          badge.style.color = '#38bdf8';
+        }
+
+        document.querySelectorAll('.chart-modal-dim-check').forEach(chk => {
+          const sec = chk.getAttribute('data-section');
+          const val = chk.getAttribute('data-val');
+          if (sec && val && _modalState.filters[sec]) {
+            chk.checked = _modalState.filters[sec].has(val);
+          }
+        });
+      } else {
+        const items = getModalDimensionItems();
+        const total = items.length;
+        const visible = items.filter(it => !_modalState.hiddenItems.has(it.id)).length;
         if (visible === total) {
           badge.textContent = `All (${total})`;
           badge.style.color = '#94a3b8';
@@ -6359,16 +9095,15 @@
           badge.textContent = `${visible} of ${total}`;
           badge.style.color = '#38bdf8';
         }
+        document.querySelectorAll('.chart-modal-dim-check').forEach(chk => {
+          const id = chk.getAttribute('data-id');
+          if (id) chk.checked = !_modalState.hiddenItems.has(id);
+        });
       }
-
-      document.querySelectorAll('.chart-modal-dim-check').forEach(chk => {
-        const id = chk.getAttribute('data-id');
-        chk.checked = !_modalState.hiddenItems.has(id);
-      });
 
       const resetBtn = document.getElementById('chart-modal-reset-btn');
       if (resetBtn) {
-        resetBtn.style.display = _modalState.hiddenItems.size > 0 ? 'inline-flex' : 'none';
+        resetBtn.style.display = 'none';
       }
     }
 
@@ -6388,6 +9123,42 @@
     }
 
     function filterModalDimensions(mode) {
+      const currentView = _modalState.tableViews?.[_modalState.activeViewIndex];
+      if (currentView && (currentView.monthCols?.length || currentView.dimCols?.length)) {
+        if (mode === 'all') {
+          if (currentView.monthCols) {
+            _modalState.filters['Month'] = new Set(currentView.monthCols.map(m => m.header));
+          }
+          if (currentView.dimCols) {
+            currentView.dimCols.forEach(d => {
+              _modalState.filters[d.header] = new Set(d.distinctVals);
+            });
+          }
+        } else if (mode === 'clear') {
+          if (currentView.monthCols && currentView.monthCols.length > 0) {
+            _modalState.filters['Month'] = new Set([currentView.monthCols[0].header]);
+          }
+          if (currentView.dimCols) {
+            currentView.dimCols.forEach(d => {
+              _modalState.filters[d.header] = new Set([d.distinctVals[0]]);
+            });
+          }
+        } else if (mode === 'top3' || mode === 'top5') {
+          const count = mode === 'top3' ? 3 : 5;
+          if (currentView.monthCols) {
+            _modalState.filters['Month'] = new Set(currentView.monthCols.map(m => m.header));
+          }
+          if (currentView.dimCols) {
+            currentView.dimCols.forEach(d => {
+              _modalState.filters[d.header] = new Set(d.distinctVals.slice(0, count));
+            });
+          }
+        }
+        buildModalDimensionControls();
+        renderModalChart();
+        return;
+      }
+
       const items = getModalDimensionItems();
       if (!items.length) return;
 
@@ -6424,18 +9195,391 @@
       });
     }
 
+    function applyActiveViewAndMetric() {
+      const currentView = _modalState.tableViews[_modalState.activeViewIndex];
+      const titleEl = document.getElementById('chart-modal-title');
+      if (titleEl && currentView?.title) {
+        titleEl.textContent = cleanChartTitle(currentView.title) || 'Expanded Chart View';
+      }
+      _modalState.isTransposed = false;
+      _modalState.hiddenItems.clear();
+      syncModalToolbarUI();
+      buildModalDimensionControls();
+      renderModalChart();
+    }
+
+    function _buildChartDataForView(currentView) {
+      // On first open, show the original preview chart exactly as rendered inline.
+      // Once the user changes a toolbar control (X-axis, Y-axis, Category, Type),
+      // usePreviewChart is cleared and we switch to table-derived aggregation.
+      if (_modalState.usePreviewChart && _modalState.originalConfig?.data?.labels?.length) {
+        const cfg = _modalState.originalConfig;
+        return {
+          labels: [...(cfg.data?.labels || [])],
+          datasets: (cfg.data?.datasets || []).map(ds => ({
+            ...ds,
+            data: Array.isArray(ds.data) ? [...ds.data] : ds.data
+          })),
+          value_label: cfg.rawSpec?.value_label || cfg.options?.scales?.y?.title?.text || 'Cost ($)',
+          x_label: cfg.rawSpec?.x_label || cfg.options?.scales?.x?.title?.text || 'Category',
+          isCost: cfg.rawSpec?.isCost !== false,
+          isPercent: Boolean(cfg.rawSpec?.isPercent),
+          isWaterfall: _modalState.activeType === 'waterfall',
+          rawItems: cfg.rawSpec?.values?.map((v, i) => ({
+            value: typeof v === 'object' ? (v.value ?? 0) : Number(v),
+            isBase: i === 0,
+            isTotal: i === (cfg.rawSpec.values.length - 1)
+          }))
+        };
+      }
+
+      if (!currentView || (!currentView.rawRows?.length)) {
+        return {
+          labels: [...(_modalState.originalConfig?.data?.labels || [])],
+          datasets: (_modalState.originalConfig?.data?.datasets || []).map(ds => ({
+            ...ds,
+            data: Array.isArray(ds.data) ? [...ds.data] : ds.data
+          })),
+          value_label: _modalState.originalConfig?.rawSpec?.value_label || 'Cost',
+          x_label: _modalState.originalConfig?.rawSpec?.x_label || 'Category',
+          isCost: _modalState.originalConfig?.rawSpec?.isCost !== false,
+          isPercent: Boolean(_modalState.originalConfig?.rawSpec?.isPercent),
+          isWaterfall: _modalState.activeType === 'waterfall'
+        };
+      }
+
+      const rawRows = currentView.rawRows || [];
+      const dimCols = currentView.dimCols || [];
+      const monthCols = currentView.monthCols || [];
+      const avMetrics = currentView.availableMetrics || [];
+
+      const activeX = _modalState.activeXDim || (monthCols.length > 0 ? 'Month' : (dimCols[0]?.header || 'Category'));
+      const activeCat = _modalState.activeCatDim || 'None';
+      const activeMetricId = _modalState.activeMetricId || avMetrics[0]?.id || 'total_spend';
+      const isWaterfall = _modalState.activeType === 'waterfall';
+      const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
+
+      const activeMetric = avMetrics.find(m => m.id === activeMetricId) || avMetrics[0] || {
+        id: 'total_spend', name: 'Total Spend', isCost: true, isPercent: false, colIdx: -1
+      };
+
+      // 1. Filter rows by active dimension filters
+      const filteredRows = rawRows.filter(r => {
+        for (const d of dimCols) {
+          const selected = _modalState.filters[d.header];
+          if (selected && selected instanceof Set) {
+            const cellVal = (r[d.colIdx] || '').trim();
+            if (!selected.has(cellVal)) return false;
+          }
+        }
+        return true;
+      });
+
+      // 2. Filter months by Month filter
+      const activeMonthCols = monthCols.filter(m => {
+        const selected = _modalState.filters['Month'];
+        if (selected && selected instanceof Set) {
+          return selected.has(m.header);
+        }
+        return true;
+      });
+
+      function getMetricValue(row, monthCol) {
+        if (monthCol) {
+          return _parseNumericValue(row[monthCol.colIdx]);
+        }
+        if (activeMetric.isMoM) {
+          if (activeMetric.colIdx !== undefined && activeMetric.colIdx !== -1) {
+            return _parseMoMValue(row[activeMetric.colIdx]);
+          }
+          if (activeMonthCols.length >= 2) {
+            const last = _parseNumericValue(row[activeMonthCols[activeMonthCols.length - 1].colIdx]);
+            const prev = _parseNumericValue(row[activeMonthCols[activeMonthCols.length - 2].colIdx]);
+            return last - prev;
+          }
+          return 0;
+        }
+        if (activeMetric.colIdx !== undefined && activeMetric.colIdx !== -1) {
+          return _parseNumericValue(row[activeMetric.colIdx]);
+        }
+        if (activeMonthCols.length > 0) {
+          return activeMonthCols.reduce((acc, m) => acc + _parseNumericValue(row[m.colIdx]), 0);
+        }
+        return 0;
+      }
+
+      // --- PIE / DOUGHNUT CHART ---
+      if (isPie) {
+        let sliceDim = activeCat;
+        if (sliceDim === 'None' || !currentView.availableDims.includes(sliceDim)) {
+          sliceDim = (dimCols[0]?.header) || (monthCols.length > 0 ? 'Month' : 'Category');
+        }
+
+        let labels = [];
+        let sliceValues = [];
+
+        if (sliceDim === 'Month' && activeMonthCols.length > 0) {
+          labels = activeMonthCols.map(m => m.header);
+          sliceValues = activeMonthCols.map(m => {
+            const sum = filteredRows.reduce((acc, r) => acc + _parseNumericValue(r[m.colIdx]), 0);
+            return Math.round(sum * 100) / 100;
+          });
+        } else {
+          const dim = dimCols.find(d => d.header === sliceDim) || dimCols[0];
+          const dimColIdx = dim ? dim.colIdx : 0;
+          const map = new Map();
+          filteredRows.forEach(r => {
+            const key = (r[dimColIdx] || '').trim() || 'Unknown';
+            const val = getMetricValue(r, null);
+            map.set(key, (map.get(key) || 0) + val);
+          });
+          const sorted = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+          labels = sorted.map(e => e[0]);
+          sliceValues = sorted.map(e => Math.round(e[1] * 100) / 100);
+        }
+
+        const colors = labels.map((_, i) => _CHART_PALETTE[i % _CHART_PALETTE.length]);
+        return {
+          labels,
+          datasets: [{
+            label: activeMetric.name,
+            data: sliceValues,
+            backgroundColor: colors,
+            borderColor: _getChartThemeConfig().pieBorderColor,
+            borderWidth: 2
+          }],
+          value_label: activeMetric.name,
+          x_label: sliceDim,
+          isCost: activeMetric.isCost,
+          isPercent: activeMetric.isPercent,
+          isWaterfall: false
+        };
+      }
+
+      // --- WATERFALL CHART ---
+      if (isWaterfall) {
+        let items = [];
+
+        if (activeX === 'Month' && activeMonthCols.length > 0) {
+          const monthTotals = activeMonthCols.map(m => ({
+            month: m.header,
+            spend: filteredRows.reduce((acc, r) => acc + _parseNumericValue(r[m.colIdx]), 0)
+          }));
+
+          const baseMonth = monthTotals[0];
+          items.push({ label: `${baseMonth.month} (Base)`, value: baseMonth.spend, isBase: true });
+
+          for (let i = 1; i < monthTotals.length; i++) {
+            const delta = monthTotals[i].spend - monthTotals[i - 1].spend;
+            items.push({ label: `${monthTotals[i].month} MoM`, value: delta });
+          }
+
+          if (monthTotals.length > 1) {
+            const lastMonth = monthTotals[monthTotals.length - 1];
+            items.push({ label: `${lastMonth.month} Total`, value: lastMonth.spend, isTotal: true });
+          }
+        } else {
+          const xDim = dimCols.find(d => d.header === activeX) || dimCols[0];
+          const xColIdx = xDim ? xDim.colIdx : 0;
+          const map = new Map();
+          filteredRows.forEach(r => {
+            const key = (r[xColIdx] || '').trim() || 'Unknown';
+            const val = getMetricValue(r, null);
+            map.set(key, (map.get(key) || 0) + val);
+          });
+          const sorted = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+          sorted.forEach(([k, v]) => {
+            items.push({ label: k, value: Math.round(v * 100) / 100 });
+          });
+          const netChange = sorted.reduce((acc, it) => acc + it[1], 0);
+          items.push({ label: 'Net Total', value: Math.round(netChange * 100) / 100, isTotal: true });
+        }
+
+        const floatingData = [];
+        const bgColors = [];
+        const borderColors = [];
+        let running = 0;
+
+        items.forEach((it, idx) => {
+          const num = it.value;
+          if (it.isBase) {
+            floatingData.push([0, num]);
+            running = num;
+            bgColors.push('#0284c7');
+            borderColors.push('#0369a1');
+          } else if (it.isTotal) {
+            const finalVal = it.isBase ? num : (idx === items.length - 1 && items[0].isBase ? num : running);
+            floatingData.push([0, finalVal]);
+            bgColors.push('#818cf8');
+            borderColors.push('#6366f1');
+          } else {
+            const start = running;
+            const end = running + num;
+            floatingData.push([Math.min(start, end), Math.max(start, end)]);
+            running = end;
+            if (num >= 0) {
+              bgColors.push('#f87171');
+              borderColors.push('#ef4444');
+            } else {
+              bgColors.push('#4ade80');
+              borderColors.push('#22c55e');
+            }
+          }
+        });
+
+        return {
+          labels: items.map(it => it.label),
+          rawItems: items,
+          datasets: [{
+            label: activeMetric.name || 'MoM Change',
+            data: floatingData,
+            backgroundColor: bgColors,
+            borderColor: borderColors,
+            borderWidth: 1,
+            borderRadius: 3
+          }],
+          value_label: activeMetric.name || 'MoM Change',
+          x_label: activeX,
+          isCost: true,
+          isPercent: false,
+          isWaterfall: true
+        };
+      }
+
+      // --- BAR / LINE / AREA ---
+      if (activeX === 'Month' && activeMonthCols.length > 0) {
+        const labels = activeMonthCols.map(m => m.header);
+
+        if (activeCat === 'None') {
+          const data = activeMonthCols.map(m => {
+            const sum = filteredRows.reduce((acc, r) => acc + _parseNumericValue(r[m.colIdx]), 0);
+            return Math.round(sum * 100) / 100;
+          });
+          return {
+            labels,
+            datasets: [{ label: activeMetric.name, data }],
+            value_label: activeMetric.name,
+            x_label: 'Month',
+            isCost: activeMetric.isCost,
+            isPercent: activeMetric.isPercent,
+            isWaterfall: false
+          };
+        } else {
+          const catDim = dimCols.find(d => d.header === activeCat) || dimCols[0];
+          const catColIdx = catDim ? catDim.colIdx : 0;
+          const catVals = Array.from(new Set(filteredRows.map(r => (r[catColIdx] || '').trim()).filter(Boolean)));
+
+          const datasets = catVals.map(catVal => {
+            const rowsForCat = filteredRows.filter(r => (r[catColIdx] || '').trim() === catVal);
+            const data = activeMonthCols.map(m => {
+              const sum = rowsForCat.reduce((acc, r) => acc + _parseNumericValue(r[m.colIdx]), 0);
+              return Math.round(sum * 100) / 100;
+            });
+            const total = data.reduce((a, b) => a + b, 0);
+            return { label: catVal, data, total };
+          }).sort((a, b) => b.total - a.total);
+
+          return {
+            labels,
+            datasets,
+            value_label: activeMetric.name,
+            x_label: 'Month',
+            isCost: activeMetric.isCost,
+            isPercent: activeMetric.isPercent,
+            isWaterfall: false
+          };
+        }
+      }
+
+      const xDim = dimCols.find(d => d.header === activeX) || dimCols[0];
+      const xColIdx = xDim ? xDim.colIdx : 0;
+      const xVals = Array.from(new Set(filteredRows.map(r => (r[xColIdx] || '').trim()).filter(Boolean)));
+
+      if (activeCat === 'Month' && activeMonthCols.length > 0) {
+        const labels = xVals;
+        const datasets = activeMonthCols.map(m => {
+          const data = labels.map(xVal => {
+            const rows = filteredRows.filter(r => (r[xColIdx] || '').trim() === xVal);
+            const sum = rows.reduce((acc, r) => acc + _parseNumericValue(r[m.colIdx]), 0);
+            return Math.round(sum * 100) / 100;
+          });
+          return { label: m.header, data };
+        });
+        return {
+          labels,
+          datasets,
+          value_label: activeMetric.name,
+          x_label: activeX,
+          isCost: activeMetric.isCost,
+          isPercent: activeMetric.isPercent,
+          isWaterfall: false
+        };
+      } else if (activeCat !== 'None') {
+        const catDim = dimCols.find(d => d.header === activeCat) || dimCols.find(d => d.header !== activeX);
+        const catColIdx = catDim ? catDim.colIdx : 0;
+        const catVals = Array.from(new Set(filteredRows.map(r => (r[catColIdx] || '').trim()).filter(Boolean)));
+        const labels = xVals;
+
+        const datasets = catVals.map(catVal => {
+          const data = labels.map(xVal => {
+            const rows = filteredRows.filter(r => (r[xColIdx] || '').trim() === xVal && (r[catColIdx] || '').trim() === catVal);
+            const sum = rows.reduce((acc, r) => acc + getMetricValue(r, null), 0);
+            return Math.round(sum * 100) / 100;
+          });
+          const total = data.reduce((a, b) => a + b, 0);
+          return { label: catVal, data, total };
+        }).sort((a, b) => b.total - a.total);
+
+        return {
+          labels,
+          datasets,
+          value_label: activeMetric.name,
+          x_label: activeX,
+          isCost: activeMetric.isCost,
+          isPercent: activeMetric.isPercent,
+          isWaterfall: false
+        };
+      } else {
+        const labels = xVals;
+        const map = new Map();
+        filteredRows.forEach(r => {
+          const key = (r[xColIdx] || '').trim() || 'Unknown';
+          const val = getMetricValue(r, null);
+          map.set(key, (map.get(key) || 0) + val);
+        });
+        const sorted = labels.map(lbl => ({
+          lbl,
+          val: Math.round((map.get(lbl) || 0) * 100) / 100
+        })).sort((a, b) => b.val - a.val);
+
+        return {
+          labels: sorted.map(s => s.lbl),
+          datasets: [{
+            label: activeMetric.name,
+            data: sorted.map(s => s.val)
+          }],
+          value_label: activeMetric.name,
+          x_label: activeX,
+          isCost: activeMetric.isCost,
+          isPercent: activeMetric.isPercent,
+          isWaterfall: false
+        };
+      }
+    }
+
     function renderModalChart() {
-      if (!_modalState.originalConfig) return;
+      const currentView = _modalState.tableViews?.[_modalState.activeViewIndex];
       const canvas = document.getElementById('expanded-chart-canvas');
       if (!canvas) return;
 
-      let labels = [...(_modalState.originalConfig.data?.labels || [])];
-      let datasets = (_modalState.originalConfig.data?.datasets || []).map(ds => ({
+      const built = _buildChartDataForView(currentView);
+      let labels = [...built.labels];
+      let datasets = built.datasets.map(ds => ({
         ...ds,
         data: Array.isArray(ds.data) ? [...ds.data] : ds.data
       }));
 
-      if (_modalState.isTransposed) {
+      if (_modalState.isTransposed && !built.isWaterfall) {
         const t = transposeChartMatrix(labels, datasets);
         labels = t.labels;
         datasets = t.datasets;
@@ -6443,9 +9587,9 @@
 
       const isMultiSeries = datasets.length > 1;
 
-      if (isMultiSeries) {
+      if (isMultiSeries && _modalState.hiddenItems.size > 0) {
         datasets = datasets.filter(ds => !_modalState.hiddenItems.has(ds.label));
-      } else if (datasets.length === 1 && _modalState.hiddenItems.size > 0) {
+      } else if (datasets.length === 1 && _modalState.hiddenItems.size > 0 && !built.isWaterfall) {
         const filteredLabels = [];
         const filteredData = [];
         const bgColors = Array.isArray(datasets[0].backgroundColor) ? [] : datasets[0].backgroundColor;
@@ -6468,49 +9612,30 @@
       const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
       const isLine = ['line', 'area'].includes(_modalState.activeType);
       const isArea = _modalState.activeType === 'area';
+      const isWaterfall = built.isWaterfall;
       const isHorizontal = _modalState.isHorizontal;
       const chartType = isPie ? _modalState.activeType : (isLine ? 'line' : 'bar');
+      const themeCfg = _getChartThemeConfig();
 
       const canvasWrap = canvas.parentElement;
       if (canvasWrap) {
         canvasWrap.className = 'expanded-chart-canvas-wrap';
         if (isPie) {
           canvasWrap.style.maxWidth = 'min(620px, 70%)';
-          canvasWrap.style.margin = 'auto';
+          canvasWrap.style.margin = '0 auto';
         } else {
           canvasWrap.style.maxWidth = '';
           canvasWrap.style.margin = '';
         }
       }
 
-      if (isPie && isMultiSeries) {
-        const pieLabels = [];
-        const pieData = [];
-        const pieColors = [];
-        datasets.forEach((ds, i) => {
-          pieLabels.push(ds.label || `Series ${i + 1}`);
-          const sum = (ds.data || []).reduce((acc, v) => acc + (Number(v) || 0), 0);
-          pieData.push(Math.round(sum * 100) / 100);
-          const rawColor = _resolveDatasetThemeColor(ds, i);
-          pieColors.push(rawColor);
-        });
-        labels = pieLabels;
-        datasets = [{
-          label: _modalState.originalConfig?.title || 'Cost',
-          data: pieData,
-          backgroundColor: pieColors,
-          borderColor: '#0b0f17',
-          borderWidth: 2
-        }];
-      } else if (isPie && !isMultiSeries) {
+      if (isPie) {
         if (datasets.length > 0 && !Array.isArray(datasets[0].backgroundColor)) {
           datasets[0].backgroundColor = labels.map((_, i) => _CHART_PALETTE[i % _CHART_PALETTE.length]);
-          datasets[0].borderColor = '#0b0f17';
+          datasets[0].borderColor = themeCfg.pieBorderColor;
           datasets[0].borderWidth = 2;
         }
-      }
-
-      if (isLine) {
+      } else if (isLine) {
         datasets.forEach((ds, i) => {
           const rawColor = _resolveDatasetThemeColor(ds, i);
           const pStyle = _POINT_STYLES[i % _POINT_STYLES.length];
@@ -6526,10 +9651,10 @@
           ds.pointHoverRadius = 7.5;
           ds.pointStyle = pStyle;
           ds.pointBackgroundColor = rawColor;
-          ds.pointBorderColor = isStrokedPoint ? rawColor : '#0c111d';
+          ds.pointBorderColor = isStrokedPoint ? rawColor : themeCfg.pointBorderColor;
           ds.pointBorderWidth = isStrokedPoint ? 2.4 : 1.5;
         });
-      } else if (!isPie) {
+      } else if (!isWaterfall) {
         datasets.forEach((ds, i) => {
           const rawColor = _resolveDatasetThemeColor(ds, i);
           const pStyle = _POINT_STYLES[i % _POINT_STYLES.length];
@@ -6538,29 +9663,27 @@
           ds.type = 'bar';
           ds.borderRadius = _modalState.isStacked ? 0 : 4;
           ds.borderWidth = _modalState.isStacked ? 0.75 : 1.5;
-          ds.tension = undefined;
-          ds.fill = undefined;
-          ds.pointRadius = 0;
-          ds.borderColor = _modalState.isStacked ? 'rgba(11, 15, 23, 0.4)' : rawColor;
+          ds.borderColor = _modalState.isStacked ? themeCfg.stackedBorderColor : rawColor;
           ds.backgroundColor = rawColor;
           ds.pointStyle = pStyle;
           ds.pointBackgroundColor = rawColor;
-          ds.pointBorderColor = isStrokedPoint ? rawColor : '#0c111d';
+          ds.pointBorderColor = isStrokedPoint ? rawColor : themeCfg.pointBorderColor;
           ds.pointBorderWidth = isStrokedPoint ? 2.4 : 1.5;
         });
       }
 
-      const baseOpts = _modalState.originalConfig.options || {};
-      const axisLabel = _modalState.originalConfig.rawSpec?.value_label ||
-                        baseOpts.scales?.y?.title?.text ||
-                        baseOpts.scales?.x?.title?.text || 'Cost';
-      const axisIsCost = _isCostMetricLabel(axisLabel);
-      const categoryLabel = _modalState.isTransposed
-        ? (axisLabel || 'Dimension')
-        : (_modalState.originalConfig.rawSpec?.x_label || baseOpts.scales?.x?.title?.text || baseOpts.scales?.y?.title?.text || _inferXAxisLabel(labels));
+      const axisLabel = built.value_label || 'Cost';
+      const axisIsCost = built.isCost;
+      const axisIsPercent = built.isPercent;
+
+      let displayedAxisLabel = axisLabel;
+      if (axisIsPercent) {
+        displayedAxisLabel = `${axisLabel} (${_modalState.percentAggregation === 'sum' ? 'Sum' : 'Avg'})`;
+      }
+
+      const categoryLabel = _modalState.isTransposed ? (axisLabel || 'Dimension') : (built.x_label || 'Category');
 
       const modalOpts = {
-        ...baseOpts,
         responsive: true,
         maintainAspectRatio: isPie,
         indexAxis: isPie ? undefined : (isHorizontal ? 'y' : 'x'),
@@ -6571,10 +9694,8 @@
           }
         },
         plugins: {
-          ...(baseOpts.plugins || {}),
           legend: {
-            ...(baseOpts.plugins?.legend || {}),
-            display: !(!isPie && datasets.length <= 1),
+            display: !isWaterfall && !(!isPie && datasets.length <= 1),
             onClick: (e, item, legend) => {
               handleChartLegendClick(e, item, legend);
               setTimeout(syncModalDimBadgeAndCheckboxes, 50);
@@ -6583,7 +9704,6 @@
             onLeave: (e) => { if (e?.native?.target) e.native.target.style.cursor = 'default'; },
             position: isPie ? 'right' : 'top',
             labels: {
-              ...(baseOpts.plugins?.legend?.labels || {}),
               font: { family: 'Inter', size: 12 },
               usePointStyle: true,
               boxWidth: 10,
@@ -6593,16 +9713,26 @@
             }
           },
           tooltip: {
-            ...(baseOpts.plugins?.tooltip || {}),
             padding: 12,
             titleFont: { family: 'Inter', size: 13 },
             bodyFont: { family: 'Inter', size: 12 },
             footerFont: { family: 'Inter', size: 12 },
             callbacks: {
               label: ctx => {
+                if (isWaterfall) {
+                  const it = built.rawItems?.[ctx.dataIndex];
+                  if (it) {
+                    const val = it.value;
+                    const formatted = `$${Math.abs(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    if (it.isBase) return ` Base Spend: ${formatted}`;
+                    if (it.isTotal) return ` Ending Spend: ${val < 0 ? '-' : ''}${formatted}`;
+                    const sign = val > 0 ? '+' : (val < 0 ? '-' : '');
+                    return ` MoM Change: ${sign}${formatted}`;
+                  }
+                }
                 const isH = ctx.chart?.options?.indexAxis === 'y';
-                const chartType = ctx.chart?.config?.type || ctx.chart?.config?._config?.type || ctx.chart?.type;
-                const isP = ['pie', 'doughnut'].includes(chartType);
+                const cType = ctx.chart?.config?.type || ctx.chart?.config?._config?.type || ctx.chart?.type;
+                const isP = ['pie', 'doughnut'].includes(cType);
                 let v;
                 if (isP) {
                   v = ctx.parsed ?? ctx.raw;
@@ -6624,65 +9754,111 @@
                     pctStr = ` (${pct}%)`;
                   }
                 }
-                const formatted = axisIsCost
-                  ? `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+                let formatted;
+                if (axisIsPercent) {
+                  formatted = `${(Math.round(v * 10) / 10).toFixed(1)}%`;
+                } else if (axisIsCost) {
+                  formatted = `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                } else {
+                  formatted = v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+                }
                 return ` ${dsLabel}${formatted}${pctStr}`;
+              },
+              footer: tooltipItems => {
+                if (isWaterfall || !tooltipItems.length) return '';
+                if (!_modalState.isStacked && datasets.length <= 1) return '';
+                const dataIndex = tooltipItems[0].dataIndex;
+                const ci = tooltipItems[0].chart;
+                let sum = 0;
+                let count = 0;
+                ci.data.datasets.forEach((ds, dsIdx) => {
+                  if (ci.isDatasetVisible(dsIdx)) {
+                    const val = ds.data ? ds.data[dataIndex] : 0;
+                    if (typeof val === 'number') {
+                      sum += val;
+                      count++;
+                    }
+                  }
+                });
+                if (axisIsPercent) {
+                  if (_modalState.percentAggregation === 'sum') {
+                    return `Period Total (Sum): ${(Math.round(sum * 10) / 10).toFixed(1)}%`;
+                  } else {
+                    const avg = count > 0 ? (sum / count) : 0;
+                    return `Period Total (Avg): ${(Math.round(avg * 10) / 10).toFixed(1)}%`;
+                  }
+                }
+                if (axisIsCost) {
+                  return `Period Total: $${sum.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                }
+                return `Period Total: ${sum.toLocaleString('en-US', {maximumFractionDigits: 2})}`;
               }
             }
           }
         }
       };
 
+      if (modalOpts.plugins?.tooltip) {
+        modalOpts.plugins.tooltip.backgroundColor = themeCfg.tooltipBg;
+        modalOpts.plugins.tooltip.borderColor = themeCfg.tooltipBorder;
+        modalOpts.plugins.tooltip.titleColor = themeCfg.tooltipTitle;
+        modalOpts.plugins.tooltip.bodyColor = themeCfg.tooltipBody;
+      }
+      if (modalOpts.plugins?.legend?.labels) {
+        modalOpts.plugins.legend.labels.color = themeCfg.legendColor;
+      }
+
       if (isPie) {
         delete modalOpts.scales;
       } else if (isHorizontal) {
         modalOpts.scales = {
           x: {
-            stacked: _modalState.isStacked,
+            stacked: _modalState.isStacked && !isWaterfall,
+            suggestedMax: (axisIsPercent && _modalState.percentAggregation === 'avg' && !_modalState.isStacked) ? 100 : undefined,
             ticks: {
-              color: '#64748b',
+              color: themeCfg.tickColor,
               font: { size: 11 },
-              callback: v => _formatAxisNumber(v, axisIsCost)
+              callback: v => _formatAxisNumber(v, axisIsCost, axisIsPercent)
             },
-            grid: { color: 'rgba(255,255,255,0.06)' },
-            title: { display: true, text: axisLabel, color: '#64748b', font: { size: 11 } },
-            beginAtZero: true
+            grid: { color: themeCfg.gridColor },
+            title: { display: true, text: displayedAxisLabel, color: themeCfg.tickColor, font: { size: 11 } },
+            beginAtZero: !isWaterfall
           },
           y: {
-            stacked: _modalState.isStacked,
+            stacked: _modalState.isStacked && !isWaterfall,
             ticks: {
-              color: '#94a3b8',
+              color: themeCfg.tickColor,
               font: { size: 11 },
               autoSkip: false
             },
-            grid: { color: 'rgba(255,255,255,0.04)' },
-            title: categoryLabel ? { display: true, text: categoryLabel, color: '#64748b', font: { size: 11 } } : undefined
+            grid: { color: themeCfg.gridColor },
+            title: categoryLabel ? { display: true, text: categoryLabel, color: themeCfg.tickColor, font: { size: 11 } } : undefined
           }
         };
       } else {
         modalOpts.scales = {
           x: {
-            stacked: _modalState.isStacked,
+            stacked: _modalState.isStacked && !isWaterfall,
             ticks: {
-              color: '#94a3b8',
+              color: themeCfg.tickColor,
               font: { size: 11 },
               maxRotation: 45,
               minRotation: 0
             },
-            grid: { color: 'rgba(255,255,255,0.04)' },
-            title: categoryLabel ? { display: true, text: categoryLabel, color: '#64748b', font: { size: 11 } } : undefined
+            grid: { color: themeCfg.gridColor },
+            title: categoryLabel ? { display: true, text: categoryLabel, color: themeCfg.tickColor, font: { size: 11 } } : undefined
           },
           y: {
-            stacked: _modalState.isStacked,
+            stacked: _modalState.isStacked && !isWaterfall,
+            suggestedMax: (axisIsPercent && _modalState.percentAggregation === 'avg' && !_modalState.isStacked) ? 100 : undefined,
             ticks: {
-              color: '#64748b',
+              color: themeCfg.tickColor,
               font: { size: 11 },
-              callback: v => _formatAxisNumber(v, axisIsCost)
+              callback: v => _formatAxisNumber(v, axisIsCost, axisIsPercent)
             },
-            grid: { color: 'rgba(255,255,255,0.06)' },
-            title: { display: true, text: axisLabel, color: '#64748b', font: { size: 11 } },
-            beginAtZero: true
+            grid: { color: themeCfg.gridColor },
+            title: { display: true, text: displayedAxisLabel, color: themeCfg.tickColor, font: { size: 11 } },
+            beginAtZero: !isWaterfall
           }
         };
       }
@@ -6733,10 +9909,12 @@
       const resetBtn = document.getElementById('chart-modal-reset-btn');
       const curveBtn = document.getElementById('chart-modal-curve-btn');
       const dimPopover = document.getElementById('chart-modal-dim-popover');
+      const optPopover = document.getElementById('chart-modal-options-popover');
       if (modal) modal.style.display = 'none';
       if (resetBtn) resetBtn.style.display = 'none';
       if (curveBtn) curveBtn.style.display = 'none';
       if (dimPopover) dimPopover.style.display = 'none';
+      if (optPopover) optPopover.style.display = 'none';
       if (_expandedChartInstance) {
         _expandedChartInstance.destroy();
         _expandedChartInstance = null;
@@ -6753,7 +9931,7 @@
       tempCanvas.width = canvas.width;
       tempCanvas.height = canvas.height;
       const ctx = tempCanvas.getContext('2d');
-      ctx.fillStyle = '#0c111d';
+      ctx.fillStyle = _getChartThemeConfig().exportBgColor;
       ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
       ctx.drawImage(canvas, 0, 0);
 
@@ -6841,6 +10019,11 @@
           dimPopover.style.display = 'none';
           return;
         }
+        const optPopover = document.getElementById('chart-modal-options-popover');
+        if (optPopover && optPopover.style.display !== 'none') {
+          optPopover.style.display = 'none';
+          return;
+        }
         closeChartModal();
         if (typeof closeLogsModal === 'function') closeLogsModal();
         if (typeof closeTokenModal === 'function') closeTokenModal();
@@ -6850,10 +10033,17 @@
 
     document.addEventListener('click', e => {
       const popover = document.getElementById('chart-modal-dim-popover');
-      const btn = document.getElementById('chart-modal-dim-dropdown-btn');
+      const btn = document.getElementById('chart-modal-filters-btn') || document.getElementById('chart-modal-dim-dropdown-btn');
       if (popover && popover.style.display !== 'none') {
         if (!popover.contains(e.target) && !btn?.contains(e.target)) {
           popover.style.display = 'none';
+        }
+      }
+      const optPopover = document.getElementById('chart-modal-options-popover');
+      const optBtn = document.getElementById('chart-modal-options-btn');
+      if (optPopover && optPopover.style.display !== 'none') {
+        if (!optPopover.contains(e.target) && !optBtn?.contains(e.target)) {
+          optPopover.style.display = 'none';
         }
       }
     });
@@ -6876,6 +10066,21 @@
         const isHorizontal = Boolean(spec.horizontal);
 
         const opts = JSON.parse(JSON.stringify(_CHART_DEFAULTS));
+        const themeCfg = _getChartThemeConfig();
+        if (opts.scales?.x?.grid) opts.scales.x.grid.color = themeCfg.gridColor;
+        if (opts.scales?.y?.grid) opts.scales.y.grid.color = themeCfg.gridColor;
+        if (opts.scales?.x?.ticks) opts.scales.x.ticks.color = themeCfg.tickColor;
+        if (opts.scales?.y?.ticks) opts.scales.y.ticks.color = themeCfg.tickColor;
+        if (opts.plugins?.legend?.labels) {
+          opts.plugins.legend.labels.color = themeCfg.legendColor;
+          opts.plugins.legend.labels.generateLabels = _buildLegendLabelsGenerator();
+        }
+        if (opts.plugins?.tooltip) {
+          opts.plugins.tooltip.backgroundColor = themeCfg.tooltipBg;
+          opts.plugins.tooltip.borderColor = themeCfg.tooltipBorder;
+          opts.plugins.tooltip.titleColor = themeCfg.tooltipTitle;
+          opts.plugins.tooltip.bodyColor = themeCfg.tooltipBody;
+        }
         // JSON.stringify silently drops function values, so the Y-axis currency-formatting
         // callback defined on _CHART_DEFAULTS never survives this clone — every axis showed
         // raw unformatted numbers. Re-attach it after cloning, and only as a $ format when the
@@ -6956,6 +10161,8 @@
           opts.plugins.title = { display: false };
         }
 
+        const chartTitle = spec.title || (type ? type.toUpperCase() + ' Chart' : 'Cost Chart');
+
         // ── 1. Waterfall Chart ────────────────────────────────────────────────
         if (isWaterfall) {
           const rawValues = spec.values || (spec.datasets && spec.datasets[0] ? spec.datasets[0].data : []);
@@ -7027,8 +10234,7 @@
 
           const wrap = document.createElement('div');
           wrap.className = 'cleo-chart-wrap cleo-chart-type-waterfall';
-          const chartTitle = spec.title || 'Waterfall Cost Analysis';
-          const chartConfig = { type: 'bar', data: { labels, datasets }, options: opts, title: chartTitle, rawSpec: spec };
+          const chartConfig = { type: 'bar', data: { labels, datasets }, options: opts, title: chartTitle, rawSpec: spec, _bubble: container, _sourceWrap: wrap };
           wrap.appendChild(createChartHeader(chartTitle, () => openChartModal(chartConfig)));
 
           const canvasWrap = document.createElement('div');
@@ -7101,16 +10307,27 @@
           const pStyle = _POINT_STYLES[i % _POINT_STYLES.length];
           const isStrokedPoint = ['cross', 'crossRot', 'line', 'dash', 'star'].includes(pStyle);
 
+          let borderCol = rawColor;
+          if (isPie) {
+            borderCol = themeCfg.pieBorderColor;
+          } else if (isStacked) {
+            borderCol = themeCfg.stackedBorderColor;
+          } else if (ds.borderColor && !ds.borderColor.startsWith('rgba(11, 15, 23') && ds.borderColor !== '#0b0f17' && ds.borderColor !== '#0c111d') {
+            borderCol = ds.borderColor;
+          } else {
+            borderCol = rawColor;
+          }
+
           return {
             ...ds,
             _themeColor: rawColor,
             backgroundColor: isPie ? color : (isArea ? (ds.backgroundColor || _toAlpha(rawColor, 0.28)) : (ds.backgroundColor || color)),
-            borderColor: isPie ? '#0b0f17' : (ds.borderColor && !ds.borderColor.startsWith('rgba(11, 15, 23') && ds.borderColor !== '#0b0f17' ? ds.borderColor : (isLine ? rawColor : 'rgba(11, 15, 23, 0.4)')),
-            borderWidth: isPie ? 2 : (isLine ? 2.5 : (isStacked ? 0.75 : 1.5)),
+            borderColor: borderCol,
+            borderWidth: isPie ? 2 : (isLine ? 2.5 : (isStacked ? 0.75 : 1)),
             borderRadius: (isBar && !isStacked) ? 4 : 0,
             pointStyle: pStyle,
             pointBackgroundColor: rawColor,
-            pointBorderColor: isStrokedPoint ? rawColor : '#0c111d',
+            pointBorderColor: isStrokedPoint ? rawColor : themeCfg.pointBorderColor,
             pointBorderWidth: isStrokedPoint ? 2.4 : 1.5,
             pointRadius: isLine ? 4.5 : 0,
             pointHoverRadius: isLine ? 7.5 : 0,
@@ -7127,13 +10344,14 @@
         const wrap = document.createElement('div');
         wrap.className = `cleo-chart-wrap cleo-chart-type-${type}`;
         const chartType = isPie ? type : (isHorizontal ? 'bar' : (isLine ? 'line' : 'bar'));
-        const chartTitle = spec.title || (type ? type.toUpperCase() + ' Chart' : 'Cost Chart');
         const chartConfig = {
           type: chartType,
           data: { labels, datasets },
           options: opts,
           title: chartTitle,
-          rawSpec: spec
+          rawSpec: spec,
+          _bubble: container,
+          _sourceWrap: wrap
         };
 
         let chartInstance = null;
@@ -7771,18 +10989,6 @@
         if (!res.ok) return;
         const data = await res.json();
         window.channelCustomers = data.customers || [];
-        if (window.channelCustomers.length > 0) {
-          // Dynamically adapt the customer comparison card to the primary channel customer
-          const topCust = window.channelCustomers.find(c => c.name === 'Lundbeck') ? 'Lundbeck' : window.channelCustomers[0].name;
-          const card = document.getElementById('card-service-comparison');
-          const title = document.getElementById('card-comparison-title');
-          const desc = document.getElementById('card-comparison-desc');
-          if (card && title) {
-            title.textContent = `${topCust} Service Comparison`;
-            if (desc) desc.textContent = `Service run-rate forecast and variance breakdown for ${topCust}.`;
-            card.onclick = () => sendPrompt(`Compare previous month service level cost for ${topCust} with current month projected cost across all clouds`);
-          }
-        }
       } catch (e) {
         console.debug('[fetchChannelCustomers]', e);
       }
@@ -7824,6 +11030,7 @@
     });
 
     // ── Initialize ──
+    initTheme();
     updateInputHeight();
     checkHealth();
     loadEngines();
