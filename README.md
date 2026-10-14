@@ -211,6 +211,7 @@ Type a number to select:
 | Command | What it does |
 |---|---|
 | `/reset` | Switch to a different tenant / organization |
+| `/teach <rule>` | Teach Cleo custom preferences or dataset rules saved directly to memory |
 
 ---
 
@@ -271,12 +272,20 @@ To manually check for updates via the API:
 ```bash
 curl http://localhost:8080/api/update/check
 ```
+
+---
+
+## 📁 Project Structure
+
+```text
 cleo/
 ├── cleo_server.py       ← Main entry point. Run this to start Cleo.
 ├── cleo_agent.py        ← AI brain: connects CloudHealth, calls AI, handles tools
+├── cleo_charts.py       ← Chart generation & interactive analytics workbench
+├── cleo_query.py        ← Deterministic query understanding & SQL generation
 ├── cleo_ui.html         ← The web chat interface
 ├── cleo_logger.py       ← Logging system
-├── cleo_memory.py       ← Conversation memory across sessions
+├── cleo_memory.py       ← Self-learning memory across sessions
 ├── cleo_finops_refs.py  ← FinOps knowledge base (cost optimization rules)
 ├── auth/
 │   └── oauth.py         ← CloudHealth OAuth 2.0 authentication handler
