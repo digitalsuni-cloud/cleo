@@ -170,7 +170,9 @@ def _detect_chart_type(low: str) -> Optional[str]:
     # Variance chart → waterfall (must check before generic "waterfall" keyword)
     if any(w in low for w in [
         "variance chart", "waterfall chart", "bridge chart", "waterfall",
-        "waterfal", "water fall", "watrefall", "bridge graph", "variance graph", "waterfall graph"
+        "waterfal", "water fall", "watrefall", "bridge graph", "variance graph", "waterfall graph",
+        "by mom comparison", "with mom comparison", "mom comparison", "mom progression",
+        "mom waterfall", "mom variance", "spend progression", "cost progression"
     ]) or bool(re.search(r'\bwaterfal+s?\b|\bwater\s+fall\b', low)):
         return "waterfall"
     if any(w in low for w in ["doughnut chart", "donut chart", "doughnut graph", "donut graph",
@@ -183,9 +185,11 @@ def _detect_chart_type(low: str) -> Optional[str]:
         return "pie"
     # Trend → line chart (bare "trend" keyword or multi-month progression triggers line, not bar)
     if any(w in low for w in [
-        "trend", "line chart", "line graph", "trend line", "trend chart", "over time chart", "over time",
-        "monthly cost breakdown", "monthly spend breakdown", "monthly breakdown", "monthly trend", "3-month", "3 month"
-    ]):
+        "line chart", "line graph", "trend line", "trend chart", "over time chart", "over time",
+        "monthly cost breakdown", "monthly spend breakdown", "monthly breakdown", "monthly trend"
+    ]) or bool(re.search(r'\b3\s*[- ]?months?\b', low)) or (
+        "trend" in low and not any(w in low for w in ["waterfall", "mom comparison", "by mom", "progression"])
+    ):
         return "line"
     if any(w in low for w in ["horizontal bar", "horizontal chart", "sideways bar"]):
         return "horizontal-bar"

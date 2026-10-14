@@ -37,14 +37,18 @@ _STOPWORDS = {
     "the","and","for","that","this","with","from","have","are","was","were",
     "what","when","where","how","who","will","can","does","did","per","not",
     "its","you","your","our","their","show","tell","give","get","use","used",
-    "about","into","onto","than","then","over","under"
+    "using","uses","about","into","onto","than","then","over","under",
+    "also","please","find"
 }
 
 
 def _score(query_tokens: set[str], entry_tokens: set[str]) -> float:
     if not entry_tokens or not query_tokens:
         return 0.0
-    return len(query_tokens & entry_tokens) / len(entry_tokens | query_tokens)
+    overlap = len(query_tokens & entry_tokens)
+    if overlap < 2 and len(query_tokens) > 1 and len(entry_tokens) > 1:
+        return 0.0
+    return overlap / len(entry_tokens | query_tokens)
 
 
 class CleoMemory:
@@ -116,12 +120,18 @@ class CleoMemory:
         """Called when user submits 👎 feedback with explicit correction text ('Teach Cleo')."""
         if not correction:
             return
-        self._add({
+        from cleo_query import extract_target_dataset
+        target_ds = extract_target_dataset(correction)
+        entry = {
             "type":        "correction",
             "query":       user_query[:300],
             "instruction": correction[:500],
             "search_text": f"{user_query} {correction}",
-        })
+        }
+        if target_ds:
+            entry["target_dataset"] = target_ds
+            entry["search_text"] += f" dataset {target_ds}"
+        self._add(entry)
 
     def record_negative_feedback(self, user_query: str, bad_response_summary: str):
         """Called when user submits 👎 feedback (capturing the rejected answer to avoid repetition)."""
@@ -187,15 +197,13 @@ class CleoMemory:
             if entry_bad_sql and (entry_bad_sql in q_low or q_low in entry_bad_sql):
                 s += 3.0
 
-            if s > 0:
+            if s >= _MIN_SCORE:
                 if e.get("type") == "correction":
                     s += 0.4  # Explicit user corrections take precedence
                 elif e.get("type") in ("rule", "policy"):
                     s += 0.5  # Permanent doctrines only when relevant
                 elif e.get("type") == "negative_feedback":
                     s += 0.3  # Negative feedback warnings
-
-            if s >= _MIN_SCORE:
                 scored.append((s, e))
 
         scored.sort(key=lambda x: x[0], reverse=True)
