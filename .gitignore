@@ -37,7 +37,7 @@ remove_*.py
 test_*.py
 test*.py
 *test*.py
-!conftest.py
+conftest.py
 tests/
 update_compare.py
 scratch/
