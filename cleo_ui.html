@@ -5437,7 +5437,7 @@
                         <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"></path>
                       </svg>
                     </button>
-                    <button class="export-btn" onclick="exportConversation(event, '${s.id}', '${escapeAttr(s.title)}')" title="Export conversation">
+                    <button class="export-btn" onclick="exportConversation(event, '${s.id}')" title="Export conversation">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                         <polyline points="7 10 12 15 17 10"></polyline>
@@ -5757,13 +5757,14 @@
       }
     }
 
-    async function exportConversation(event, sid, title) {
+    async function exportConversation(event, sid) {
       if (event) event.stopPropagation();
       const btn = event ? event.currentTarget : null;
       try {
         const res = await fetch(`/api/session/${sid}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
+        const title = data.title;  // from the server response, never from an inline handler
         if (!data.messages || data.messages.length === 0) {
           showToast("Nothing to export — this chat has no messages", "info");
           return;
@@ -10869,8 +10870,18 @@
         if (chips.length > 0) {
           const chipsEl = document.createElement('div');
           chipsEl.className = 'followup-chips';
-          chipsEl.innerHTML = '<span class="chips-label">Suggested:</span>' +
-            chips.map(c => `<button type="button" class="chip-btn" onclick="sendChipPrompt('${c.replace(/'/g, "\\'")}')">${c}</button>`).join('');
+          const chipsLabel = document.createElement('span');
+          chipsLabel.className = 'chips-label';
+          chipsLabel.textContent = 'Suggested:';
+          chipsEl.appendChild(chipsLabel);
+          chips.forEach(c => {
+            const chipBtn = document.createElement('button');
+            chipBtn.type = 'button';
+            chipBtn.className = 'chip-btn';
+            chipBtn.textContent = c;  // customer names are untrusted: no innerHTML
+            chipBtn.addEventListener('click', () => sendChipPrompt(c));
+            chipsEl.appendChild(chipBtn);
+          });
           bubble.appendChild(chipsEl);
         }
 
@@ -11090,7 +11101,7 @@
     async function applyUpdate() {
       const banner = document.getElementById('update-banner');
       const msg = document.getElementById('update-banner-msg');
-      msg.textContent = '⏳ Pulling update from GitHub (git pull / curl fallback)…';
+      msg.textContent = '⏳ Pulling update from GitHub…';
       try {
         const r = await fetch('/api/update/apply', { method: 'POST' });
         const data = await r.json();
