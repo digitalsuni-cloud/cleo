@@ -12,7 +12,7 @@ services:
 
   # ── Ollama — local LLM server ───────────────────────────────────────────────
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.40.6   # pinned; bump deliberately
     container_name: cleo-ollama
     # Loopback only: Ollama has no authentication. The cleo service reaches it over the compose
     # network (http://ollama:11434), so no host port is needed except for local debugging.
@@ -37,7 +37,7 @@ services:
 
   # ── Init — pull the model once ──────────────────────────────────────────────
   ollama-pull:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.40.6   # keep in sync with the ollama service above
     container_name: cleo-ollama-pull
     depends_on:
       ollama:

@@ -787,6 +787,33 @@ def get_realtime_calendar_info() -> dict:
         "now_year": now.year,
     }
 
+def _safe_arith(expr: str):
+    """Evaluate +,-,*,/,** over numbers only (no eval). Raises on anything else or on huge results,
+    so input like 9**9**9**9 can't pin the CPU."""
+    import ast, operator
+    ops = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
+           ast.Div: operator.truediv, ast.Pow: operator.pow}
+
+    def ev(n):
+        if isinstance(n, ast.Expression):
+            return ev(n.body)
+        if isinstance(n, ast.Constant) and type(n.value) in (int, float):
+            return n.value
+        if isinstance(n, ast.UnaryOp) and isinstance(n.op, (ast.UAdd, ast.USub)):
+            v = ev(n.operand)
+            return v if isinstance(n.op, ast.UAdd) else -v
+        if isinstance(n, ast.BinOp) and type(n.op) in ops:
+            a, b = ev(n.left), ev(n.right)
+            if isinstance(n.op, ast.Pow) and abs(b) > 1000:
+                raise ValueError("exponent too large")
+            r = ops[type(n.op)](a, b)
+            if isinstance(r, int) and r.bit_length() > 100_000:
+                raise ValueError("result too large")
+            return r
+        raise ValueError("unsupported expression")
+
+    return ev(ast.parse(expr.strip(), mode="eval"))
+
 def build_system_prompt(tools: list[dict], engine_label: str = None) -> str:
     cal = get_realtime_calendar_info()
     eng_info = f"- Active AI Engine: {engine_label}\n" if engine_label else ""
@@ -2703,7 +2730,7 @@ class AIClient:
                 expr_str = m_match.group(1).replace('x', '*').replace('X', '*').replace('×', '*').replace('÷', '/').replace('^', '**')
                 try:
                     if re.fullmatch(r'[\d\s\+\-\*\/\.\(\)]+', expr_str):
-                        res = eval(expr_str, {"__builtins__": {}}, {})
+                        res = _safe_arith(expr_str)
                         formatted = f"{res:,}" if isinstance(res, int) else f"{res:,.4f}".rstrip('0').rstrip('.')
                         orig_expr = m_match.group(1).strip()
                         return f"**{orig_expr}** = **{formatted}**"

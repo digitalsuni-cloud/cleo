@@ -1133,11 +1133,11 @@ def _install_ollama(status_cb=None) -> tuple[bool, str]:
         extracted = False
         # Try method A: system zstd + tar
         try:
-            res = subprocess.run(
-                ["sh", "-c", f"zstd -d '{tar_zst_path}' --stdout | tar -xf - -C '{local_dir}'"],
-                capture_output=True, text=True, timeout=60
-            )
-            if res.returncode == 0:
+            # No shell: pipe zstd into tar directly so paths are never interpreted by `sh`
+            zproc = subprocess.Popen(["zstd", "-d", tar_zst_path, "--stdout"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            res = subprocess.run(["tar", "-xf", "-", "-C", local_dir], stdin=zproc.stdout, capture_output=True, timeout=60)
+            zproc.stdout.close()
+            if zproc.wait(timeout=60) == 0 and res.returncode == 0:
                 extracted = True
         except Exception:
             pass
@@ -1176,15 +1176,14 @@ def _install_ollama(status_cb=None) -> tuple[bool, str]:
             if zstd:
                 try:
                     import tarfile
+                    if not hasattr(tarfile, "data_filter"):
+                        raise RuntimeError("tarfile lacks extraction filters (upgrade Python); refusing unfiltered extraction")
                     dctx = zstd.ZstdDecompressor()
                     with open(tar_zst_path, "rb") as ifh:
                         with dctx.stream_reader(ifh) as reader:
                             with tarfile.open(fileobj=reader, mode="r|") as tar:
-                                # Security: filter="data" rejects path traversal (Python 3.12+)
-                                try:
-                                    tar.extractall(path=local_dir, filter="data")
-                                except TypeError:
-                                    tar.extractall(path=local_dir)
+                                # Security: filter="data" rejects path traversal, absolute paths, links and devices
+                                tar.extractall(path=local_dir, filter="data")
                     extracted = True
                 except Exception as ze:
                     logger.warning(f"Python zstandard extraction failed: {ze}")
@@ -1553,11 +1552,14 @@ def auth_submit_code(sub: CodeSubmission):
 
     # Auto-extract code if user pasted a full redirect URL
     code = raw_code
+    pasted_state = None
     if "code=" in raw_code:
         parsed = urllib.parse.urlparse(raw_code)
         qs = urllib.parse.parse_qs(parsed.query or parsed.fragment)
         if "code" in qs:
             code = qs["code"][0].strip()
+        if "state" in qs:
+            pasted_state = qs["state"][0].strip()
 
     logger.info(f"[OAuth Submit Code] Processing authorization code ({code[:10]}...{code[-6:] if len(code)>16 else ''})")
     
@@ -1566,7 +1568,13 @@ def auth_submit_code(sub: CodeSubmission):
     all_verifiers.update(_load_pending_verifiers())
     
     verifier_info = None
-    if all_verifiers:
+    if pasted_state:
+        # A pasted callback URL carries `state`: bind to the matching sign-in attempt, as /oauth-callback does.
+        verifier_info = all_verifiers.get(pasted_state)
+        if not verifier_info:
+            raise HTTPException(status_code=400, detail="The pasted URL's state does not match a pending sign-in. Start sign-in again.")
+    elif all_verifiers:
+        # A bare code has no state to check; fall back to the newest pending sign-in.
         sorted_keys = sorted(all_verifiers.keys(), key=lambda k: all_verifiers[k].get("timestamp", 0), reverse=True)
         verifier_info = all_verifiers[sorted_keys[0]]
 
@@ -2326,7 +2334,8 @@ def _downloadable_models() -> tuple[set[str], set[str]]:
     return mlx, ollama
 
 @app.post("/api/models/download")
-def download_model(req: DownloadRequest):
+def download_model(req: DownloadRequest, request: Request):
+    _limit_expensive(request, "models-download")
     model = req.model.strip()
     # Security: only catalogued models. Previously any string containing "mlx" became an arbitrary
     # Hugging Face repo and anything else an arbitrary `ollama pull` target (incl. third-party registries).
@@ -2424,7 +2433,7 @@ def delete_token(engine: str):
 class ChatRequest(BaseModel):
     message: str = Field(..., max_length=131072)  # 128 KB ceiling (security: L3)
     session_id: Optional[str] = None
-    history: Optional[list[dict]] = None
+    history: Optional[list[dict]] = Field(None, max_length=100)  # bounded: each turn is replayed to the LLM
     stream: Optional[bool] = False
 
 class ToolCallLog(BaseModel):
@@ -2462,16 +2471,23 @@ _request_history = defaultdict(list)
 RATE_LIMIT_MAX_REQUESTS = 60  # 60 requests per minute per IP
 RATE_LIMIT_WINDOW_SECS = 60
 
-def _check_rate_limit(client_ip: str) -> bool:
+def _check_rate_limit(client_ip: str, max_requests: int = RATE_LIMIT_MAX_REQUESTS) -> bool:
     now = time.time()
     with _rate_limit_lock:
         timestamps = _request_history[client_ip]
         while timestamps and timestamps[0] < now - RATE_LIMIT_WINDOW_SECS:
             timestamps.pop(0)
-        if len(timestamps) >= RATE_LIMIT_MAX_REQUESTS:
+        if len(timestamps) >= max_requests:
             return False
         timestamps.append(now)
         return True
+
+
+def _limit_expensive(request: Request, bucket: str, per_minute: int = 10):
+    """Throttle endpoints that hit the network or spawn installs/downloads (429 when exceeded)."""
+    ip = request.client.host if request.client else "127.0.0.1"
+    if not _check_rate_limit(f"{ip}:{bucket}", per_minute):
+        raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
 
 
 def prune_messages_to_context_budget(messages: list[dict], max_tokens: int = 28000, min_recent_turns: int = 4) -> list[dict]:
@@ -2554,8 +2570,8 @@ def chat(req: ChatRequest, request: Request):
         }
         if req.history:
             for h in req.history:
-                if h.get("role") in ("user", "assistant") and h.get("content"):
-                    _sessions[session_id]["messages"].append({"role": h["role"], "content": h["content"]})
+                if h.get("role") in ("user", "assistant") and isinstance(h.get("content"), str) and h["content"]:
+                    _sessions[session_id]["messages"].append({"role": h["role"], "content": h["content"][:131072]})
 
     session_entry = _sessions[session_id]
     if isinstance(session_entry, list):
@@ -3141,15 +3157,17 @@ def _check_update_bg():
         logger.warning(f"[Update] Check failed: {e}")
 
 @app.get("/api/update/check")
-def check_update():
+def check_update(request: Request):
     """Check GitHub for a newer version of Cleo."""
+    _limit_expensive(request, "update-check")
     # Run synchronously so UI gets a fresh result on demand; background check runs at startup too.
     _check_update_bg()
     return _update_state
 
 @app.post("/api/update/apply")
-def apply_update():
+def apply_update(request: Request):
     """Pull the latest code from GitHub (via git pull or curl fallback) and restart."""
+    _limit_expensive(request, "update-apply", 5)
     current_sha = _git_sha()
     latest_sha = _get_latest_remote_sha()
     method_used = "git"
@@ -3478,5 +3496,5 @@ if __name__ == "__main__":
                 logger.warning("Cleo server did not become ready within 30s; browser not launched automatically.")
         threading.Thread(target=_open_browser_bg, daemon=True, name="browser-open").start()
 
-    uvicorn.run("cleo_server:app", host="127.0.0.1", port=_port, reload=False, log_level=_uvicorn_log_level)
+    uvicorn.run("cleo_server:app", host=os.environ.get("CLEO_HOST", "127.0.0.1"), port=_port, reload=False, log_level=_uvicorn_log_level)
 

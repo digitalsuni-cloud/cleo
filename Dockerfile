@@ -17,8 +17,11 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir openai anthropic google-generativeai
 
 # Copy application code
-COPY cleo_agent.py cleo_server.py cleo_logger.py cleo_memory.py cleo_finops_refs.py cleo_ui.html ./
+# All runtime modules (the server imports cleo_query/charts/llm/mcp/market_data too) + the FinOps
+# reference library that cleo_finops_refs.py reads from .agents/skills/cloud-finops
+COPY cleo_*.py cleo_ui.html ./
 COPY auth/ ./auth/
+COPY .agents/skills/cloud-finops ./.agents/skills/cloud-finops
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
@@ -39,10 +42,14 @@ ENV OLLAMA_MODEL=qwen2.5:7b
 # ENV GEMINI_API_KEY=...
 
 ENV PORT=8080
+# Bind all interfaces INSIDE the container so a published port can reach it. Cleo has no login:
+# publish it on loopback only (docker run -p 127.0.0.1:8080:8080 ...; see docker-compose.yml).
+# Requests are also rejected unless Host is localhost/127.0.0.1 (add others via CLEO_ALLOWED_HOSTS).
+ENV CLEO_HOST=0.0.0.0
 EXPOSE 8080
 
 # Healthcheck — waits up to 60s for startup (model loading takes time)
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=4 \
   CMD curl -sf http://localhost:8080/health | grep -q '"status":"ok"' || exit 1
 
-CMD ["python", "cleo_server.py", "--host", "0.0.0.0"]
+CMD ["python", "cleo_server.py", "--no-browser", "--no-update"]
