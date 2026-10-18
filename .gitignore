@@ -59,6 +59,11 @@ local_tests/
 .vscode/
 .claude/
 
+# Internal release checklists & notes
+RELEASE_CHECKLIST.md
+*checklist*.md
+scripts/
+
 # Agent skills & internal dev rules
 agent/
 skills-lock.json

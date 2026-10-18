@@ -246,14 +246,45 @@ jobs:
           "
           cat release_out/SHA256SUMS.txt
 
-      - name: Generate CHConfig-style Release Notes
+      - name: Generate Release Notes
+        env:
+          TAG: ${{ steps.version.outputs.TAG }}
+          REPO: ${{ github.repository }}
         run: |
-          python3 scripts/generate_release_notes.py \
-            --tag "${{ steps.version.outputs.TAG }}" \
-            --repo "${{ github.repository }}" \
-            --checksums release_out/SHA256SUMS.txt \
-            --changelog CHANGELOG.md \
-            --output release_out/release_notes.md
+          python3 - << 'EOF'
+          import os, re
+
+          tag = os.environ.get("TAG", "v1.0.0")
+          version = tag.lstrip("v")
+          repo = os.environ.get("REPO", "digitalsuni-cloud/cleo")
+          base_url = f"https://github.com/{repo}/releases/download/{tag}"
+
+          notes = f"## Cleo {tag}\n\n"
+          if os.path.exists("CHANGELOG.md"):
+              with open("CHANGELOG.md", "r", encoding="utf-8") as f:
+                  content = f.read()
+              m = re.search(rf"(##\s+(?:v)?{re.escape(version)}[^\n]*\n)(.*?)(?=\n##\s+|\Z)", content, re.DOTALL)
+              if m:
+                  body = m.group(0).strip()
+                  body = re.sub(r"\n---\s*\n+###\s+Download.*$", "", body, flags=re.DOTALL)
+                  body = re.sub(r"\n###\s+Download.*$", "", body, flags=re.DOTALL)
+                  body = re.sub(r"\n##\s+📦\s+File Details.*$", "", body, flags=re.DOTALL)
+                  notes = body.strip() + "\n\n"
+
+          if os.path.exists("release_out/SHA256SUMS.txt"):
+              notes += "## 📦 File Checksums\n\n"
+              notes += "| File | SHA-256 Checksum |\n| :--- | :--- |\n"
+              with open("release_out/SHA256SUMS.txt") as f:
+                  for line in f:
+                      parts = line.strip().split()
+                      if len(parts) >= 2:
+                          fname = parts[1].lstrip("*")
+                          notes += f"| [{fname}]({base_url}/{fname}) | `{parts[0]}` |\n"
+              notes += "\nVerify download: `sha256sum -c SHA256SUMS.txt`\n"
+
+          with open("release_out/release_notes.md", "w", encoding="utf-8") as out:
+              out.write(notes.strip() + "\n")
+          EOF
           echo "Generated Release Notes:"
           cat release_out/release_notes.md
 
