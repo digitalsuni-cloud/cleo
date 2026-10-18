@@ -52,29 +52,79 @@ fn stop_backend(child: CommandChild) {
 }
 
 #[cfg(target_os = "windows")]
-fn ensure_windows_sidecar() {
+fn ensure_windows_sidecar() -> Option<std::path::PathBuf> {
+  const SIDECAR_BYTES: &[u8] = include_bytes!("../binaries/cleo-server-x86_64-pc-windows-msvc.exe");
+
+  // Priority 1: Next to the running executable (e.g. C:\Users\user\Downloads\cleo-server.exe)
   if let Ok(current_exe) = std::env::current_exe() {
     if let Some(exe_dir) = current_exe.parent() {
-      let target_sidecar = exe_dir.join("cleo-server-x86_64-pc-windows-msvc.exe");
-      let alt_sidecar = exe_dir.join("cleo-server.exe");
-      if !target_sidecar.exists() && !alt_sidecar.exists() {
-        #[cfg(not(debug_assertions))]
-        {
-          const SIDECAR_BYTES: &[u8] = include_bytes!("../binaries/cleo-server-x86_64-pc-windows-msvc.exe");
-          let _ = std::fs::write(&target_sidecar, SIDECAR_BYTES);
+      let exe_sidecar = exe_dir.join("cleo-server.exe");
+      let triple_sidecar = exe_dir.join("cleo-server-x86_64-pc-windows-msvc.exe");
+
+      for candidate in [&exe_sidecar, &triple_sidecar] {
+        if candidate.exists() {
+          if let Ok(meta) = candidate.metadata() {
+            if meta.len() == SIDECAR_BYTES.len() as u64 {
+              log::info!("[Sidecar] Reusing verified sidecar: {}", candidate.display());
+              return Some(candidate.to_path_buf());
+            }
+          }
         }
+      }
+
+      if std::fs::write(&exe_sidecar, SIDECAR_BYTES).is_ok() {
+        log::info!("[Sidecar] Extracted sidecar to: {}", exe_sidecar.display());
+        return Some(exe_sidecar);
       }
     }
   }
+
+  // Priority 2: User profile ~/.cleo/bin/cleo-server.exe (guaranteed user write permissions)
+  if let Some(user_home) = std::env::var_os("USERPROFILE") {
+    let cleo_bin = std::path::PathBuf::from(user_home).join(".cleo").join("bin");
+    let user_sidecar = cleo_bin.join("cleo-server.exe");
+    if user_sidecar.exists() {
+      if let Ok(meta) = user_sidecar.metadata() {
+        if meta.len() == SIDECAR_BYTES.len() as u64 {
+          log::info!("[Sidecar] Reusing user-dir sidecar: {}", user_sidecar.display());
+          return Some(user_sidecar);
+        }
+      }
+    }
+    if std::fs::create_dir_all(&cleo_bin).is_ok() {
+      if std::fs::write(&user_sidecar, SIDECAR_BYTES).is_ok() {
+        log::info!("[Sidecar] Extracted sidecar to: {}", user_sidecar.display());
+        return Some(user_sidecar);
+      }
+    }
+  }
+
+  // Priority 3: %TEMP%/cleo/cleo-server.exe
+  let temp_sidecar = std::env::temp_dir().join("cleo").join("cleo-server.exe");
+  if temp_sidecar.exists() {
+    if let Ok(meta) = temp_sidecar.metadata() {
+      if meta.len() == SIDECAR_BYTES.len() as u64 {
+        log::info!("[Sidecar] Reusing temp-dir sidecar: {}", temp_sidecar.display());
+        return Some(temp_sidecar);
+      }
+    }
+  }
+  if let Some(temp_dir) = temp_sidecar.parent() {
+    let _ = std::fs::create_dir_all(temp_dir);
+  }
+  if std::fs::write(&temp_sidecar, SIDECAR_BYTES).is_ok() {
+    log::info!("[Sidecar] Extracted sidecar to: {}", temp_sidecar.display());
+    return Some(temp_sidecar);
+  }
+
+  log::error!("[Sidecar] Failed to extract sidecar to any writable location");
+  None
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   #[cfg(target_os = "linux")]
   std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
-
-  #[cfg(target_os = "windows")]
-  ensure_windows_sidecar();
 
   tauri::Builder::default()
     .plugin(tauri_plugin_opener::init())
@@ -110,15 +160,34 @@ pub fn run() {
           }
         } else {
           // Launch the Python FastAPI backend sidecar (no browser tab, no self-update inside the bundle)
-          let spawned = handle
-            .shell()
-            .sidecar("cleo-server")
-            .map(|c| {
-              c.env("PORT", BACKEND_PORT.to_string())
-                .env("CLEO_NO_BROWSER", "1")
-                .env("CLEO_NO_UPDATE", "1")
-            })
-            .and_then(|c| c.spawn());
+          #[cfg(target_os = "windows")]
+          let sidecar_cmd = match ensure_windows_sidecar() {
+            Some(path) => {
+              log::info!("[Sidecar] Spawning Windows backend from: {}", path.display());
+              handle.shell().command(path)
+            }
+            None => {
+              log::warn!("[Sidecar] Fallback to sidecar('cleo-server')");
+              handle.shell().sidecar("cleo-server")
+                .unwrap_or_else(|_| handle.shell().command("cleo-server.exe"))
+            }
+          };
+
+          #[cfg(not(target_os = "windows"))]
+          let sidecar_cmd = match handle.shell().sidecar("cleo-server") {
+            Ok(cmd) => cmd,
+            Err(e) => {
+              log::error!("Failed to resolve cleo-server sidecar: {}", e);
+              splash_status(&handle, &format!("Could not start the Cleo backend: {e}"));
+              return;
+            }
+          };
+
+          let spawned = sidecar_cmd
+            .env("PORT", BACKEND_PORT.to_string())
+            .env("CLEO_NO_BROWSER", "1")
+            .env("CLEO_NO_UPDATE", "1")
+            .spawn();
 
           match spawned {
             Ok((mut rx, child)) => {
