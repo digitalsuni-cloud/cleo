@@ -3560,12 +3560,36 @@ if __name__ == "__main__":
     _default_uvicorn = os.environ.get("UVICORN_LOG_LEVEL", "warning").lower()
     _uvicorn_log_level = "debug" if os.environ.get("CLEO_VERBOSE", "").lower() in ("1", "true", "yes") else _default_uvicorn
 
-    # Port resolution
-    _preferred_port = int(os.environ.get("PORT", 8080))
+    # Host & Port resolution (CLI flags take precedence over env vars)
+    _cli_host = None
+    _cli_port = None
+    for i, arg in enumerate(sys.argv):
+        if arg in ("--host", "-h") and i + 1 < len(sys.argv):
+            _cli_host = sys.argv[i + 1]
+        elif arg.startswith("--host="):
+            _cli_host = arg.split("=", 1)[1]
+        elif arg in ("--port", "-p") and i + 1 < len(sys.argv):
+            try:
+                _cli_port = int(sys.argv[i + 1])
+            except ValueError:
+                pass
+        elif arg.startswith("--port="):
+            try:
+                _cli_port = int(arg.split("=", 1)[1])
+            except ValueError:
+                pass
+
+    _host = _cli_host or os.environ.get("CLEO_HOST", "127.0.0.1")
+    _preferred_port = _cli_port or int(os.environ.get("PORT", 8080))
     _port = _find_free_port(_preferred_port)
     if _port != _preferred_port:
         print(f"⚠️  Port {_preferred_port} is in use. Starting Cleo on port {_port} instead.")
-    print(f"🌐 Cleo Web UI → http://127.0.0.1:{_port}")
+
+    _display_host = "127.0.0.1" if _host in ("0.0.0.0", "") else _host
+    print(f"🌐 Cleo Web UI → http://{_display_host}:{_port}")
+    if _host == "0.0.0.0":
+        print(f"📡 Remote access enabled: reachable on all network interfaces on port {_port}")
+    print(f"🚀 Cleo Server is active and ready (Press Ctrl+C to quit)\n")
 
     # Background update check — non-blocking, fires 5 s after startup
     def _delayed_update_check():
@@ -3573,14 +3597,21 @@ if __name__ == "__main__":
         _check_update_bg()
     threading.Thread(target=_delayed_update_check, daemon=True, name="update-check").start()
 
-    # Auto-open browser on startup unless disabled
-    if os.environ.get("CLEO_NO_BROWSER", "").lower() not in ("1", "true", "yes") and "--no-browser" not in sys.argv:
+    # Auto-open browser on startup unless disabled or running in headless Linux
+    _is_headless = sys.platform.startswith("linux") and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    if not _is_headless and os.environ.get("CLEO_NO_BROWSER", "").lower() not in ("1", "true", "yes") and "--no-browser" not in sys.argv:
         def _open_browser_bg():
             if _wait_for_server_ready(_port):
                 try:
                     if not _activate_existing_browser_tab(_port):
                         import webbrowser
-                        webbrowser.open(f"http://127.0.0.1:{_port}")
+                        # Suppress legacy GTK_MODULES atk-bridge notice on Linux
+                        old_gtk = os.environ.pop("GTK_MODULES", None)
+                        try:
+                            webbrowser.open(f"http://127.0.0.1:{_port}")
+                        finally:
+                            if old_gtk is not None:
+                                os.environ["GTK_MODULES"] = old_gtk
                 except Exception:
                     pass
             else:
@@ -3589,5 +3620,5 @@ if __name__ == "__main__":
 
     # Pass the app object, not "cleo_server:app": the string form re-imports this file as a second module
     # (running all start-up code twice) and fails outright inside the PyInstaller bundle.
-    uvicorn.run(app, host=os.environ.get("CLEO_HOST", "127.0.0.1"), port=_port, reload=False, log_level=_uvicorn_log_level)
+    uvicorn.run(app, host=_host, port=_port, reload=False, log_level=_uvicorn_log_level)
 
