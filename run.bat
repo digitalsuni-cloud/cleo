@@ -23,19 +23,17 @@ if %errorlevel% equ 0 (
 rem 2. Auto-pull latest verified signed release (skip if CLEO_NO_UPDATE=1 or --no-update)
 if not "%CLEO_NO_UPDATE%"=="1" if not "%1"=="--no-update" (
     where git >nul 2>nul
-    if %errorlevel% equ 0 if exist ".git" (
+    if not errorlevel 1 if exist ".git" (
         git fetch --tags --quiet origin 2>nul
+        set "LATEST_TAG="
         for /f "tokens=*" %%T in ('git tag -l "v*" --sort=-v:refname 2^>nul') do (
-            set "LATEST_TAG=%%T"
-            goto :check_tag
+            if not defined LATEST_TAG set "LATEST_TAG=%%T"
         )
-        goto :tag_done
-        :check_tag
         if defined LATEST_TAG (
             git merge-base --is-ancestor !LATEST_TAG! HEAD 2>nul
             if errorlevel 1 (
                 where gpg >nul 2>nul
-                if %errorlevel% equ 0 (
+                if not errorlevel 1 (
                     git verify-tag !LATEST_TAG! >nul 2>nul
                     if not errorlevel 1 (
                         echo [Cleo] Updating to verified release !LATEST_TAG!...
@@ -44,7 +42,6 @@ if not "%CLEO_NO_UPDATE%"=="1" if not "%1"=="--no-update" (
                 )
             )
         )
-        :tag_done
     )
 )
 

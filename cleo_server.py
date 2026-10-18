@@ -2653,7 +2653,7 @@ def chat(req: ChatRequest, request: Request):
                     "duration_secs": duration_secs,
                     "tokens": total_tokens,
                     "tokens_per_sec": tokens_per_sec,
-                    "tool_calls": [t.dict() for t in tool_log]
+                    "tool_calls": [t.model_dump() if hasattr(t, "model_dump") else t.dict() for t in tool_log]
                 })
 
                 if len(messages) > 40:
@@ -2667,7 +2667,7 @@ def chat(req: ChatRequest, request: Request):
                     "response": response,
                     "thinking": thinking,
                     "session_id": session_id,
-                    "tool_calls": [t.dict() for t in tool_log],
+                    "tool_calls": [t.model_dump() if hasattr(t, "model_dump") else t.dict() for t in tool_log],
                     "title": session_entry.get("title"),
                     "duration_secs": duration_secs,
                     "tokens": total_tokens,
@@ -2768,7 +2768,7 @@ def chat(req: ChatRequest, request: Request):
         "duration_secs": duration_secs,
         "tokens": total_tokens,
         "tokens_per_sec": tokens_per_sec,
-        "tool_calls": [t.dict() for t in tool_log]
+        "tool_calls": [t.model_dump() if hasattr(t, "model_dump") else t.dict() for t in tool_log]
     })
 
     if len(messages) > 40:

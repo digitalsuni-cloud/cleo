@@ -51,10 +51,30 @@ fn stop_backend(child: CommandChild) {
   let _ = child.kill();
 }
 
+#[cfg(target_os = "windows")]
+fn ensure_windows_sidecar() {
+  if let Ok(current_exe) = std::env::current_exe() {
+    if let Some(exe_dir) = current_exe.parent() {
+      let target_sidecar = exe_dir.join("cleo-server-x86_64-pc-windows-msvc.exe");
+      let alt_sidecar = exe_dir.join("cleo-server.exe");
+      if !target_sidecar.exists() && !alt_sidecar.exists() {
+        #[cfg(not(debug_assertions))]
+        {
+          const SIDECAR_BYTES: &[u8] = include_bytes!("../binaries/cleo-server-x86_64-pc-windows-msvc.exe");
+          let _ = std::fs::write(&target_sidecar, SIDECAR_BYTES);
+        }
+      }
+    }
+  }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   #[cfg(target_os = "linux")]
   std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+
+  #[cfg(target_os = "windows")]
+  ensure_windows_sidecar();
 
   tauri::Builder::default()
     .plugin(tauri_plugin_opener::init())
@@ -62,6 +82,11 @@ pub fn run() {
     .plugin(tauri_plugin_http::init())
     .manage(Backend(Mutex::new(None)))
     .setup(|app| {
+      if let Some(win) = app.get_webview_window("main") {
+        let icon = tauri::include_image!("icons/icon.png");
+        let _ = win.set_icon(icon);
+      }
+
       let handle = app.handle().clone();
 
       tauri::async_runtime::spawn(async move {

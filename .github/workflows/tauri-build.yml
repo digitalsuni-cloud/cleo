@@ -116,7 +116,13 @@ jobs:
         run: npm install
 
       - name: Build Tauri Desktop Package
-        run: npx @tauri-apps/cli build --target ${{ matrix.platform.target }}
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            npx @tauri-apps/cli build --target ${{ matrix.platform.target }} --no-bundle
+          else
+            npx @tauri-apps/cli build --target ${{ matrix.platform.target }}
+          fi
 
       # ── Collect Platform Artifacts ─────────────────────────────────────────
       - name: Collect & Stage Artifacts
@@ -130,11 +136,18 @@ jobs:
             find src-tauri/target -type f -name "*.AppImage" -exec cp -f {} "dist_release/Cleo_${VERSION}_amd64.AppImage" \;
             find src-tauri/target -type f -name "*.deb" -exec cp -f {} "dist_release/Cleo_${VERSION}_amd64.deb" \;
           elif [ "${{ runner.os }}" = "Windows" ]; then
-            EXE_FILE=$(find src-tauri/target -type f -path "*/bundle/nsis/*.exe" | head -n 1)
-            if [ -z "$EXE_FILE" ]; then
-              EXE_FILE=$(find src-tauri/target -type f -name "cleo.exe" ! -path "*/build/*" | head -n 1)
+            TARGET="${{ matrix.platform.target }}"
+            EXE_FILE=""
+            if [ -f "src-tauri/target/${TARGET}/release/cleo.exe" ]; then
+              EXE_FILE="src-tauri/target/${TARGET}/release/cleo.exe"
+            elif [ -f "src-tauri/target/release/cleo.exe" ]; then
+              EXE_FILE="src-tauri/target/release/cleo.exe"
+            else
+              EXE_FILE=$(find src-tauri/target -type f -name "cleo.exe" ! -path "*/deps/*" ! -path "*/build/*" ! -path "*/examples/*" | head -n 1)
             fi
-            if [ -n "$EXE_FILE" ]; then
+
+            if [ -n "$EXE_FILE" ] && [ -f "$EXE_FILE" ]; then
+              echo "Staging Windows portable executable from: $EXE_FILE"
               cp -f "$EXE_FILE" "dist_release/Cleo_${VERSION}_x64.exe"
             fi
           fi

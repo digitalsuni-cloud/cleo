@@ -6430,7 +6430,7 @@
         const renderModelCard = (m, isOllama = false) => {
           const isActive = data.active_engine === m.id;
           const loadedIds = data.mlx_loaded_models || [];
-          const isInMemory = loadedIds.includes(m.id) || (isOllama && data.active_engine === m.id && data.ollama_running);
+          const isInMemory = m.downloaded && (loadedIds.includes(m.id) || (isOllama && data.active_engine === m.id && data.ollama_running));
           const isDownloading = m.download_status === 'downloading';
           const isFailed = m.download_status === 'failed';
           const progress = m.download_progress || 0;

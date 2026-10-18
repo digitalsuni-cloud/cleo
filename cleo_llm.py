@@ -472,7 +472,7 @@ def get_installed_ollama_models() -> list[dict]:
             continue
     return []
 
-def call_ollama_chat(model: str, messages: list[dict], timeout: float = 60.0, stats_out: dict = None, on_token = None) -> str:
+def call_ollama_chat(model: str, messages: list[dict], timeout: float = 120.0, stats_out: dict = None, on_token = None) -> str:
     """Invokes local Ollama chat API, supporting live token streaming."""
     logger.debug(f"[Ollama Chat] Invoking model '{model}'...")
     use_stream = on_token is not None
