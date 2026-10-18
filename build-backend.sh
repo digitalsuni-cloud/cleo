@@ -124,9 +124,10 @@ $PYINSTALLER --noconfirm --clean --onefile \
   --hidden-import "uvicorn.protocols.http" \
   --hidden-import "uvicorn.protocols.http.auto" \
   --hidden-import "uvicorn.protocols.websockets" \
-  --hidden-import "uvicorn.protocols.websockets.auto" \
-  --hidden-import "uvicorn.lifespans" \
-  --hidden-import "uvicorn.lifespans.auto" \
+  --hidden-import "uvicorn.lifespan" \
+  --hidden-import "uvicorn.lifespan.on" \
+  --hidden-import "uvicorn.lifespan.off" \
+  --hidden-import "uvicorn.lifespan.auto" \
   --hidden-import "fastapi" \
   --hidden-import "starlette" \
   --hidden-import "zstandard" \
