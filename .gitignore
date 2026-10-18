@@ -26,7 +26,8 @@ venv/
 env/
 .pytest_cache/
 *.egg-info/
-dist/
+dist/*.whl
+dist/*.tar.gz
 build/
 .coverage
 
@@ -59,15 +60,11 @@ skills-lock.json
 .agents/rules/graphify.md
 .agents/workflows/graphify.md
 
-# Tauri & Desktop Release Artifacts
+# Tauri & Desktop Build Artifacts (Ignore build outputs & node_modules, keep sources)
 node_modules/
-src-tauri/
+src-tauri/target/
+src-tauri/binaries/
 release/
-dist/
 build/
-build-backend.sh
-build-release.sh
 *.spec
-package.json
-package-lock.json
 

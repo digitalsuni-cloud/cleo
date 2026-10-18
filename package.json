@@ -1,0 +1,17 @@
+{
+  "name": "cleo",
+  "version": "1.0.0",
+  "description": "Cleo — Autonomous Multi-Cloud FinOps Copilot",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "build:backend": "bash build-backend.sh",
+    "release": "bash build-release.sh",
+    "release:mac": "bash build-release.sh"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
+}
