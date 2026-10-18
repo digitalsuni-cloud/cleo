@@ -9,6 +9,7 @@ and live diagnostic inspection.
 from __future__ import annotations
 
 import sys, os, subprocess, site, shutil
+import cleo_logger  # Installs crash-proof stream wrappers, unhandled exception hooks & file logger
 
 # Ensure user and system site/dist-packages are in sys.path (supports macOS, Linux/Ubuntu dist-packages)
 for _p in [
@@ -3080,6 +3081,15 @@ def _is_newer_version(remote_tag: str, current_ver: str) -> bool:
     return False
 
 def _git_sha() -> str:
+    if getattr(sys, "frozen", False):
+        ver_path = os.path.join(_CLEO_ROOT, ".version")
+        if os.path.exists(ver_path):
+            try:
+                with open(ver_path, "r", encoding="utf-8") as f:
+                    return f.read().strip()
+            except Exception:
+                pass
+        return f"v{CLEO_VERSION}"
     try:
         sha = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=_CLEO_ROOT, stderr=subprocess.DEVNULL
@@ -3297,7 +3307,8 @@ def _find_free_port(preferred: int = 8080) -> int:
     """Return `preferred` if it's free, otherwise the first free candidate."""
     for port in [preferred] + [p for p in _PORT_CANDIDATES if p != preferred]:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if sys.platform != "win32":
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 s.bind(("127.0.0.1", port))
                 return port
@@ -3560,11 +3571,12 @@ if __name__ == "__main__":
         print(f"📡 Remote access enabled: reachable on all network interfaces on port {_port}")
     print(f"🚀 Cleo Server is active and ready (Press Ctrl+C to quit)\n")
 
-    # Background update check — non-blocking, fires 5 s after startup
-    def _delayed_update_check():
-        time.sleep(5)
-        _check_update_bg()
-    threading.Thread(target=_delayed_update_check, daemon=True, name="update-check").start()
+    # Background update check — non-blocking, fires 5 s after startup (skip when CLEO_NO_UPDATE=1)
+    if os.environ.get("CLEO_NO_UPDATE", "").lower() not in ("1", "true", "yes") and "--no-update" not in sys.argv:
+        def _delayed_update_check():
+            time.sleep(5)
+            _check_update_bg()
+        threading.Thread(target=_delayed_update_check, daemon=True, name="update-check").start()
 
     # Auto-open browser on startup unless disabled or running in headless Linux
     _is_headless = sys.platform.startswith("linux") and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))

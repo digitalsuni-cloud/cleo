@@ -18,6 +18,101 @@ APP_DATA_DIR = os.path.expanduser("~/.cleo")
 os.makedirs(APP_DATA_DIR, exist_ok=True)
 LOG_FILE = os.path.join(APP_DATA_DIR, "cleo.log")
 
+# ── Safe Stream Wrappers for Windows GUI / PyInstaller ────────────────────────
+class _SafeStream:
+    """Provides a crash-proof stream wrapper for environments where sys.stdout
+    or sys.stderr is None (e.g. Windows GUI apps / PyInstaller) or where charmap
+    encoding errors would otherwise throw uncaught exceptions."""
+    def __init__(self, target, fallback_file=None):
+        self._target = target
+        self._fallback_file = fallback_file
+
+    def write(self, s):
+        if not s:
+            return
+        written = False
+        if self._target is not None:
+            try:
+                self._target.write(s)
+                written = True
+            except (UnicodeEncodeError, OSError):
+                try:
+                    if hasattr(self._target, "buffer"):
+                        self._target.buffer.write(s.encode("utf-8", errors="replace"))
+                        written = True
+                    else:
+                        self._target.write(s.encode("ascii", errors="replace").decode("ascii"))
+                        written = True
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        if self._fallback_file:
+            try:
+                with open(self._fallback_file, "a", encoding="utf-8", errors="replace") as f:
+                    f.write(s)
+            except Exception:
+                pass
+
+    def flush(self):
+        if self._target is not None and hasattr(self._target, "flush"):
+            try:
+                self._target.flush()
+            except Exception:
+                pass
+
+    def isatty(self):
+        return False
+
+# Reconfigure streams for UTF-8 and tee stderr to LOG_FILE
+if sys.stdout is None:
+    sys.stdout = _SafeStream(None, LOG_FILE)
+elif hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        sys.stdout = _SafeStream(sys.stdout, None)
+else:
+    sys.stdout = _SafeStream(sys.stdout, None)
+
+_orig_stderr = sys.stderr
+sys.stderr = _SafeStream(_orig_stderr, LOG_FILE)
+if _orig_stderr is not None and hasattr(_orig_stderr, "reconfigure"):
+    try:
+        _orig_stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+# ── Global Fatal Uncaught Exception Hooks ──────────────────────────────────────
+def _fatal_excepthook(exc_type, exc_val, exc_tb):
+    """Logs any uncaught exception with full traceback directly to ~/.cleo/cleo.log."""
+    if issubclass(exc_type, KeyboardInterrupt):
+        if sys.__excepthook__:
+            sys.__excepthook__(exc_type, exc_val, exc_tb)
+        return
+    import traceback
+    tb_str = "".join(traceback.format_exception(exc_type, exc_val, exc_tb))
+    try:
+        logging.getLogger("cleo").critical(f"FATAL UNCAUGHT EXCEPTION:\n{tb_str}")
+    except Exception:
+        pass
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8", errors="replace") as f:
+            f.write(f"\n[FATAL EXCEPTION] {tb_str}\n")
+    except Exception:
+        pass
+    if sys.stderr is not None and hasattr(sys.stderr, "write"):
+        try:
+            sys.stderr.write(f"\n[FATAL EXCEPTION] {tb_str}\n")
+            sys.stderr.flush()
+        except Exception:
+            pass
+
+sys.excepthook = _fatal_excepthook
+import threading
+if hasattr(threading, "excepthook"):
+    threading.excepthook = lambda args: _fatal_excepthook(args.exc_type, args.exc_value, args.exc_traceback)
+
 def _lock_down_data_dir():
     """~/.cleo holds chat history, memory, logs and OAuth tokens: owner-only, including files
     written by earlier versions with default (world-readable) permissions."""
@@ -176,6 +271,8 @@ try:
     except OSError:
         pass
     _root_logger.addHandler(_file_handler)
+    for _uv_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        logging.getLogger(_uv_name).addHandler(_file_handler)
 except Exception as e:
     sys.stderr.write(f"⚠️ Could not open log file {LOG_FILE}: {e}\n")
 

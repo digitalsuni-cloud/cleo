@@ -25,6 +25,22 @@ fn splash_status(app: &tauri::AppHandle, msg: &str) {
   }
 }
 
+/// Appends backend diagnostic messages directly to ~/.cleo/cleo.log so no crash or stderr is lost.
+fn append_to_cleo_log(prefix: &str, text: &str) {
+  let home = std::env::var_os("USERPROFILE")
+    .or_else(|| std::env::var_os("HOME"))
+    .map(std::path::PathBuf::from);
+  if let Some(home) = home {
+    let cleo_dir = home.join(".cleo");
+    let _ = std::fs::create_dir_all(&cleo_dir);
+    let log_file = cleo_dir.join("cleo.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(log_file) {
+      use std::io::Write;
+      let _ = writeln!(f, "[Tauri Backend {}] {}", prefix, text.trim_end());
+    }
+  }
+}
+
 /// True if something that looks like Cleo already answers on the backend port.
 async fn cleo_already_running(client: &reqwest::Client) -> bool {
   match client.get(format!("{BACKEND_URL}/health")).send().await {
@@ -198,19 +214,40 @@ pub fn run() {
 
               let h = handle.clone();
               tauri::async_runtime::spawn(async move {
+                let mut last_err = String::new();
                 while let Some(event) = rx.recv().await {
                   match event {
-                    CommandEvent::Stdout(line) => print!("[Backend] {}", String::from_utf8_lossy(&line)),
-                    CommandEvent::Stderr(line) => eprint!("[Backend ERR] {}", String::from_utf8_lossy(&line)),
+                    CommandEvent::Stdout(line) => {
+                      print!("[Backend] {}", String::from_utf8_lossy(&line));
+                    }
+                    CommandEvent::Stderr(line) => {
+                      let text = String::from_utf8_lossy(&line).to_string();
+                      eprint!("[Backend ERR] {}", text);
+                      append_to_cleo_log("ERR", &text);
+                      last_err.push_str(&text);
+                      if last_err.len() > 2000 {
+                        last_err = last_err.split_off(last_err.len() - 2000);
+                      }
+                    }
                     CommandEvent::Terminated(payload) => {
-                      log::warn!("[Backend] Process terminated: {:?}", payload);
-                      splash_status(
-                        &h,
-                        &format!(
+                      let term_line = format!("Process terminated: {:?}", payload);
+                      log::warn!("[Backend] {}", term_line);
+                      append_to_cleo_log("TERM", &term_line);
+
+                      let error_line = last_err.lines().rev().find(|l| {
+                        let t = l.trim();
+                        !t.is_empty() && !t.starts_with("at ")
+                      });
+
+                      let status_msg = if let Some(err) = error_line {
+                        format!("Cleo backend error: {}", err.trim())
+                      } else {
+                        format!(
                           "The Cleo backend stopped unexpectedly (exit code {:?}). See ~/.cleo/cleo.log",
                           payload.code
-                        ),
-                      );
+                        )
+                      };
+                      splash_status(&h, &status_msg);
                       break;
                     }
                     _ => {}
@@ -245,13 +282,11 @@ pub fn run() {
         splash_status(&handle, "The Cleo backend did not respond. See ~/.cleo/cleo.log");
       });
 
-      if cfg!(debug_assertions) {
-        app.handle().plugin(
-          tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .build(),
-        )?;
-      }
+      app.handle().plugin(
+        tauri_plugin_log::Builder::default()
+          .level(log::LevelFilter::Info)
+          .build(),
+      )?;
       Ok(())
     })
     .build(tauri::generate_context!())
