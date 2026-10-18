@@ -85,6 +85,8 @@ $PYINSTALLER --noconfirm --clean --onefile \
   --hidden-import "cleo_market_data" \
   --hidden-import "auth" \
   --hidden-import "auth.oauth" \
+  --hidden-import "cryptography" \
+  --hidden-import "cleo_crypto" \
   cleo_server.py
 
 chmod +x "$OUT_BIN" 2>/dev/null || true

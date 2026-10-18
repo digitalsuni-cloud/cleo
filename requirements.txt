@@ -1,4 +1,5 @@
 # Core (Required for Cleo & CloudHealth MCP)
+cryptography>=42.0.0
 
 # AI Engines (Optional — install only the engine you intend to use)
 # mlx-lm>=0.18.0             # Local Apple Silicon models (Qwen 32B / 7B)

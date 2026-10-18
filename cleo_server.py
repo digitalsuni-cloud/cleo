@@ -350,6 +350,7 @@ import atexit
 from cleo_logger import get_logger, get_recent_logs
 logger = get_logger("server")
 import threading
+from cleo_crypto import save_encrypted_json, load_encrypted_json, migrate_all_cleo_files
 
 from cleo_agent import (
     MCPClient, AIClient, build_system_prompt, run_agent_turn,
@@ -452,6 +453,12 @@ if os.path.isdir(_venv_lib):
             sys.path.insert(0, _sp)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    try:
+        migrated = migrate_all_cleo_files()
+        if migrated > 0:
+            logger.info(f"🔒 Migrated {migrated} data files to AES-256-GCM encryption.")
+    except Exception as e:
+        logger.debug(f"Encryption migration check: {e}")
     if init_mcp_if_authenticated():
         logger.info(f"✅ CloudHealth Connection Ready ({len(_tools)} tools available)")
     else:
@@ -621,37 +628,33 @@ def _load_sessions() -> dict:
     sessions_file = os.environ.get("CLEO_SESSIONS_FILE", SESSIONS_CACHE_FILE)
     if os.path.exists(sessions_file):
         try:
-            with open(sessions_file, "r") as f:
-                raw = json.load(f)
-                if isinstance(raw, dict):
-                    normalized = {}
-                    needs_save = False
-                    for sid, sdata in raw.items():
-                        target_sid = sid
-                        if not _is_valid_guid(target_sid):
-                            target_sid = str(uuid.uuid4())
-                            needs_save = True
-                        norm = _normalize_session(target_sid, sdata)
-                        if norm.get("id") != target_sid:
-                            norm["id"] = target_sid
-                            needs_save = True
-                        normalized[target_sid] = norm
-                    # Keep sorted by updated_at descending, up to MAX_SAVED_SESSIONS
-                    sorted_items = sorted(
-                        normalized.items(),
-                        key=lambda item: item[1].get("updated_at", "") if isinstance(item[1], dict) else "",
-                        reverse=True
-                    )
-                    res = dict(sorted_items[:MAX_SAVED_SESSIONS])
-                    if needs_save:
-                        try:
-                            os.makedirs(os.path.dirname(sessions_file), exist_ok=True)
-                            with open(sessions_file, "w") as f_out:
-                                json.dump(res, f_out, indent=2)
-                            os.chmod(sessions_file, 0o600)
-                        except Exception as e:
-                            logger.debug(f"Could not auto-save updated GUID sessions: {e}")
-                    return res
+            raw = load_encrypted_json(sessions_file, default={})
+            if isinstance(raw, dict):
+                normalized = {}
+                needs_save = False
+                for sid, sdata in raw.items():
+                    target_sid = sid
+                    if not _is_valid_guid(target_sid):
+                        target_sid = str(uuid.uuid4())
+                        needs_save = True
+                    norm = _normalize_session(target_sid, sdata)
+                    if norm.get("id") != target_sid:
+                        norm["id"] = target_sid
+                        needs_save = True
+                    normalized[target_sid] = norm
+                # Keep sorted by updated_at descending, up to MAX_SAVED_SESSIONS
+                sorted_items = sorted(
+                    normalized.items(),
+                    key=lambda item: item[1].get("updated_at", "") if isinstance(item[1], dict) else "",
+                    reverse=True
+                )
+                res = dict(sorted_items[:MAX_SAVED_SESSIONS])
+                if needs_save:
+                    try:
+                        save_encrypted_json(sessions_file, res)
+                    except Exception as e:
+                        logger.debug(f"Could not auto-save updated GUID sessions: {e}")
+                return res
         except Exception as e:
             logger.warning(f"Could not load sessions cache: {e}")
     return {}
@@ -662,7 +665,6 @@ def _save_sessions():
         return
     sessions_file = os.environ.get("CLEO_SESSIONS_FILE", SESSIONS_CACHE_FILE)
     try:
-        os.makedirs(os.path.dirname(sessions_file), exist_ok=True)
         sorted_items = sorted(
             _sessions.items(),
             key=lambda item: item[1].get("updated_at", "") if isinstance(item[1], dict) else "",
@@ -670,9 +672,7 @@ def _save_sessions():
         )
         if len(sorted_items) > MAX_SAVED_SESSIONS:
             _sessions = dict(sorted_items[:MAX_SAVED_SESSIONS])
-        with open(sessions_file, "w") as f:
-            json.dump(_sessions, f, indent=2)
-        os.chmod(sessions_file, 0o600)
+        save_encrypted_json(sessions_file, _sessions)
     except Exception as e:
         logger.warning(f"Could not save sessions cache: {e}")
 
@@ -1339,20 +1339,12 @@ def _save_pending_verifier(state: str, info: dict):
     global _oauth_verifiers
     _oauth_verifiers[state] = info
     try:
-        with open(VERIFIER_CACHE_FILE, "w") as f:
-            json.dump(_oauth_verifiers, f)
-        os.chmod(VERIFIER_CACHE_FILE, 0o600)
+        save_encrypted_json(VERIFIER_CACHE_FILE, _oauth_verifiers)
     except Exception:
         pass
 
 def _load_pending_verifiers() -> dict:
-    if os.path.exists(VERIFIER_CACHE_FILE):
-        try:
-            with open(VERIFIER_CACHE_FILE, "r") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
+    return load_encrypted_json(VERIFIER_CACHE_FILE, default={})
 
 # ── CSRF Protection: reject cross-origin state-changing requests ──────────────
 # Cleo is a local single-user server with no auth layer; without this, any web

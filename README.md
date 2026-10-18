@@ -83,13 +83,14 @@ Cleo needs to connect to your CloudHealth account to access your billing data. T
 
 ### What Cleo Stores
 
-| File | What's in it | Where |
-|---|---|---|
-| `~/.cleo/oauth_tokens.json` | Your CloudHealth access token (auto-refreshed) | Your home folder |
-| `~/.cleo/config.json` | AI engine API keys (if you use cloud AI) | Your home folder |
-| `~/.cleo/sessions.json` | Your chat history | Your home folder |
+| File | What's in it | Where | Security & Encryption |
+|---|---|---|---|
+| `~/.cleo/oauth_tokens.json` | Your CloudHealth access token (auto-refreshed) | Your home folder | **AES-256-GCM Encrypted** (`0600`) |
+| `~/.cleo/config.json` | AI engine API keys (if you use cloud AI) | Your home folder | **AES-256-GCM Encrypted** (`0600`) |
+| `~/.cleo/sessions.json` | Your chat history and conversation logs | Your home folder | **AES-256-GCM Encrypted** (`0600`) |
+| `~/.cleo/mcp_oauth_tokens.json` | Additional MCP tool OAuth tokens | Your home folder | **AES-256-GCM Encrypted** (`0600`) |
 
-> **`~`** means your home folder: `/Users/yourname/` on Mac, `C:\Users\yourname\` on Windows.
+> **`~`** means your home folder: `/Users/yourname/` on Mac, `C:\Users\yourname\` on Windows, `/home/yourname/` on Linux.
 
 Your token is automatically refreshed on every run. **You only need to log in once** — unless your token expires (typically after many months of inactivity).
 
@@ -397,13 +398,20 @@ python3 cleo_server.py
 
 ---
 
-## 🔒 Security
+## 🔒 Security & Data Encryption
 
-- Cleo runs entirely on your local machine — no data is sent to any third party except:
-  - **CloudHealth** (to fetch your billing data)
-  - **Your chosen AI engine** (if you use a cloud AI like Gemini/OpenAI/Claude)
-- All credentials are stored in `~/.cleo/` on your machine with `600` file permissions (only your user can read them).
-- No API keys or tokens are ever committed to this repository.
+- **Encrypted Local Storage (AES-256-GCM):**
+  - All sensitive local files (`sessions.json` chat history, `oauth_tokens.json`, `mcp_oauth_tokens.json`, `config.json`, and PKCE verifiers) are transparently encrypted at rest with **authenticated AES-256-GCM**.
+  - **Key Storage & Derivation Options:**
+    - **macOS Keychain:** Uses the native macOS Keychain (`Cleo` service) to securely generate, store, and retrieve a 256-bit symmetric encryption key.
+    - **Machine/User Key (Default on Windows & Linux):** Derived via PBKDF2 with 100,000 iterations using a local secret (`~/.cleo/.machine_key` with strict `0600` permissions) combined with a hardware/user machine fingerprint.
+    - **Custom Passphrase / Master Key (Optional):** You can provide `CLEO_PASSPHRASE` or `CLEO_ENCRYPTION_KEY` via environment variables to control key derivation directly.
+  - **Zero-Friction Auto-Migration:** Pre-existing unencrypted JSON files are automatically upgraded to AES-256-GCM encryption on startup with zero data loss.
+- **Strict File Permissions:** All files in `~/.cleo/` are created with `0600` permissions (`S_IRUSR | S_IWUSR`), ensuring only your local user account can read or write them.
+- **Privacy First:** Cleo runs entirely on your local machine — no data is sent to any third party except:
+  - **CloudHealth** (to fetch your billing data via your authenticated token)
+  - **Your chosen AI engine** (if you use a cloud AI like Gemini/OpenAI/Claude; local MLX/Ollama models keep 100% of data offline)
+- No API keys, credentials, or tokens are ever committed to repository source control.
 
 ---
 

@@ -40,10 +40,11 @@ jobs:
 
       - name: Byte-compile verification
         run: |
-          python -m py_compile cleo_server.py cleo_agent.py cleo_logger.py cleo_memory.py cleo_finops_refs.py
+          python -m py_compile cleo_server.py cleo_agent.py cleo_logger.py cleo_memory.py cleo_finops_refs.py cleo_crypto.py
 
       - name: Run test suites
         run: |
+          python -m pytest test_crypto.py
           python test_streaming.py
           python test_area_chart_integration.py
           if [ -f test_pure_functions.py ]; then python test_pure_functions.py; fi

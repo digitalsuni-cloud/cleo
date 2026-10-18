@@ -48,6 +48,20 @@ except ImportError:
             def build_context_block(self, q): return ""
             def record_sql_fix(self, *a): pass
         return _Noop()
+
+try:
+    from cleo_crypto import save_encrypted_json, load_encrypted_json
+except ImportError:
+    def load_encrypted_json(p, default=None):
+        if os.path.exists(p):
+            try:
+                with open(p, "r") as f: return json.load(f)
+            except Exception:
+                return default
+        return default
+    def save_encrypted_json(p, d):
+        with open(p, "w") as f: json.dump(d, f, indent=2)
+        os.chmod(p, 0o600)
     def save_last_query(*a, **k): pass
     def load_last_query(): return {}
 
@@ -671,14 +685,7 @@ auth_helper = OAuth2Helper(
 )
 
 def _load_config() -> dict:
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r") as f:
-                return json.load(f)
-        except Exception as e:
-            logger.warning(f"Could not load config: {e}")
-            return {}
-    return {}
+    return load_encrypted_json(CONFIG_FILE, default={})
 
 def _save_config(updates: dict) -> dict:
     os.makedirs(APP_DATA_DIR, exist_ok=True)
@@ -689,9 +696,7 @@ def _save_config(updates: dict) -> dict:
         else:
             cfg[k] = v
     try:
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(cfg, f, indent=2)
-        os.chmod(CONFIG_FILE, 0o600)
+        save_encrypted_json(CONFIG_FILE, cfg)
     except Exception as e:
         logger.error(f"Could not save config: {e}")
     return cfg

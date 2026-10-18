@@ -40,6 +40,12 @@ def _load_dotenv_safe():
 
 _load_dotenv_safe()
 
+try:
+    from cleo_crypto import save_encrypted_json, load_encrypted_json
+except ImportError:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from cleo_crypto import save_encrypted_json, load_encrypted_json
+
 # Known CloudHealth OAuth Client configurations
 ANTIGRAVITY_CLIENT_ID     = "https://antigravity.google/oauth/client-metadata.json"
 ANTIGRAVITY_REDIRECT_URI  = "https://antigravity.google/oauth-callback"
@@ -47,20 +53,11 @@ ANTIGRAVITY_REDIRECT_URI  = "https://antigravity.google/oauth-callback"
 CLIENT_CREDENTIALS_FILE   = os.path.expanduser("~/.cleo/client_credentials.json")
 
 def _write_private_json(path: str, data) -> None:
-    """Write JSON to `path`, creating it owner-only (0600) so secrets are never briefly world-readable."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(data, f, indent=2)
-    os.chmod(path, 0o600)  # also tightens a pre-existing file
+    """Write encrypted JSON to `path`, creating it owner-only (0600)."""
+    save_encrypted_json(path, data)
 
 def _load_cached_client() -> dict:
-    if os.path.exists(CLIENT_CREDENTIALS_FILE):
-        try:
-            with open(CLIENT_CREDENTIALS_FILE, "r") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
+    return load_encrypted_json(CLIENT_CREDENTIALS_FILE, default={})
 
 _cached_client = _load_cached_client()
 
@@ -184,8 +181,9 @@ class OAuth2Helper:
         for path in [self.tokens_file, os.path.expanduser("~/.cleo/oauth_tokens.json")]:
             if os.path.exists(path):
                 try:
-                    with open(path, "r") as f:
-                        return json.load(f)
+                    data = load_encrypted_json(path)
+                    if data:
+                        return data
                 except Exception as e:
                     logger.warning(f"Could not read tokens file {path}: {e}")
         return None
