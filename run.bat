@@ -20,11 +20,14 @@ if %errorlevel% equ 0 (
     )
 )
 
-rem 2. Auto-pull latest verified signed release (skip if CLEO_NO_UPDATE=1 or --no-update)
+rem 2. Auto-pull latest updates from GitHub (skip if CLEO_NO_UPDATE=1 or --no-update)
 if not "%CLEO_NO_UPDATE%"=="1" if not "%1"=="--no-update" (
     where git >nul 2>nul
     if not errorlevel 1 if exist ".git" (
-        git fetch --tags --quiet origin 2>nul
+        git fetch --tags --force --quiet origin 2>nul
+        for /f "tokens=*" %%B in ('git symbolic-ref --short -q HEAD 2^>nul') do (
+            git pull --ff-only --quiet origin %%B 2>nul
+        )
         set "LATEST_TAG="
         for /f "tokens=*" %%T in ('git tag -l "v*" --sort=-v:refname 2^>nul') do (
             if not defined LATEST_TAG set "LATEST_TAG=%%T"

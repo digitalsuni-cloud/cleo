@@ -19,10 +19,19 @@ if command -v gpg > /dev/null 2>&1 && [ -f "$_CLEO_ASC" ]; then
     fi
 fi
 
-# 2. Auto-pull latest verified signed release (skip if CLEO_NO_UPDATE=1 or --no-update)
+# 2. Auto-pull latest updates from GitHub (skip if CLEO_NO_UPDATE=1 or --no-update)
 if [ "${CLEO_NO_UPDATE:-0}" != "1" ] && [ "${1:-}" != "--no-update" ]; then
     if [ -d "$ROOT_DIR/.git" ] && command -v git > /dev/null 2>&1; then
-        git fetch --tags --quiet origin 2>/dev/null || true
+        # Fetch latest tags and commits (force updates tag references)
+        git fetch --tags --force --quiet origin 2>/dev/null || true
+
+        # If on a branch (e.g. main), fast-forward pull latest code
+        CURRENT_BRANCH=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
+        if [ -n "$CURRENT_BRANCH" ]; then
+            git pull --ff-only --quiet origin "$CURRENT_BRANCH" 2>/dev/null || true
+        fi
+
+        # Check for latest signed release tag
         LATEST_TAG=$(git tag -l "v*" --sort=-v:refname 2>/dev/null | head -n 1)
         if [ -n "$LATEST_TAG" ]; then
             if ! git merge-base --is-ancestor "$LATEST_TAG" HEAD 2>/dev/null; then
