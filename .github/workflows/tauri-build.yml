@@ -1,11 +1,12 @@
-name: Release
+name: 'Tauri Build'
 
 # Triggered by a signed version tag: git tag -s v1.0.1 -m "Cleo v1.0.1" && git push origin v1.0.1
+# Or when a GitHub release is published.
 # Or manually triggered via Actions UI / workflow_dispatch.
-# Release workflow (CHConfig / Tauri multi-platform standard):
+# CHConfig / Tauri multi-platform build workflow:
 #   1. Builds native desktop binaries across macOS (ARM64), Linux (x86_64), and Windows (x86_64)
 #   2. Builds the Python PyInstaller backend sidecar for each platform
-#   3. Packages Tauri DMG, AppImage, DEB, and NSIS setup installer
+#   3. Packages Tauri DMG, AppImage, DEB, and Windows portable .exe (no MSI)
 #   4. Uploads all platform assets to GitHub Release
 #   5. Consolidates SHA-256 checksums into SHA256SUMS.txt
 #   6. Updates GitHub Release notes with the CHConfig download table, platform badges, and verification guide
@@ -14,6 +15,8 @@ on:
   push:
     tags:
       - 'v[0-9]*.[0-9]*.[0-9]*'
+  release:
+    types: [created, published]
   workflow_dispatch:
     inputs:
       tag:
@@ -50,7 +53,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ github.event.inputs.tag || github.event.release.tag_name || github.ref }}
 
       - name: Resolve Release Tag & Version
         id: version
@@ -58,6 +61,8 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG="${{ github.event.inputs.tag }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
           else
             TAG="${GITHUB_REF_NAME}"
           fi
@@ -190,7 +195,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ github.event.inputs.tag || github.event.release.tag_name || github.ref }}
 
       - name: Resolve Release Tag
         id: version
@@ -198,6 +203,8 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG="${{ github.event.inputs.tag }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
           else
             TAG="${GITHUB_REF_NAME}"
           fi
