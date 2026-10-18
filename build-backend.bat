@@ -14,24 +14,80 @@ if exist "%OUT_BIN%" if not "%1"=="--force" (
 
 echo [Backend] Building Cleo standalone backend for %TARGET%...
 
-if exist ".venv\Scripts\pyinstaller.exe" (
-    set "PYINSTALLER=.venv\Scripts\pyinstaller.exe"
+rem 1. Resolve Python interpreter (check .venv, python, py -3, python3)
+set "PY_CMD="
+if exist ".venv\Scripts\python.exe" (
+    set "PY_CMD=.venv\Scripts\python.exe"
 ) else (
-    where pyinstaller >nul 2>nul
-    if !errorlevel! equ 0 (
-        set "PYINSTALLER=pyinstaller"
+    python -c "import sys" >nul 2>nul
+    if not errorlevel 1 (
+        set "PY_CMD=python"
     ) else (
-        if exist ".venv\Scripts\pip.exe" (
-            echo [Backend] Installing PyInstaller into .venv...
-            .venv\Scripts\pip.exe install -r requirements.txt pyinstaller
-            set "PYINSTALLER=.venv\Scripts\pyinstaller.exe"
+        py -3 -c "import sys" >nul 2>nul
+        if not errorlevel 1 (
+            set "PY_CMD=py -3"
         ) else (
-            set "PYINSTALLER=python -m PyInstaller"
+            python3 -c "import sys" >nul 2>nul
+            if not errorlevel 1 (
+                set "PY_CMD=python3"
+            )
         )
     )
 )
 
-%PYINSTALLER% --noconfirm --clean --onefile ^
+if not defined PY_CMD (
+    echo [Backend] ERROR: Python 3 was not found in PATH or .venv.
+    echo Please install Python 3.10+ from https://www.python.org/downloads/
+    echo (Important: Check "Add Python to PATH" during installation)
+    exit /b 1
+)
+
+echo [Backend] Using Python interpreter: %PY_CMD%
+
+rem 2. Resolve or install PyInstaller
+set "PYINSTALLER="
+if exist ".venv\Scripts\pyinstaller.exe" (
+    set "PYINSTALLER=.venv\Scripts\pyinstaller.exe"
+) else (
+    where pyinstaller >nul 2>nul
+    if not errorlevel 1 set "PYINSTALLER=pyinstaller"
+)
+
+if not defined PYINSTALLER (
+    %PY_CMD% -c "import PyInstaller" >nul 2>nul
+    if not errorlevel 1 set "PYINSTALLER=%PY_CMD% -m PyInstaller"
+)
+
+if not defined PYINSTALLER (
+    echo [Backend] PyInstaller not detected. Preparing virtual environment and dependencies...
+    if not exist ".venv\Scripts\python.exe" (
+        echo [Backend] Creating isolated virtual environment in .venv...
+        %PY_CMD% -m venv .venv
+    )
+    if exist ".venv\Scripts\pip.exe" (
+        echo [Backend] Installing requirements.txt and PyInstaller into .venv...
+        call .venv\Scripts\pip.exe install --upgrade pip
+        call .venv\Scripts\pip.exe install -r requirements.txt pyinstaller
+        if exist ".venv\Scripts\pyinstaller.exe" (
+            set "PYINSTALLER=.venv\Scripts\pyinstaller.exe"
+        )
+    ) else (
+        echo [Backend] Installing requirements.txt and PyInstaller into environment...
+        call %PY_CMD% -m pip install -r requirements.txt pyinstaller
+        %PY_CMD% -c "import PyInstaller" >nul 2>nul
+        if not errorlevel 1 set "PYINSTALLER=%PY_CMD% -m PyInstaller"
+    )
+)
+
+if not defined PYINSTALLER (
+    echo [Backend] ERROR: PyInstaller could not be located or installed.
+    echo Please run manually:
+    echo    pip install -r requirements.txt pyinstaller
+    exit /b 1
+)
+
+echo [Backend] Using PyInstaller: %PYINSTALLER%
+call %PYINSTALLER% --noconfirm --clean --onefile ^
   --name "cleo-server-%TARGET%" ^
   --distpath "%BIN_DIR%" ^
   --workpath "build\pyinstaller" ^

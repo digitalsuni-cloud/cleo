@@ -3,6 +3,8 @@ setlocal enabledelayedexpansion
 :: Set code page to UTF-8 to support emojis in the terminal
 chcp 65001 > nul
 
+cd /d "%~dp0"
+
 echo 🚀 Starting build process for Windows...
 
 :: 1. Archive any existing release packages
@@ -24,9 +26,23 @@ if exist "build-backend.bat" (
     bash build-backend.sh --force 2>nul
 )
 
+if not exist "src-tauri\binaries\cleo-server-x86_64-pc-windows-msvc.exe" (
+    echo.
+    echo ❌ ERROR: Python backend sidecar was not generated:
+    echo    src-tauri\binaries\cleo-server-x86_64-pc-windows-msvc.exe
+    echo.
+    echo Please resolve the backend build error above before building the Tauri package.
+    exit /b 1
+)
+
 :: 3. Build Tauri App
 echo 🏗️ Building Tauri application (portable, no installer)...
 call npx @tauri-apps/cli build --no-bundle
+if errorlevel 1 (
+    echo.
+    echo ❌ ERROR: Tauri build failed!
+    exit /b 1
+)
 
 :: 4. Prepare release directory
 echo 📂 Preparing release directory...
