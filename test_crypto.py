@@ -172,3 +172,15 @@ def test_windows_process_silencer():
     assert captured_kwargs[0]["creationflags"] & 0x00000200  # preserves other flags
     assert captured_kwargs[0]["startupinfo"].wShowWindow == _SW_HIDE
 
+
+def test_shutdown_endpoint():
+    from cleo_server import app
+    from starlette.testclient import TestClient
+
+    client = TestClient(app)
+    # Check that route exists and returns shutting_down
+    resp = client.get("/api/shutdown")
+    assert resp.status_code == 200
+    assert resp.json().get("status") == "shutting_down"
+
+

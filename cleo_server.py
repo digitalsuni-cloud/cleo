@@ -444,6 +444,56 @@ def _idle_watchdog():
 
 threading.Thread(target=_idle_watchdog, daemon=True, name="idle-unload-watchdog").start()
 
+def _start_tauri_parent_watchdog():
+    tauri_pid_str = os.environ.get("CLEO_TAURI_PID", "").strip()
+    if not tauri_pid_str:
+        return
+    try:
+        tauri_pid = int(tauri_pid_str)
+    except ValueError:
+        return
+
+    def _is_pid_alive(pid: int) -> bool:
+        if pid <= 0:
+            return False
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+                if not handle:
+                    return False
+                exit_code = ctypes.c_ulong()
+                alive = kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+                kernel32.CloseHandle(handle)
+                return alive != 0 and exit_code.value == 259  # STILL_ACTIVE = 259
+            except Exception:
+                return False
+        else:
+            try:
+                os.kill(pid, 0)
+                return True
+            except OSError:
+                return False
+
+    def _watchdog_loop():
+        logger.info(f"👀 [Watchdog] Monitoring Tauri parent process (PID {tauri_pid})...")
+        while True:
+            time.sleep(1.0)
+            if not _is_pid_alive(tauri_pid):
+                logger.info(f"🛑 [Watchdog] Parent Tauri process {tauri_pid} exited. Stopping Cleo server...")
+                try:
+                    unload_mlx_models()
+                    unload_ollama_models()
+                except Exception:
+                    pass
+                os._exit(0)
+
+    threading.Thread(target=_watchdog_loop, daemon=True, name="tauri-parent-watchdog").start()
+
+_start_tauri_parent_watchdog()
+
+
 # Ensure workspace virtualenv site-packages are accessible
 _cleo_root = os.path.dirname(os.path.abspath(__file__))
 _venv_lib = os.path.join(_cleo_root, ".venv", "lib")
@@ -1809,6 +1859,22 @@ def stop_all_models():
     unload_mlx_models()
     unload_ollama_models()
     return {"status": "ok", "stopped": True}
+
+@app.api_route("/api/shutdown", methods=["GET", "POST"])
+def shutdown_server():
+    """Cleanly unloads all models, releases resources, and terminates the server process."""
+    logger.info("🛑 [/api/shutdown] Clean shutdown requested. Unloading models and exiting...")
+    def _exit_worker():
+        try:
+            unload_mlx_models()
+            unload_ollama_models()
+        except Exception:
+            pass
+        time.sleep(0.3)
+        os._exit(0)
+    threading.Thread(target=_exit_worker, daemon=True, name="shutdown-worker").start()
+    return {"status": "shutting_down"}
+
 
 @app.api_route("/mcp", methods=["GET", "POST"])
 async def mcp_endpoint(request: Request):

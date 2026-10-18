@@ -53,17 +53,55 @@ async fn cleo_already_running(client: &reqwest::Client) -> bool {
   }
 }
 
-/// Asks the sidecar to exit cleanly (SIGTERM is forwarded by the PyInstaller bootloader to the
-/// Python process, which unloads local models), then force-kills whatever is left.
+fn request_http_shutdown() {
+  if let Ok(mut stream) = std::net::TcpStream::connect_timeout(
+    &std::net::SocketAddr::from(([127, 0, 0, 1], BACKEND_PORT)),
+    Duration::from_millis(400),
+  ) {
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(400)));
+    let req = format!(
+      "POST /api/shutdown HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+      BACKEND_PORT
+    );
+    use std::io::Write;
+    let _ = stream.write_all(req.as_bytes());
+    let _ = stream.flush();
+    std::thread::sleep(Duration::from_millis(250));
+  }
+}
+
+/// Asks the sidecar to exit cleanly (HTTP shutdown + taskkill /T on Windows, SIGTERM on Unix,
+/// which unloads local models and releases all memory), then terminates any remaining process handles.
 fn stop_backend(child: CommandChild) {
+  request_http_shutdown();
+
+  #[cfg(target_os = "windows")]
+  {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let _ = std::process::Command::new("taskkill")
+      .args(["/F", "/T", "/PID", &child.pid().to_string()])
+      .creation_flags(CREATE_NO_WINDOW)
+      .status();
+    let _ = std::process::Command::new("taskkill")
+      .args(["/F", "/IM", "cleo-server.exe"])
+      .creation_flags(CREATE_NO_WINDOW)
+      .status();
+    let _ = std::process::Command::new("taskkill")
+      .args(["/F", "/IM", "cleo-server-x86_64-pc-windows-msvc.exe"])
+      .creation_flags(CREATE_NO_WINDOW)
+      .status();
+  }
+
   #[cfg(unix)]
   {
     let _ = std::process::Command::new("kill")
       .arg("-TERM")
       .arg(child.pid().to_string())
       .status();
-    std::thread::sleep(Duration::from_millis(1500));
+    std::thread::sleep(Duration::from_millis(800));
   }
+
   let _ = child.kill();
 }
 
@@ -203,6 +241,7 @@ pub fn run() {
             .env("PORT", BACKEND_PORT.to_string())
             .env("CLEO_NO_BROWSER", "1")
             .env("CLEO_NO_UPDATE", "1")
+            .env("CLEO_TAURI_PID", std::process::id().to_string())
             .spawn();
 
           match spawned {
@@ -292,12 +331,22 @@ pub fn run() {
     .build(tauri::generate_context!())
     .expect("error while building tauri application")
     .run(|app, event| {
-      if let RunEvent::Exit = event {
-        if let Some(state) = app.try_state::<Backend>() {
-          if let Some(child) = state.0.lock().unwrap().take() {
-            stop_backend(child);
+      match event {
+        RunEvent::Exit | RunEvent::ExitRequested { .. } => {
+          if let Some(state) = app.try_state::<Backend>() {
+            if let Some(child) = state.0.lock().unwrap().take() {
+              stop_backend(child);
+            }
           }
         }
+        RunEvent::WindowEvent { event: tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed, .. } => {
+          if let Some(state) = app.try_state::<Backend>() {
+            if let Some(child) = state.0.lock().unwrap().take() {
+              stop_backend(child);
+            }
+          }
+        }
+        _ => {}
       }
     });
 }
