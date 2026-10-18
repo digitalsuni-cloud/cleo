@@ -11091,7 +11091,8 @@
         if (data.update_available) {
           const banner = document.getElementById('update-banner');
           const msg = document.getElementById('update-banner-msg');
-          msg.textContent = `🚀 Cleo update available (${data.current_sha} → ${data.latest_sha}). ${data.message}`;
+          const label = data.latest_tag || data.latest_sha || 'latest';
+          msg.textContent = `🚀 Cleo ${label} is available. ${data.message}`;
           banner.classList.add('visible');
         }
       } catch (e) {
