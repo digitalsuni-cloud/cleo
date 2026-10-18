@@ -12,6 +12,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Version consistency check
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          CARGO=$(grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/version = "//;s/"//')
+          TAURI=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "package.json : $PKG"
+          echo "Cargo.toml   : $CARGO"
+          echo "tauri.conf   : $TAURI"
+          if [ "$PKG" != "$CARGO" ] || [ "$PKG" != "$TAURI" ]; then
+            echo "❌ Version mismatch — all three files must agree."
+            exit 1
+          fi
+          echo "✓ All versions agree: $PKG"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -33,3 +47,4 @@ jobs:
           python test_streaming.py
           python test_area_chart_integration.py
           if [ -f test_pure_functions.py ]; then python test_pure_functions.py; fi
+

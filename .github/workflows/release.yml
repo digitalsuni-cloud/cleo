@@ -1,0 +1,112 @@
+name: Release
+
+# Triggered by a signed version tag: git tag -s v1.2.3 && git push origin v1.2.3
+# The release checklist (CHConfig standard):
+#   1. ci.yml passes on main (tests gate)
+#   2. Tag is pushed → this workflow fires
+#   3. macOS arm64 runner builds the PyInstaller sidecar + Tauri DMG
+#   4. Artifacts are uploaded to the GitHub Release created by the tag
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+
+permissions:
+  contents: write   # needed to upload release assets
+
+jobs:
+  # ── macOS Apple Silicon ────────────────────────────────────────────────────
+  build-macos-arm64:
+    name: macOS (Apple Silicon)
+    runs-on: macos-latest          # GitHub's macos-latest is arm64 (M-series)
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # ── Python sidecar ─────────────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Python dependencies + PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Python sidecar (cleo-server-aarch64-apple-darwin)
+        run: bash build-backend.sh
+
+      # ── Rust / Tauri ───────────────────────────────────────────────────────
+      - name: Set up Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: macos-arm64-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: macos-arm64-cargo-
+
+      - name: Install Node + Tauri CLI
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: npm install
+        run: npm install
+
+      - name: Tauri build — arm64
+        run: npx @tauri-apps/cli build --target aarch64-apple-darwin
+
+      # ── Collect & upload artifacts ─────────────────────────────────────────
+      - name: Collect DMG
+        id: dmg
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          SRC="src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Cleo_${VERSION}_aarch64.dmg"
+          DEST="Cleo_${VERSION}_arm64.dmg"
+          cp "$SRC" "$DEST"
+          echo "path=$DEST" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(shasum -a 256 "$DEST" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload DMG to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.dmg.outputs.path }}
+          body: |
+            **SHA-256** (`${{ steps.dmg.outputs.path }}`): `${{ steps.dmg.outputs.sha256 }}`
+          fail_on_unmatched_files: true
+
+  # ── Future platforms (uncomment when runners are available) ───────────────
+  #
+  # build-macos-intel:
+  #   runs-on: macos-13            # last Intel runner
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: bash build-backend.sh   # produces x86_64-apple-darwin sidecar
+  #     - uses: dtolnay/rust-toolchain@stable
+  #       with: { targets: x86_64-apple-darwin }
+  #     - run: npx @tauri-apps/cli build --target x86_64-apple-darwin
+  #
+  # build-windows:
+  #   runs-on: windows-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: bash build-backend.sh
+  #     - uses: dtolnay/rust-toolchain@stable
+  #     - run: npx @tauri-apps/cli build
