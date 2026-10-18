@@ -344,22 +344,54 @@ For enterprise automation, Cleo includes an optional pre-built **n8n workflow** 
 
 4. Send a message to the Cleo Chat trigger. n8n will route it through the classifier → fast or deep agent → response.
 
-### How It Works
+### Agentic Architecture & Platform Flow
 
-```
-User Message
-    ↓
-Classify: Simple or Complex?
-    ↓                    ↓
-Fast Agent           Deep Agent
-(Qwen2.5-3B)       (Qwen2.5-7B)
-    ↓                    ↓
-CloudHealth MCP    CloudHealth MCP
-    ↓                    ↓
-        Answer
+Cleo's n8n orchestration workflow uses a multi-tiered architecture that normalizes input from any enterprise collaboration platform, isolates sessions per user and channel, and routes between fast lookups and deep multi-cloud reasoning:
+
+```mermaid
+flowchart TD
+    subgraph Inputs ["Chat Ingress Triggers"]
+        direction LR
+        Slack["Slack Trigger"]
+        Teams["Microsoft Teams Trigger / Webhook"]
+        GChat["Google Chat Webhook"]
+        WebChat["Cleo Web Chat Trigger"]
+    end
+
+    subgraph Ingress ["Universal Ingress Adapter"]
+        Normalize["Normalize Input & Session Scoping<br/>Extracts chatInput, user context, & thread key"]
+    end
+
+    subgraph Core ["Cleo FinOps Orchestration Core (cleo-v2.json)"]
+        direction TB
+        Tenant["Tenant Selection & Memory<br/>Interactive CloudHealth organization picker"]
+        Classifier{"Query Classifier<br/>Simple vs Complex?"}
+        FastAgent["Fast Agent (Lightweight LLM)<br/>Direct single-metric lookups & dataset discovery"]
+        DeepAgent["Deep Agent (Reasoning LLM)<br/>MoM variances, multi-cloud drill-downs, forecasting"]
+        MCPFast["CloudHealth MCP Tools<br/>execute_datasource_query"]
+        MCPDeep["CloudHealth MCP Tools<br/>execute_datasource_query"]
+    end
+
+    subgraph Egress ["Universal Response Dispatcher"]
+        direction LR
+        SendSlack["Slack: Post in Thread"]
+        SendTeams["Teams: Adaptive Card / Reply"]
+        SendGChat["Google Chat: Card v2 / Message"]
+        SendWeb["Web Chat: Streamed Markdown"]
+    end
+
+    Inputs --> Normalize
+    Normalize --> Tenant
+    Tenant --> Classifier
+    Classifier -->|"Simple Query"| FastAgent
+    Classifier -->|"Complex Query"| DeepAgent
+    FastAgent <--> MCPFast
+    DeepAgent <--> MCPDeep
+    FastAgent --> Egress
+    DeepAgent --> Egress
 ```
 
-> **Note:** Cleo server must be running at `http://127.0.0.1:8080` for n8n to connect.
+> **Note:** Cleo server must be running at `http://127.0.0.1:8080` (or accessible over your local network/tunnel) for n8n to connect to the `/mcp` tool execution endpoint.
 
 ---
 
