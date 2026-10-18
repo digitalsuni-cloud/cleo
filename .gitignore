@@ -1,5 +1,8 @@
 # Secrets & Credentials — never commit real credentials
 .env
+.env.*
+!.env.example
+!.env.enterprise.example
 .envrc
 credentials.json
 *.pem
@@ -7,6 +10,7 @@ credentials.json
 *token*.json
 oauth_tokens.json
 mcp_oauth_tokens.json
+secrets/
 
 # Cleo local runtime data & cache
 .cleo/
