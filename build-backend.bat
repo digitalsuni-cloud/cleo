@@ -18,23 +18,25 @@ rem 1. Resolve Python interpreter (check .venv, python, py -3, python3)
 set "PY_CMD="
 if exist ".venv\Scripts\python.exe" (
     set "PY_CMD=.venv\Scripts\python.exe"
-) else (
-    python -c "import sys" >nul 2>nul
-    if not errorlevel 1 (
-        set "PY_CMD=python"
-    ) else (
-        py -3 -c "import sys" >nul 2>nul
-        if not errorlevel 1 (
-            set "PY_CMD=py -3"
-        ) else (
-            python3 -c "import sys" >nul 2>nul
-            if not errorlevel 1 (
-                set "PY_CMD=python3"
-            )
-        )
-    )
+    goto :python_found
+)
+python -c "import sys" >nul 2>nul
+if %errorlevel% equ 0 (
+    set "PY_CMD=python"
+    goto :python_found
+)
+py -3 -c "import sys" >nul 2>nul
+if %errorlevel% equ 0 (
+    set "PY_CMD=py -3"
+    goto :python_found
+)
+python3 -c "import sys" >nul 2>nul
+if %errorlevel% equ 0 (
+    set "PY_CMD=python3"
+    goto :python_found
 )
 
+:python_found
 if not defined PY_CMD (
     echo [Backend] ERROR: Python 3 was not found in PATH or .venv.
     echo Please install Python 3.10+ from https://www.python.org/downloads/
@@ -48,37 +50,43 @@ rem 2. Resolve or install PyInstaller
 set "PYINSTALLER="
 if exist ".venv\Scripts\pyinstaller.exe" (
     set "PYINSTALLER=.venv\Scripts\pyinstaller.exe"
+    goto :pyinstaller_found
+)
+where pyinstaller >nul 2>nul
+if not errorlevel 1 (
+    set "PYINSTALLER=pyinstaller"
+    goto :pyinstaller_found
+)
+%PY_CMD% -c "import PyInstaller" >nul 2>nul
+if not errorlevel 1 (
+    set "PYINSTALLER=%PY_CMD% -m PyInstaller"
+    goto :pyinstaller_found
+)
+
+echo [Backend] PyInstaller not detected. Preparing virtual environment and dependencies...
+if not exist ".venv\Scripts\python.exe" (
+    echo [Backend] Creating isolated virtual environment in .venv...
+    %PY_CMD% -m venv .venv
+)
+if exist ".venv\Scripts\pip.exe" (
+    echo [Backend] Installing requirements.txt and PyInstaller into .venv...
+    call .venv\Scripts\pip.exe install --upgrade pip
+    call .venv\Scripts\pip.exe install -r requirements.txt pyinstaller
+    if exist ".venv\Scripts\pyinstaller.exe" (
+        set "PYINSTALLER=.venv\Scripts\pyinstaller.exe"
+        goto :pyinstaller_found
+    )
 ) else (
-    where pyinstaller >nul 2>nul
-    if not errorlevel 1 set "PYINSTALLER=pyinstaller"
-)
-
-if not defined PYINSTALLER (
+    echo [Backend] Installing requirements.txt and PyInstaller into environment...
+    call %PY_CMD% -m pip install -r requirements.txt pyinstaller
     %PY_CMD% -c "import PyInstaller" >nul 2>nul
-    if not errorlevel 1 set "PYINSTALLER=%PY_CMD% -m PyInstaller"
-)
-
-if not defined PYINSTALLER (
-    echo [Backend] PyInstaller not detected. Preparing virtual environment and dependencies...
-    if not exist ".venv\Scripts\python.exe" (
-        echo [Backend] Creating isolated virtual environment in .venv...
-        %PY_CMD% -m venv .venv
-    )
-    if exist ".venv\Scripts\pip.exe" (
-        echo [Backend] Installing requirements.txt and PyInstaller into .venv...
-        call .venv\Scripts\pip.exe install --upgrade pip
-        call .venv\Scripts\pip.exe install -r requirements.txt pyinstaller
-        if exist ".venv\Scripts\pyinstaller.exe" (
-            set "PYINSTALLER=.venv\Scripts\pyinstaller.exe"
-        )
-    ) else (
-        echo [Backend] Installing requirements.txt and PyInstaller into environment...
-        call %PY_CMD% -m pip install -r requirements.txt pyinstaller
-        %PY_CMD% -c "import PyInstaller" >nul 2>nul
-        if not errorlevel 1 set "PYINSTALLER=%PY_CMD% -m PyInstaller"
+    if not errorlevel 1 (
+        set "PYINSTALLER=%PY_CMD% -m PyInstaller"
+        goto :pyinstaller_found
     )
 )
 
+:pyinstaller_found
 if not defined PYINSTALLER (
     echo [Backend] ERROR: PyInstaller could not be located or installed.
     echo Please run manually:
