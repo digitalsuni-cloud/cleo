@@ -3146,6 +3146,19 @@ def _verify_tag(tag: str) -> tuple[bool, str]:
             "Cannot verify tag signature: this is not a git clone. "
             "Download the signed release DMG from GitHub Releases instead."
         )
+    # Auto-import cleo-release.asc if present and not yet in keyring
+    asc_path = os.path.join(_CLEO_ROOT, "cleo-release.asc")
+    if os.path.exists(asc_path):
+        try:
+            key_check = subprocess.run(
+                ["gpg", "--list-keys", "3DB30B754E26A1D0C4B0308AD8C920CBEA46CBF6"],
+                capture_output=True, timeout=5,
+            )
+            if key_check.returncode != 0:
+                subprocess.run(["gpg", "--import", asc_path], capture_output=True, timeout=10)
+        except Exception:
+            pass
+
     # Ensure the tag ref is present locally before verifying.
     try:
         subprocess.run(
@@ -3366,9 +3379,8 @@ def _wait_for_server_ready(port: int, timeout: float = 30.0) -> bool:
 def _auto_update_on_startup():
     """Opt-in (CLEO_AUTO_UPDATE=1): on startup, fetch & apply updates from GitHub, then restart.
 
-    Security: off by default. Auto-applying unsigned code from a remote branch means a compromise
-    of that repo/account becomes code execution on every install at next launch. The Web UI
-    "Update now" button (explicit click) is the default path.
+    Security: Verifies that the target release tag is signed with the Cleo release key
+    via git verify-tag before checkout or extraction.
     """
     if os.environ.get("CLEO_AUTO_UPDATE", "").lower() not in ("1", "true", "yes"):
         return
@@ -3381,23 +3393,27 @@ def _auto_update_on_startup():
 
     try:
         current_sha = _git_sha()
-        latest_sha = _get_latest_remote_sha()
-        if not latest_sha:
+        tag, latest_sha = _get_latest_release_tag()
+        if not tag:
             return
 
-        if current_sha and current_sha[:7] == latest_sha[:7]:
+        if current_sha and latest_sha and current_sha[:7] == latest_sha[:7]:
             return
 
-        print(f"🔄 [Auto-Update] Newer version available ({current_sha[:7] if current_sha else 'unknown'} → {latest_sha[:7]}). Fetching latest code...")
+        print(f"🔄 [Auto-Update] Newer release available ({tag}). Verifying signature...")
+        verified, verify_err = _verify_tag(tag)
+        if not verified:
+            print(f"⚠️  [Auto-Update] Tag {tag} signature could not be verified: {verify_err}. Skipping update.")
+            return
 
+        print(f"✓ [Auto-Update] Verified signature for {tag}. Applying update...")
         if os.path.exists(os.path.join(_CLEO_ROOT, ".git")):
-            # ff-only: never merge or `reset --hard` over local work
-            res = subprocess.run(["git", "pull", "--ff-only"], cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=30)
+            res = subprocess.run(["git", "checkout", tag, "--"], cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=30)
             if res.returncode != 0:
-                print(f"⚠️  [Auto-Update] git pull --ff-only failed; update manually. ({res.stderr.strip()})")
+                print(f"⚠️  [Auto-Update] git checkout failed: ({res.stderr.strip()})")
                 return
         else:
-            ok, msg = _apply_curl_update()
+            ok, msg = _apply_curl_update(tag)
             if not ok:
                 print(f"⚠️  [Auto-Update] Could not apply update: {msg}")
                 return
@@ -3409,7 +3425,7 @@ def _auto_update_on_startup():
         except Exception:
             pass
 
-        print(f"🚀 [Auto-Update] Successfully updated to {new_sha[:7]}! Reloading Cleo...")
+        print(f"🚀 [Auto-Update] Successfully updated to {tag} ({new_sha[:7]})! Reloading Cleo...")
         env = os.environ.copy()
         env["_CLEO_RESTARTED_FROM_UPDATE"] = "1"
         if os.name == "nt":
