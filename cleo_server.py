@@ -341,7 +341,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.middleware.cors import CORSMiddleware
 from html import escape as html_escape
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -475,19 +474,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Security: the UI is served same-origin and a wildcard CORS policy let any web page read every
-# API response, so CORS is limited to the desktop shell (below). TrustedHostMiddleware rejects requests whose Host header isn't
-# loopback, which also blocks DNS-rebinding (attacker domain resolving to 127.0.0.1).
+# Security: no CORS. The UI is served same-origin, and the desktop app (Tauri) loads the dashboard
+# natively rather than fetching the API from its splash page, so no origin needs cross-origin access.
+# (A wildcard policy previously let any web page read every API response.)
+# TrustedHostMiddleware rejects requests whose Host header isn't loopback, which also blocks
+# DNS-rebinding (attacker domain resolving to 127.0.0.1).
 # Extra hostnames (e.g. a reverse proxy) can be added via CLEO_ALLOWED_HOSTS=a.example,b.example
-# The Tauri desktop shell's splash page (origin tauri://localhost, or http(s)://tauri.localhost on
-# Windows) polls /health cross-origin before redirecting to the UI, so only those exact origins
-# get CORS. Web pages can't spoof them, and credentials are never allowed.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"],
-    allow_methods=["GET"],
-    allow_headers=["*"],
-)
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=["127.0.0.1", "localhost", "[::1]"]
@@ -3496,5 +3488,7 @@ if __name__ == "__main__":
                 logger.warning("Cleo server did not become ready within 30s; browser not launched automatically.")
         threading.Thread(target=_open_browser_bg, daemon=True, name="browser-open").start()
 
-    uvicorn.run("cleo_server:app", host=os.environ.get("CLEO_HOST", "127.0.0.1"), port=_port, reload=False, log_level=_uvicorn_log_level)
+    # Pass the app object, not "cleo_server:app": the string form re-imports this file as a second module
+    # (running all start-up code twice) and fails outright inside the PyInstaller bundle.
+    uvicorn.run(app, host=os.environ.get("CLEO_HOST", "127.0.0.1"), port=_port, reload=False, log_level=_uvicorn_log_level)
 
