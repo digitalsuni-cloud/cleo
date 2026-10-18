@@ -8,6 +8,7 @@ Provides real-time timestamped DEBUG logging to:
 """
 
 import os
+import re
 import sys
 import logging
 from collections import deque
@@ -16,6 +17,43 @@ from datetime import datetime
 APP_DATA_DIR = os.path.expanduser("~/.cleo")
 os.makedirs(APP_DATA_DIR, exist_ok=True)
 LOG_FILE = os.path.join(APP_DATA_DIR, "cleo.log")
+
+def _lock_down_data_dir():
+    """~/.cleo holds chat history, memory, logs and OAuth tokens: owner-only, including files
+    written by earlier versions with default (world-readable) permissions."""
+    try:
+        os.chmod(APP_DATA_DIR, 0o700)
+        for name in os.listdir(APP_DATA_DIR):
+            path = os.path.join(APP_DATA_DIR, name)
+            if os.path.isfile(path) and not os.path.islink(path):
+                os.chmod(path, 0o600)
+    except OSError:
+        pass  # best effort (e.g. Windows ACLs, read-only mounts)
+
+_lock_down_data_dir()
+
+# Secret redaction: debug logs include request/response bodies and OAuth payloads, and are
+# written to ~/.cleo/cleo.log and served by /api/logs.
+_SECRET_PATTERNS = [
+    (re.compile(r"""(?i)((?:client_secret|access_token|refresh_token|id_token|api[_-]?key|password|authorization)["']?\s*[:=]\s*["']?)(?:Bearer\s+)?[^"'\s,}&]+"""), r"\1***"),
+    (re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+"), "Bearer ***"),
+    (re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*"), "***jwt***"),
+    (re.compile(r"\b(?:sk-ant-|sk-|AIza|ghp_|AKIA)[A-Za-z0-9_-]{16,}"), "***key***"),
+]
+
+def redact_secrets(text: str) -> str:
+    for pattern, repl in _SECRET_PATTERNS:
+        text = pattern.sub(repl, text)
+    return text
+
+class SecretRedactingFilter(logging.Filter):
+    def filter(self, record):
+        try:
+            record.msg = redact_secrets(record.getMessage())
+            record.args = ()
+        except Exception:
+            pass
+        return True
 
 LOG_BUFFER = deque(maxlen=2000)
 
@@ -124,6 +162,7 @@ _console_handler = logging.StreamHandler(sys.stdout)
 _console_handler.setLevel(LOG_LEVEL)
 _console_handler.setFormatter(ColorFormatter())
 _console_handler.addFilter(ConsoleFilter(verbose=_is_verbose))
+_console_handler.addFilter(SecretRedactingFilter())
 _root_logger.addHandler(_console_handler)
 
 # File Handler
@@ -131,6 +170,11 @@ try:
     _file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
     _file_handler.setLevel(LOG_LEVEL)
     _file_handler.setFormatter(PlainFormatter())
+    _file_handler.addFilter(SecretRedactingFilter())
+    try:
+        os.chmod(LOG_FILE, 0o600)
+    except OSError:
+        pass
     _root_logger.addHandler(_file_handler)
 except Exception as e:
     sys.stderr.write(f"⚠️ Could not open log file {LOG_FILE}: {e}\n")
@@ -138,6 +182,7 @@ except Exception as e:
 # Memory Buffer Handler
 _buf_handler = RingBufferHandler(LOG_BUFFER)
 _buf_handler.setLevel(LOG_LEVEL)
+_buf_handler.addFilter(SecretRedactingFilter())
 _root_logger.addHandler(_buf_handler)
 
 # Prevent propagating to parent root to avoid double printing

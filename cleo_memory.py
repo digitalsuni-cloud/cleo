@@ -95,6 +95,10 @@ class CleoMemory:
         if len(self._data) > _MAX_ENTRIES:
             self._data = self._data[-_MAX_ENTRIES:]
         self._path.write_text(json.dumps(self._data, indent=2), encoding="utf-8")
+        try:
+            os.chmod(self._path, 0o600)
+        except OSError:
+            pass
 
     def _add(self, entry: dict):
         entry["id"]  = str(uuid.uuid4())[:8]
@@ -280,6 +284,7 @@ def save_last_query(query_type: str, dataset: str, sql: str, time_range: dict) -
         _LAST_QUERY_PATH.write_text(
             json.dumps({"query_type": query_type, "dataset": dataset, "sql": sql, "time_range": time_range, "ts": time.time()}, indent=2)
         )
+        os.chmod(_LAST_QUERY_PATH, 0o600)
     except Exception:
         pass  # non-critical
 

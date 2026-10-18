@@ -191,6 +191,7 @@ def crawl_and_cache_all_datasource_metadata(mcp, force: bool = False) -> dict:
         os.makedirs(APP_DATA_DIR, exist_ok=True)
         with open(DATASOURCES_METADATA_CACHE_FILE, "w") as f:
             json.dump(payload, f, indent=2)
+        os.chmod(DATASOURCES_METADATA_CACHE_FILE, 0o600)
         _datasources_metadata_memory_cache = results
         try:
             merge_live_metadata_into_curated_specs(results)

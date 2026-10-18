@@ -46,6 +46,13 @@ ANTIGRAVITY_REDIRECT_URI  = "https://antigravity.google/oauth-callback"
 
 CLIENT_CREDENTIALS_FILE   = os.path.expanduser("~/.cleo/client_credentials.json")
 
+def _write_private_json(path: str, data) -> None:
+    """Write JSON to `path`, creating it owner-only (0600) so secrets are never briefly world-readable."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(data, f, indent=2)
+    os.chmod(path, 0o600)  # also tightens a pre-existing file
+
 def _load_cached_client() -> dict:
     if os.path.exists(CLIENT_CREDENTIALS_FILE):
         try:
@@ -157,13 +164,11 @@ class OAuth2Helper:
             )
             with urllib.request.urlopen(req, timeout=10.0) as resp:
                 body = resp.read().decode("utf-8")
-                logger.debug(f"[RFC 7591 Register] Status: {resp.status}, Response: {body}")
+                logger.debug(f"[RFC 7591 Register] Status: {resp.status}, Response: <redacted, {len(body)} bytes>")
                 data = json.loads(body)
                 try:
                     os.makedirs(os.path.dirname(CLIENT_CREDENTIALS_FILE), exist_ok=True)
-                    with open(CLIENT_CREDENTIALS_FILE, "w") as f:
-                        json.dump(data, f, indent=2)
-                    os.chmod(CLIENT_CREDENTIALS_FILE, 0o600)
+                    _write_private_json(CLIENT_CREDENTIALS_FILE, data)
                 except Exception:
                     pass
                 return data
@@ -187,15 +192,11 @@ class OAuth2Helper:
 
     def _save_token(self, mcp_data: Dict):
         os.makedirs(os.path.dirname(self.tokens_file), exist_ok=True)
-        with open(self.tokens_file, "w") as f:
-            json.dump(mcp_data, f, indent=2)
-        os.chmod(self.tokens_file, 0o600)
+        _write_private_json(self.tokens_file, mcp_data)
         # Also sync to legacy path ~/.cleo/oauth_tokens.json for backwards compatibility
         alt_path = os.path.expanduser("~/.cleo/oauth_tokens.json")
         try:
-            with open(alt_path, "w") as f:
-                json.dump(mcp_data, f, indent=2)
-            os.chmod(alt_path, 0o600)
+            _write_private_json(alt_path, mcp_data)
         except Exception:
             pass
 
