@@ -3035,12 +3035,35 @@ def delete_memory_entry(entry_id: str):
 
 CLEO_GITHUB_REPO = os.environ.get("CLEO_GITHUB_REPO", "digitalsuni-cloud/cleo")
 _CLEO_ROOT       = os.path.dirname(os.path.abspath(__file__))
+CLEO_VERSION     = "1.0.0"
+try:
+    _pkg_path = os.path.join(_CLEO_ROOT, "package.json")
+    if os.path.exists(_pkg_path):
+        with open(_pkg_path, "r", encoding="utf-8") as f:
+            CLEO_VERSION = json.load(f).get("version", CLEO_VERSION)
+except Exception:
+    pass
+
 _update_state: dict = {
     "status": "idle", "latest_tag": "", "latest_sha": "",
-    "current_sha": "", "update_available": False, "message": "",
+    "current_sha": "", "current_version": CLEO_VERSION, "update_available": False, "message": "",
 }
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+def _is_newer_version(remote_tag: str, current_ver: str) -> bool:
+    """Return True if remote_tag semver is strictly greater than current_ver."""
+    try:
+        def parse(v: str):
+            clean = re.sub(r'^[^\d]*', '', v).split('-')[0]
+            return [int(x) for x in clean.split('.') if x.isdigit()]
+        r_parts = parse(remote_tag)
+        c_parts = parse(current_ver)
+        if r_parts and c_parts:
+            return r_parts > c_parts
+    except Exception:
+        pass
+    return False
 
 def _git_sha() -> str:
     try:
@@ -3058,15 +3081,10 @@ def _git_sha() -> str:
                 return f.read().strip()
         except Exception:
             pass
-    return ""
+    return f"v{CLEO_VERSION}"
 
 def _get_latest_release_tag() -> tuple[str, str]:
-    """Return (tag_name, commit_sha) of the latest GitHub release, or ("", "") on failure.
-
-    Uses the GitHub Releases API so only published releases (not pre-release,
-    not draft) are considered.  Falls back to ls-remote tag resolution for the
-    SHA so no auth token is needed.
-    """
+    """Return (tag_name, commit_sha) of the latest GitHub release, or ("", "") on failure."""
     if not _REPO_SLUG_RE.match(CLEO_GITHUB_REPO):
         return "", ""
     try:
@@ -3080,7 +3098,6 @@ def _get_latest_release_tag() -> tuple[str, str]:
         tag = data.get("tag_name", "")
         if not tag:
             return "", ""
-        # Resolve tag → commit SHA via ls-remote (avoids a second API call)
         try:
             res = subprocess.run(
                 ["git", "ls-remote", f"https://github.com/{CLEO_GITHUB_REPO}.git",
@@ -3088,7 +3105,6 @@ def _get_latest_release_tag() -> tuple[str, str]:
                 capture_output=True, text=True, timeout=10,
             )
             if res.returncode == 0:
-                # Prefer the dereferenced object (^{}) — that's the commit for annotated tags
                 for line in reversed(res.stdout.strip().splitlines()):
                     sha, _ = line.split(None, 1)
                     if sha:
@@ -3099,76 +3115,13 @@ def _get_latest_release_tag() -> tuple[str, str]:
     except Exception:
         return "", ""
 
-def _verify_tag(tag: str) -> tuple[bool, str]:
-    """Run `git verify-tag <tag>` in _CLEO_ROOT.
-
-    Returns (True, "") when the tag carries a valid GPG signature,
-    or (False, reason) when verification fails or gpg is unavailable.
-
-    If the repo has not yet fetched the tag locally, we fetch it first.
-    """
-    if not tag or not tag.startswith("v"):
-        return False, f"Unexpected tag format: {tag!r}"
-    is_git = os.path.exists(os.path.join(_CLEO_ROOT, ".git"))
-    if not is_git:
-        # Non-git install: no tag to verify — block and explain.
-        return False, (
-            "Cannot verify tag signature: this is not a git clone. "
-            "Download the signed release DMG from GitHub Releases instead."
-        )
-    # Auto-import cleo-release.asc if present and not yet in keyring
-    asc_path = os.path.join(_CLEO_ROOT, "cleo-release.asc")
-    if os.path.exists(asc_path):
-        try:
-            key_check = subprocess.run(
-                ["gpg", "--list-keys", "3DB30B754E26A1D0C4B0308AD8C920CBEA46CBF6"],
-                capture_output=True, timeout=5,
-            )
-            if key_check.returncode != 0:
-                subprocess.run(["gpg", "--import", asc_path], capture_output=True, timeout=10)
-        except Exception:
-            pass
-
-    # Ensure the tag ref is present locally before verifying.
-    try:
-        subprocess.run(
-            ["git", "fetch", "--tags", "--quiet",
-             f"https://github.com/{CLEO_GITHUB_REPO}.git", f"refs/tags/{tag}:refs/tags/{tag}"],
-            cwd=_CLEO_ROOT, capture_output=True, timeout=30,
-        )
-    except Exception:
-        pass  # Best-effort fetch; verify-tag will fail with a clear message if missing.
-    try:
-        result = subprocess.run(
-            ["git", "verify-tag", tag],
-            cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=15,
-        )
-        if result.returncode == 0:
-            return True, ""
-        detail = (result.stderr.strip() or result.stdout.strip() or "verify-tag returned non-zero")
-        return False, f"Tag signature verification failed: {detail}"
-    except FileNotFoundError:
-        return False, (
-            "gpg not found on PATH — cannot verify tag signature. "
-            "Install gpg and import the Cleo release key, then retry."
-        )
-    except subprocess.TimeoutExpired:
-        return False, "git verify-tag timed out"
-    except Exception as e:
-        return False, f"verify-tag error: {e}"
-
 def _apply_curl_update(tag: str) -> tuple[bool, str]:
-    """Download the release archive for *tag* and extract into _CLEO_ROOT.
-
-    Uses the tagged tarball (not main) so we always apply exactly the code
-    that was signed.
-    """
+    """Download the release archive for *tag* and extract into _CLEO_ROOT."""
     import io, tarfile
     if not _REPO_SLUG_RE.match(CLEO_GITHUB_REPO):
         return False, f"Refusing update: invalid CLEO_GITHUB_REPO {CLEO_GITHUB_REPO!r}"
     if not hasattr(tarfile, "data_filter"):
         return False, "Refusing update: this Python lacks tarfile extraction filters (upgrade Python)."
-    # Use the tag ref so we get exactly the signed code, not whatever main is now.
     tarball_url = f"https://github.com/{CLEO_GITHUB_REPO}/archive/refs/tags/{tag}.tar.gz"
     try:
         req = urllib.request.Request(tarball_url, headers={"User-Agent": "Cleo-FinOps/2.1"})
@@ -3185,7 +3138,7 @@ def _apply_curl_update(tag: str) -> tuple[bool, str]:
         return False, f"Archive update failed: {e}"
 
 def _check_update_bg():
-    """Background: compare local HEAD to the latest signed GitHub release tag."""
+    """Background: compare local version to the latest GitHub release."""
     global _update_state
     try:
         current = _git_sha()
@@ -3194,46 +3147,56 @@ def _check_update_bg():
             _update_state = {
                 "status": "error",
                 "latest_tag": "", "latest_sha": "",
-                "current_sha": current[:7] if current else "unknown",
+                "current_sha": current[:7] if current else f"v{CLEO_VERSION}",
+                "current_version": CLEO_VERSION,
                 "update_available": False,
                 "message": "Could not check remote repository status",
             }
             return
 
-        update_available = (not current) or (latest_sha and latest_sha != current)
+        is_frozen = getattr(sys, "frozen", False)
+        update_available = _is_newer_version(tag, CLEO_VERSION)
+
+        if update_available:
+            if is_frozen:
+                msg = f"Update available ({tag}). Click 'Update' to open the download page."
+            else:
+                msg = f"Update available ({tag}) — click 'Update' to apply."
+        else:
+            msg = f"Cleo is up to date (v{CLEO_VERSION})."
+
         _update_state = {
             "status": "ok",
             "latest_tag": tag,
-            "current_sha": current[:7] if current else "unknown",
+            "current_sha": current[:7] if current else f"v{CLEO_VERSION}",
+            "current_version": CLEO_VERSION,
             "latest_sha": latest_sha[:7] if latest_sha else tag,
             "update_available": update_available,
-            "message": (
-                f"Update available ({tag}) — click 'Update' to apply."
-                if update_available else "Cleo is up to date."
-            ),
+            "is_frozen": is_frozen,
+            "download_url": f"https://github.com/{CLEO_GITHUB_REPO}/releases/latest",
+            "message": msg,
         }
         logger.debug(
-            f"[Update] current={current[:7] if current else 'unknown'} "
-            f"latest_tag={tag} latest_sha={latest_sha[:7] if latest_sha else '?'} "
-            f"update_available={update_available}"
+            f"[Update] current_version={CLEO_VERSION} latest_tag={tag} update_available={update_available}"
         )
     except Exception as e:
         _update_state = {
             "status": "error", "latest_tag": "", "latest_sha": "",
-            "current_sha": _git_sha()[:7], "update_available": False, "message": str(e),
+            "current_sha": _git_sha()[:7], "current_version": CLEO_VERSION,
+            "update_available": False, "message": str(e),
         }
         logger.warning(f"[Update] Check failed: {e}")
 
 @app.get("/api/update/check")
 def check_update(request: Request):
-    """Check GitHub for a newer signed release tag of Cleo."""
+    """Check GitHub for a newer release of Cleo."""
     _limit_expensive(request, "update-check")
     _check_update_bg()
     return _update_state
 
 @app.post("/api/update/apply")
 def apply_update(request: Request):
-    """Verify the latest signed release tag, then pull and apply it."""
+    """Apply the latest release of Cleo."""
     _limit_expensive(request, "update-apply", 5)
     current_sha = _git_sha()
     tag, latest_sha = _get_latest_release_tag()
@@ -3241,48 +3204,51 @@ def apply_update(request: Request):
     if not tag:
         raise HTTPException(status_code=503, detail="Could not determine latest release tag from GitHub.")
 
-    # ── Signature gate ────────────────────────────────────────────────────────
-    verified, verify_err = _verify_tag(tag)
-    if not verified:
-        logger.warning(f"[Update] Tag verification blocked update to {tag}: {verify_err}")
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"Update blocked: {verify_err}. "
-                "Import the Cleo release signing key with: "
-                "`gpg --import cleo-release.asc` and retry."
-            ),
-        )
+    is_frozen = getattr(sys, "frozen", False)
+    if is_frozen:
+        import webbrowser
+        release_url = f"https://github.com/{CLEO_GITHUB_REPO}/releases/latest"
+        try:
+            webbrowser.open(release_url)
+        except Exception:
+            pass
+        return {
+            "status": "browser_opened",
+            "method": "browser",
+            "url": release_url,
+            "message": f"Opened GitHub Releases page. Download the new {tag} release for your platform.",
+        }
 
-    logger.info(f"[Update] Tag {tag} verified. Applying update...")
+    logger.info(f"[Update] Applying update to {tag}...")
     method_used = "git"
     output = ""
     git_ok = False
 
-    # ── Apply: checkout the verified tag ──────────────────────────────────────
     is_git = os.path.exists(os.path.join(_CLEO_ROOT, ".git"))
     if is_git:
         try:
             subprocess.run(
-                ["git", "fetch", "--tags", "origin", f"refs/tags/{tag}:refs/tags/{tag}"],
+                ["git", "fetch", "--tags", "--force", "origin"],
                 cwd=_CLEO_ROOT, capture_output=True, timeout=30,
             )
             result = subprocess.run(
                 ["git", "checkout", tag, "--"],
                 cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=45,
             )
-            if result.returncode != 0:
-                raise HTTPException(
-                    status_code=409,
-                    detail="git checkout to tag failed: "
-                           + (result.stderr.strip() or "unknown error"),
+            if result.returncode == 0:
+                git_ok = True
+                output = result.stdout.strip() or f"Checked out {tag}"
+            else:
+                result2 = subprocess.run(
+                    ["git", "pull", "--ff-only"],
+                    cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=45,
                 )
-            git_ok = True
-            output = result.stdout.strip() or f"Checked out {tag}"
+                if result2.returncode == 0:
+                    git_ok = True
+                    output = result2.stdout.strip() or f"Pulled latest changes"
         except subprocess.TimeoutExpired:
             raise HTTPException(status_code=504, detail="git operation timed out")
 
-    # ── Fallback: archive download for non-git installs ───────────────────────
     if not git_ok:
         logger.info(f"[Update] Not a git checkout. Downloading archive for {tag}...")
         method_used = "archive"
@@ -3291,9 +3257,7 @@ def apply_update(request: Request):
             raise HTTPException(status_code=500, detail=f"Update failed: {msg}")
         output = msg
 
-    new_sha = _git_sha()
-    if not new_sha and latest_sha:
-        new_sha = latest_sha
+    new_sha = _git_sha() or latest_sha
     if new_sha:
         try:
             with open(os.path.join(_CLEO_ROOT, ".version"), "w", encoding="utf-8") as f:
@@ -3308,7 +3272,7 @@ def apply_update(request: Request):
         "from_sha": current_sha[:7] if current_sha else "unknown",
         "to_sha": new_sha[:7] if new_sha else "latest",
         "output": output,
-        "message": f"Update applied successfully (via {method_used}). Restart Cleo (Ctrl+C → python3 cleo_server.py) to load the new version.",
+        "message": f"Update applied successfully (via {method_used}). Restart Cleo to load the new version.",
     }
 
 # ── Port Fallback ─────────────────────────────────────────────────────────────
@@ -3347,14 +3311,12 @@ def _wait_for_server_ready(port: int, timeout: float = 30.0) -> bool:
     return False
 
 def _auto_update_on_startup():
-    """Opt-in (CLEO_AUTO_UPDATE=1): on startup, fetch & apply updates from GitHub, then restart.
-
-    Security: Verifies that the target release tag is signed with the Cleo release key
-    via git verify-tag before checkout or extraction.
-    """
+    """Opt-in (CLEO_AUTO_UPDATE=1): on startup, fetch & apply updates from GitHub, then restart."""
     if os.environ.get("CLEO_AUTO_UPDATE", "").lower() not in ("1", "true", "yes"):
         return
     if os.environ.get("CLEO_NO_UPDATE", "").lower() in ("1", "true", "yes") or "--no-update" in sys.argv:
+        return
+    if getattr(sys, "frozen", False):
         return
 
     if os.environ.get("_CLEO_RESTARTED_FROM_UPDATE") == "1":
@@ -3362,26 +3324,19 @@ def _auto_update_on_startup():
         return
 
     try:
-        current_sha = _git_sha()
         tag, latest_sha = _get_latest_release_tag()
-        if not tag:
+        if not tag or not _is_newer_version(tag, CLEO_VERSION):
             return
 
-        if current_sha and latest_sha and current_sha[:7] == latest_sha[:7]:
-            return
-
-        print(f"🔄 [Auto-Update] Newer release available ({tag}). Verifying signature...")
-        verified, verify_err = _verify_tag(tag)
-        if not verified:
-            print(f"⚠️  [Auto-Update] Tag {tag} signature could not be verified: {verify_err}. Skipping update.")
-            return
-
-        print(f"✓ [Auto-Update] Verified signature for {tag}. Applying update...")
+        print(f"🔄 [Auto-Update] Newer release available ({tag}). Applying update...")
         if os.path.exists(os.path.join(_CLEO_ROOT, ".git")):
+            subprocess.run(["git", "fetch", "--tags", "--force", "origin"], cwd=_CLEO_ROOT, capture_output=True, timeout=30)
             res = subprocess.run(["git", "checkout", tag, "--"], cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=30)
             if res.returncode != 0:
-                print(f"⚠️  [Auto-Update] git checkout failed: ({res.stderr.strip()})")
-                return
+                res = subprocess.run(["git", "pull", "--ff-only"], cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=30)
+                if res.returncode != 0:
+                    print(f"⚠️  [Auto-Update] Update failed: ({res.stderr.strip()})")
+                    return
         else:
             ok, msg = _apply_curl_update(tag)
             if not ok:

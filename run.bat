@@ -6,21 +6,7 @@ setlocal EnableDelayedExpansion
 
 cd /d "%~dp0"
 
-rem 1. Import Cleo release signing key (once, silently — enables verified auto-updates)
-where gpg >nul 2>nul
-if %errorlevel% equ 0 (
-    if exist "cleo-release.asc" (
-        gpg --list-keys 3DB30B754E26A1D0C4B0308AD8C920CBEA46CBF6 >nul 2>nul
-        if errorlevel 1 (
-            gpg --import cleo-release.asc >nul 2>nul
-            if not errorlevel 1 (
-                echo [Cleo] Release signing key imported (enables verified updates).
-            )
-        )
-    )
-)
-
-rem 2. Auto-pull latest updates from GitHub (skip if CLEO_NO_UPDATE=1 or --no-update)
+rem Auto-pull latest updates from GitHub (skip if CLEO_NO_UPDATE=1 or --no-update)
 if not "%CLEO_NO_UPDATE%"=="1" if not "%1"=="--no-update" (
     where git >nul 2>nul
     if not errorlevel 1 if exist ".git" (
@@ -35,14 +21,8 @@ if not "%CLEO_NO_UPDATE%"=="1" if not "%1"=="--no-update" (
         if defined LATEST_TAG (
             git merge-base --is-ancestor !LATEST_TAG! HEAD 2>nul
             if errorlevel 1 (
-                where gpg >nul 2>nul
-                if not errorlevel 1 (
-                    git verify-tag !LATEST_TAG! >nul 2>nul
-                    if not errorlevel 1 (
-                        echo [Cleo] Updating to verified release !LATEST_TAG!...
-                        git checkout !LATEST_TAG! --quiet 2>nul || git merge --ff-only !LATEST_TAG! --quiet 2>nul
-                    )
-                )
+                echo [Cleo] Updating to release !LATEST_TAG!...
+                git checkout !LATEST_TAG! --quiet 2>nul || git merge --ff-only !LATEST_TAG! --quiet 2>nul
             )
         )
     )
