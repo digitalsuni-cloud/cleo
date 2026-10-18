@@ -27,11 +27,15 @@ except ImportError:
 MLX_MODELS = [
     {"id": "mlx:mlx-community/Qwen3.5-9B-MLX-4bit", "repo_id": "mlx-community/Qwen3.5-9B-MLX-4bit", "name": "Qwen3.5-9B-4bit (MLX)", "size": "5.5 GB", "tier": "default", "desc": "Default recommended Apple Silicon Metal model (~5.5 GB RAM)"},
     {"id": "mlx:mlx-community/Qwen3.5-4B-4bit", "repo_id": "mlx-community/Qwen3.5-4B-4bit", "name": "Qwen3.5-4B-4bit (MLX)", "size": "2.6 GB", "tier": "smaller", "desc": "Ultra-fast lightweight model for Apple Silicon (~2.6 GB RAM)"},
+    {"id": "mlx:mlx-community/gemma-2-9b-it-4bit", "repo_id": "mlx-community/gemma-2-9b-it-4bit", "name": "Gemma-2-9B-4bit (MLX)", "size": "5.4 GB", "tier": "bigger", "desc": "Google Gemma 2 9B instruction-tuned Metal model (~5.4 GB RAM)"},
+    {"id": "mlx:mlx-community/gemma-2-2b-it-4bit", "repo_id": "mlx-community/gemma-2-2b-it-4bit", "name": "Gemma-2-2B-4bit (MLX)", "size": "1.6 GB", "tier": "smaller", "desc": "Lightweight Google Gemma 2 2B Metal model (~1.6 GB RAM)"},
 ]
 
 LOCAL_MODELS = [
     {"id": "qwen2.5:7b", "name": "Qwen2.5-7B-Instruct-4bit", "size": "4.7 GB", "tier": "default", "desc": "Default recommended local model for FinOps (~5 GB RAM)"},
     {"id": "qwen2.5:3b", "name": "Qwen2.5-3B-Instruct-4bit", "size": "1.9 GB", "tier": "smaller", "desc": "Lightweight & ultra-fast local model (~2 GB RAM)"},
+    {"id": "gemma2:9b", "name": "Gemma-2-9B-Instruct", "size": "5.4 GB", "tier": "bigger", "desc": "Google Gemma 2 9B instruction-tuned model via Ollama (~5.4 GB RAM)"},
+    {"id": "gemma2:2b", "name": "Gemma-2-2B-Instruct", "size": "1.6 GB", "tier": "smaller", "desc": "Lightweight Google Gemma 2 2B model via Ollama (~1.6 GB RAM)"},
     {"id": "hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q4_K_M", "name": "Qwen3.5-9B-4bit (GGUF)", "size": "5.5 GB", "tier": "bigger", "desc": "Qwen3.5 local model via HuggingFace (~5.5 GB RAM)"},
     {"id": "hf.co/bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M", "name": "Qwen3.5-4B-4bit (GGUF)", "size": "2.6 GB", "tier": "smaller", "desc": "Lightweight Qwen3.5 local model via HuggingFace (~2.6 GB RAM)"},
 ]
@@ -46,6 +50,10 @@ AI_ENGINES = {
     "direct": ("Direct FinOps Router", "direct"),
     "mlx:mlx-community/Qwen3.5-9B-MLX-4bit": ("Qwen3.5-9B-4bit (MLX Default)", "mlx:mlx-community/Qwen3.5-9B-MLX-4bit"),
     "mlx:mlx-community/Qwen3.5-4B-4bit": ("Qwen3.5-4B-4bit (MLX)", "mlx:mlx-community/Qwen3.5-4B-4bit"),
+    "mlx:mlx-community/gemma-2-9b-it-4bit": ("Gemma-2-9B-4bit (MLX)", "mlx:mlx-community/gemma-2-9b-it-4bit"),
+    "mlx:mlx-community/gemma-2-2b-it-4bit": ("Gemma-2-2B-4bit (MLX)", "mlx:mlx-community/gemma-2-2b-it-4bit"),
+    "ollama:gemma2:9b": ("Gemma-2-9B-Instruct (Ollama)", "ollama:gemma2:9b"),
+    "ollama:gemma2:2b": ("Gemma-2-2B-Instruct (Ollama)", "ollama:gemma2:2b"),
     "ollama:hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q4_K_M": ("Qwen3.5-9B-4bit (Ollama)", "ollama:hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q4_K_M"),
     "ollama:hf.co/bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M": ("Qwen3.5-4B-4bit (Ollama)", "ollama:hf.co/bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M"),
     # Compatibility aliases

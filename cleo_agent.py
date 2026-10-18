@@ -1027,6 +1027,8 @@ class AIClient:
 
     def get_engine_display_name(self) -> str:
         eng = self.engine
+        if eng in AI_ENGINES:
+            return AI_ENGINES[eng][0]
         if eng == "direct":
             return "Direct FinOps Router (Rule-based)"
         if eng == "gemini":

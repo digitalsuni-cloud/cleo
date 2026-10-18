@@ -1462,22 +1462,10 @@ def init_mcp_if_authenticated() -> bool:
             engine_key = default_engine
         _active_engine_key = engine_key
         
-        if engine_key == "direct":
-            _engine_label = "Direct FinOps Router"
-        elif engine_key == "mlx:mlx-community/Qwen3.5-9B-MLX-4bit":
-            _engine_label = "Qwen3.5-9B-4bit (MLX Default)"
-        elif engine_key == "mlx:mlx-community/Qwen3.5-4B-4bit":
-            _engine_label = "Qwen3.5-4B-4bit (MLX)"
-        elif engine_key == "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit":
-            _engine_label = "Qwen2.5-7B-Instruct-4bit (MLX)"
+        if engine_key in AI_ENGINES:
+            _engine_label = AI_ENGINES[engine_key][0]
         elif engine_key.startswith("mlx:"):
             _engine_label = f"{engine_key.removeprefix('mlx:').split('/')[-1]} (MLX)"
-        elif engine_key in ("ollama:hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q4_K_M", "ollama:qwen3.5:9b"):
-            _engine_label = "Qwen3.5-9B-4bit (Ollama)"
-        elif engine_key in ("ollama:hf.co/bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M", "ollama:qwen3.5:4b"):
-            _engine_label = "Qwen3.5-4B-4bit (Ollama)"
-        elif engine_key == "ollama:qwen2.5:7b":
-            _engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
         elif engine_key.startswith("ollama:"):
             _engine_label = f"Ollama ({engine_key.split(':', 1)[1]})"
         else:
@@ -2265,23 +2253,11 @@ def set_engine(req: EngineSelection):
     old_engine = _active_engine_key
     _active_engine_key = req.engine
     
-    if req.engine == "direct":
-        _engine_label = "Direct FinOps Router"
-    elif req.engine == "mlx:mlx-community/Qwen3.5-9B-MLX-4bit":
-        _engine_label = "Qwen3.5-9B-4bit (MLX Default)"
-    elif req.engine == "mlx:mlx-community/Qwen3.5-4B-4bit":
-        _engine_label = "Qwen3.5-4B-4bit (MLX)"
-    elif req.engine == "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit":
-        _engine_label = "Qwen2.5-7B-Instruct-4bit (MLX)"
+    if req.engine in AI_ENGINES:
+        _engine_label = AI_ENGINES[req.engine][0]
     elif req.engine.startswith("mlx:"):
         model_part = req.engine.removeprefix("mlx:").split("/")[-1]
         _engine_label = f"{model_part} (MLX)"
-    elif req.engine in ("ollama:hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q4_K_M", "ollama:qwen3.5:9b"):
-        _engine_label = "Qwen3.5-9B-4bit (Ollama)"
-    elif req.engine in ("ollama:hf.co/bartowski/Qwen_Qwen3.5-4B-GGUF:Q4_K_M", "ollama:qwen3.5:4b"):
-        _engine_label = "Qwen3.5-4B-4bit (Ollama)"
-    elif req.engine == "ollama:qwen2.5:7b":
-        _engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
     elif req.engine.startswith("ollama:"):
         model_part = req.engine.split(":", 1)[1]
         _engine_label = f"Ollama ({model_part})"
