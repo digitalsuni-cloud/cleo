@@ -11,27 +11,30 @@ cd "$ROOT_DIR"
 # Auto-pull latest updates from GitHub (skip if CLEO_NO_UPDATE=1 or --no-update)
 if [ "${CLEO_NO_UPDATE:-0}" != "1" ] && [ "${1:-}" != "--no-update" ]; then
     if [ -d "$ROOT_DIR/.git" ] && command -v git > /dev/null 2>&1; then
-        # Fetch latest tags and commits (force updates tag references)
-        git fetch --tags --force --quiet origin 2>/dev/null || true
-
-        # If on a branch (e.g. main), fast-forward pull latest code
-        CURRENT_BRANCH=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
-        if [ -n "$CURRENT_BRANCH" ]; then
-            git pull --ff-only --quiet origin "$CURRENT_BRANCH" 2>/dev/null || {
-                if [ -z "$(git status --porcelain 2>/dev/null)" ]; then
-                    git reset --hard origin/"$CURRENT_BRANCH" --quiet 2>/dev/null || true
+        echo "🔄 Checking for Cleo updates from GitHub..."
+        if git fetch --tags --force origin; then
+            CURRENT_BRANCH=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
+            if [ -n "$CURRENT_BRANCH" ]; then
+                if ! git pull --ff-only origin "$CURRENT_BRANCH"; then
+                    if [ -z "$(git status --porcelain 2>/dev/null)" ]; then
+                        echo "🔄 Fast-forward unavailable; syncing branch to origin/$CURRENT_BRANCH..."
+                        git reset --hard origin/"$CURRENT_BRANCH"
+                    fi
                 fi
-            }
-        fi
-
-        # Check for latest release tag if not already an ancestor
-        LATEST_TAG=$(git tag -l "v*" --sort=-v:refname 2>/dev/null | head -n 1)
-        if [ -n "$LATEST_TAG" ]; then
-            if ! git merge-base --is-ancestor "$LATEST_TAG" HEAD 2>/dev/null; then
-                echo "🔄 Updating Cleo to release $LATEST_TAG..."
-                git checkout "$LATEST_TAG" --quiet 2>/dev/null || git merge --ff-only "$LATEST_TAG" --quiet 2>/dev/null || true
             fi
+
+            LATEST_TAG=$(git tag -l "v*" --sort=-v:refname 2>/dev/null | head -n 1)
+            if [ -n "$LATEST_TAG" ]; then
+                if ! git merge-base --is-ancestor "$LATEST_TAG" HEAD 2>/dev/null; then
+                    echo "🔄 Updating Cleo to release $LATEST_TAG..."
+                    git checkout "$LATEST_TAG" || git merge --ff-only "$LATEST_TAG" || true
+                fi
+            fi
+            echo "✓ Cleo is up to date."
+        else
+            echo "⚠️  Could not reach GitHub; continuing with local version."
         fi
+        echo ""
     fi
 fi
 

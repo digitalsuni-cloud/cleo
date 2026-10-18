@@ -9,28 +9,36 @@ Set-Location $ScriptDir
 if ($env:CLEO_NO_UPDATE -ne "1" -and $args -notcontains "--no-update") {
     $gitCmd = Get-Command git -ErrorAction SilentlyContinue
     if ($gitCmd -and (Test-Path "$ScriptDir\.git")) {
-        & git fetch --tags --force --quiet origin 2>$null
-        $currentBranch = (& git symbolic-ref --short -q HEAD 2>$null)
-        if ($currentBranch) {
-            & git pull --ff-only --quiet origin $currentBranch 2>$null
-            if ($LASTEXITCODE -ne 0) {
-                $status = (& git status --porcelain 2>$null)
-                if (-not $status) {
-                    & git reset --hard "origin/$currentBranch" --quiet 2>$null
-                }
-            }
-        }
-        $latestTag = (& git tag -l "v*" --sort=-v:refname 2>$null | Select-Object -First 1)
-        if ($latestTag) {
-            & git merge-base --is-ancestor $latestTag HEAD 2>$null
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "[Cleo] Updating to release $latestTag..."
-                & git checkout $latestTag --quiet 2>$null
+        Write-Host "[Cleo] Checking for updates from GitHub..." -ForegroundColor Cyan
+        & git fetch --tags --force origin
+        if ($LASTEXITCODE -eq 0) {
+            $currentBranch = (& git symbolic-ref --short -q HEAD 2>$null)
+            if ($currentBranch) {
+                & git pull --ff-only origin $currentBranch
                 if ($LASTEXITCODE -ne 0) {
-                    & git merge --ff-only $latestTag --quiet 2>$null
+                    $status = (& git status --porcelain 2>$null)
+                    if (-not $status) {
+                        Write-Host "[Cleo] Fast-forward unavailable; syncing to origin/$currentBranch..." -ForegroundColor Yellow
+                        & git reset --hard "origin/$currentBranch"
+                    }
                 }
             }
+            $latestTag = (& git tag -l "v*" --sort=-v:refname 2>$null | Select-Object -First 1)
+            if ($latestTag) {
+                & git merge-base --is-ancestor $latestTag HEAD 2>$null
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host "[Cleo] Updating to release $latestTag..." -ForegroundColor Cyan
+                    & git checkout $latestTag
+                    if ($LASTEXITCODE -ne 0) {
+                        & git merge --ff-only $latestTag
+                    }
+                }
+            }
+            Write-Host "[Cleo] Up to date." -ForegroundColor Green
+        } else {
+            Write-Host "[Cleo] Could not reach GitHub; continuing with local version." -ForegroundColor Yellow
         }
+        Write-Host ""
     }
 }
 

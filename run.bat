@@ -10,28 +10,36 @@ rem Auto-pull latest updates from GitHub (skip if CLEO_NO_UPDATE=1 or --no-updat
 if not "%CLEO_NO_UPDATE%"=="1" if not "%1"=="--no-update" (
     where git >nul 2>nul
     if not errorlevel 1 if exist ".git" (
-        git fetch --tags --force --quiet origin 2>nul
-        for /f "tokens=*" %%B in ('git symbolic-ref --short -q HEAD 2^>nul') do (
-            git pull --ff-only --quiet origin %%B 2>nul
-            if errorlevel 1 (
-                set "CLEO_DIRTY="
-                for /f %%S in ('git status --porcelain 2^>nul') do set "CLEO_DIRTY=1"
-                if not defined CLEO_DIRTY (
-                    git reset --hard origin/%%B --quiet 2>nul
+        echo [Cleo] Checking for updates from GitHub...
+        git fetch --tags --force origin
+        if errorlevel 1 (
+            echo [Cleo] Could not reach GitHub; continuing with local version.
+        ) else (
+            for /f "tokens=*" %%B in ('git symbolic-ref --short -q HEAD 2^>nul') do (
+                git pull --ff-only origin %%B
+                if errorlevel 1 (
+                    set "CLEO_DIRTY="
+                    for /f %%S in ('git status --porcelain 2^>nul') do set "CLEO_DIRTY=1"
+                    if not defined CLEO_DIRTY (
+                        echo [Cleo] Fast-forward unavailable; syncing to origin/%%B...
+                        git reset --hard origin/%%B
+                    )
                 )
             )
-        )
-        set "LATEST_TAG="
-        for /f "tokens=*" %%T in ('git tag -l "v*" --sort=-v:refname 2^>nul') do (
-            if not defined LATEST_TAG set "LATEST_TAG=%%T"
-        )
-        if defined LATEST_TAG (
-            git merge-base --is-ancestor !LATEST_TAG! HEAD 2>nul
-            if errorlevel 1 (
-                echo [Cleo] Updating to release !LATEST_TAG!...
-                git checkout !LATEST_TAG! --quiet 2>nul || git merge --ff-only !LATEST_TAG! --quiet 2>nul
+            set "LATEST_TAG="
+            for /f "tokens=*" %%T in ('git tag -l "v*" --sort=-v:refname 2^>nul') do (
+                if not defined LATEST_TAG set "LATEST_TAG=%%T"
             )
+            if defined LATEST_TAG (
+                git merge-base --is-ancestor !LATEST_TAG! HEAD >nul 2>nul
+                if errorlevel 1 (
+                    echo [Cleo] Updating to release !LATEST_TAG!...
+                    git checkout !LATEST_TAG! || git merge --ff-only !LATEST_TAG!
+                )
+            )
+            echo [Cleo] Up to date.
         )
+        echo.
     )
 )
 

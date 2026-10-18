@@ -177,7 +177,7 @@ def test_shutdown_endpoint():
     from cleo_server import app
     from starlette.testclient import TestClient
 
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1")
     # Check that route exists and returns shutting_down
     resp = client.get("/api/shutdown")
     assert resp.status_code == 200

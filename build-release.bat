@@ -20,10 +20,13 @@ if exist "release\Tauri\*.exe" (
 
 :: 2. Build Python sidecar if needed
 echo 🐍 Building Python backend sidecar...
-if exist "build-backend.bat" (
+if exist "%~dp0build-backend.bat" (
+    call "%~dp0build-backend.bat" --force
+) else if exist "build-backend.bat" (
     call build-backend.bat --force
 ) else (
-    bash build-backend.sh --force 2>nul
+    echo [Backend] Running build-backend.sh...
+    bash build-backend.sh --force
 )
 
 if not exist "src-tauri\binaries\cleo-server-x86_64-pc-windows-msvc.exe" (

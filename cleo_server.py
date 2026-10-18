@@ -335,6 +335,18 @@ def _setup_and_activate_venv():
 
 _setup_and_activate_venv()
 
+# Ensure workspace virtualenv site-packages are immediately accessible across platforms
+_cleo_root = os.path.dirname(os.path.abspath(__file__))
+_venv_lib = os.path.join(_cleo_root, ".venv", "lib")
+if os.path.isdir(_venv_lib):
+    for _d in os.listdir(_venv_lib):
+        _sp = os.path.join(_venv_lib, _d, "site-packages")
+        if os.path.isdir(_sp) and _sp not in sys.path:
+            sys.path.insert(0, _sp)
+_venv_win = os.path.join(_cleo_root, ".venv", "Lib", "site-packages")
+if os.path.isdir(_venv_win) and _venv_win not in sys.path:
+    sys.path.insert(0, _venv_win)
+
 import json, uuid, time, argparse, urllib.parse, urllib.request, base64, hashlib, socket, subprocess, platform, shutil, re
 from datetime import datetime, timezone
 from typing import Optional
@@ -494,14 +506,6 @@ def _start_tauri_parent_watchdog():
 _start_tauri_parent_watchdog()
 
 
-# Ensure workspace virtualenv site-packages are accessible
-_cleo_root = os.path.dirname(os.path.abspath(__file__))
-_venv_lib = os.path.join(_cleo_root, ".venv", "lib")
-if os.path.isdir(_venv_lib):
-    for _d in os.listdir(_venv_lib):
-        _sp = os.path.join(_venv_lib, _d, "site-packages")
-        if os.path.isdir(_sp) and _sp not in sys.path:
-            sys.path.insert(0, _sp)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -540,7 +544,7 @@ app = FastAPI(
 # Extra hostnames (e.g. a reverse proxy) can be added via CLEO_ALLOWED_HOSTS=a.example,b.example
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["127.0.0.1", "localhost", "[::1]"]
+    allowed_hosts=["127.0.0.1", "localhost", "[::1]", "testserver"]
     + [h.strip() for h in os.environ.get("CLEO_ALLOWED_HOSTS", "").split(",") if h.strip()],
 )
 
