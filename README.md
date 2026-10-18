@@ -391,7 +391,12 @@ flowchart TD
     DeepAgent --> Egress
 ```
 
-> **Note:** Cleo server must be running at `http://127.0.0.1:8080` (or accessible over your local network/tunnel) for n8n to connect to the `/mcp` tool execution endpoint.
+> **Note:** For local developer testing, Cleo runs at `http://127.0.0.1:8080`.
+> 
+> 🏢 **Enterprise Production Setup (Fina Architecture):**
+> For company-wide Slack/Teams deployments where employees mention `@cleo` in public channels:
+> - See the complete [Enterprise n8n Deployment Guide (docs/ENTERPRISE_N8N_SETUP.md)](docs/ENTERPRISE_N8N_SETUP.md).
+> - Uses PostgreSQL persistence, Slack 3-second timeout protection with in-place message updates, thread-isolated sessions (`thread_ts`), and private VPC container networking via [`docker-compose.enterprise.yml`](docker-compose.enterprise.yml) and [`workflows/cleo-enterprise.json`](workflows/cleo-enterprise.json).
 
 ---
 

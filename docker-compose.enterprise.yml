@@ -1,0 +1,114 @@
+# ── Cleo FinOps Agent — Production Enterprise Multi-User Stack ───────────────
+# Deploys:
+#   1. PostgreSQL 16 (production persistence for n8n execution state & sessions)
+#   2. n8n Enterprise (workflow orchestration & webhook ingress for Slack/Teams/GChat)
+#   3. Cleo Backend (isolated internal service executing CloudHealth MCP queries & FinOps AI)
+#
+# Usage:
+#   cp .env.enterprise.example .env.enterprise
+#   # Edit .env.enterprise with your domain, credentials, and API keys
+#   docker compose -f docker-compose.enterprise.yml --env-file .env.enterprise up -d
+
+services:
+
+  # ── PostgreSQL: Production Database for n8n ─────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: cleo-enterprise-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-n8n_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-n8n_enterprise_password_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-n8n}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-n8n_admin} -d ${POSTGRES_DB:-n8n}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cleo-enterprise-net
+
+  # ── Cleo Backend: CloudHealth MCP & FinOps Intelligence Engine ──────────────
+  # Unexposed to public internet: communicates strictly within internal docker network
+  cleo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cleo-enterprise-engine
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      CLEO_HOST: "0.0.0.0"
+      PORT: "8080"
+      CLEO_ALLOWED_HOSTS: "cleo,n8n,localhost,127.0.0.1"
+      CLEO_TOKENS_FILE: "/run/secrets/cleo-token/oauth_tokens.json"
+      AI_ENGINE: "${AI_ENGINE:-gemini}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      CLEO_VERBOSE: "${CLEO_VERBOSE:-0}"
+    volumes:
+      - ./secrets/oauth_tokens.json:/run/secrets/cleo-token/oauth_tokens.json:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - cleo-enterprise-net
+
+  # ── n8n: Multi-Platform Bot Orchestrator ─────────────────────────────────────
+  # Receives @cleo & /cleo webhooks from Slack, Teams, and Google Chat
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: cleo-enterprise-n8n
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"  # Reverse proxy / ALB terminates TLS and forwards here
+    environment:
+      # Database
+      DB_TYPE: "postgresdb"
+      DB_POSTGRESDB_HOST: "postgres"
+      DB_POSTGRESDB_PORT: "5432"
+      DB_POSTGRESDB_DATABASE: "${POSTGRES_DB:-n8n}"
+      DB_POSTGRESDB_USER: "${POSTGRES_USER:-n8n_admin}"
+      DB_POSTGRESDB_PASSWORD: "${POSTGRES_PASSWORD:-n8n_enterprise_password_change_me}"
+      
+      # Encryption & Security
+      N8N_ENCRYPTION_KEY: "${N8N_ENCRYPTION_KEY:-generate_with_openssl_rand_hex_32}"
+      N8N_HOST: "0.0.0.0"
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: "${N8N_PROTOCOL:-https}"
+      WEBHOOK_URL: "${WEBHOOK_URL:-https://cleo-bot.yourcompany.com}"
+      
+      # Cleo Service Connection (Internal Network)
+      CLEO_BASE_URL: "http://cleo:8080"
+      CLEO_DEFAULT_ORG_ID: "${CLEO_DEFAULT_ORG_ID:-}"
+      CLEO_DEFAULT_ORG_NAME: "${CLEO_DEFAULT_ORG_NAME:-}"
+      
+      # Concurrency & Performance
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "168"  # 7 days
+      N8N_METRICS: "true"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/workflows:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      cleo:
+        condition: service_healthy
+    networks:
+      - cleo-enterprise-net
+
+networks:
+  cleo-enterprise-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  n8n_data:

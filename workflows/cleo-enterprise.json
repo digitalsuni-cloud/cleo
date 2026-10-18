@@ -1,0 +1,1138 @@
+{
+  "name": "Cleo Enterprise — Slack + CloudHealth MCP Agent (Fina Architecture)",
+  "nodes": [
+    {
+      "parameters": {
+        "trigger": [
+          "app_mention"
+        ],
+        "watchWorkspace": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.slackTrigger",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        -200
+      ],
+      "id": "slack-trigger",
+      "name": "Slack Trigger (@cleo)",
+      "credentials": {
+        "slackApi": {
+          "id": "",
+          "name": "Cleo Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $json.channel }}",
+          "mode": "id"
+        },
+        "text": "=:robot_face: Cleo is analyzing CloudHealth data... :loading:",
+        "otherOptions": {
+          "thread_ts": {
+            "replyValues": {
+              "thread_ts": "={{ $node[\"Slack Trigger (@cleo)\"].json[\"thread_ts\"] || $node[\"Slack Trigger (@cleo)\"].json[\"ts\"] }}"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        -480,
+        -200
+      ],
+      "id": "initial-reply",
+      "name": "Initial Reply (3s Timeout Guard)",
+      "credentials": {
+        "slackApi": {
+          "id": "",
+          "name": "Cleo Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -700,
+        100
+      ],
+      "id": "web-chat-trigger",
+      "name": "Web Chat Fallback Trigger"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fina-input-1",
+              "name": "chatInput",
+              "value": "={{ ($node[\"Slack Trigger (@cleo)\"].json[\"text\"] || '').replace(/<@[A-Z0-9]+>/g, '').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "fina-input-2",
+              "name": "sessionId",
+              "value": "={{ $node[\"Slack Trigger (@cleo)\"].json[\"thread_ts\"] || $node[\"Slack Trigger (@cleo)\"].json[\"ts\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "fina-input-3",
+              "name": "channel",
+              "value": "={{ $node[\"Slack Trigger (@cleo)\"].json[\"channel\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "fina-input-4",
+              "name": "source",
+              "value": "slack",
+              "type": "string"
+            },
+            {
+              "id": "fina-input-5",
+              "name": "initialMessageTs",
+              "value": "={{ $node[\"Initial Reply (3s Timeout Guard)\"].json[\"message_timestamp\"] || $node[\"Initial Reply (3s Timeout Guard)\"].json[\"ts\"] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -260,
+        -200
+      ],
+      "id": "generate-slack-input",
+      "name": "Generate Slack Input"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "web-input-1",
+              "name": "chatInput",
+              "value": "={{ $json.chatInput }}",
+              "type": "string"
+            },
+            {
+              "id": "web-input-2",
+              "name": "sessionId",
+              "value": "={{ $json.sessionId || (+new Date).toString(36).slice(-5) + Math.random().toString(36).substr(2, 5) }}",
+              "type": "string"
+            },
+            {
+              "id": "web-input-3",
+              "name": "channel",
+              "value": "web",
+              "type": "string"
+            },
+            {
+              "id": "web-input-4",
+              "name": "source",
+              "value": "web",
+              "type": "string"
+            },
+            {
+              "id": "web-input-5",
+              "name": "initialMessageTs",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -260,
+        100
+      ],
+      "id": "generate-web-input",
+      "name": "Generate Web Input"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.sessionId }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -40,
+        200
+      ],
+      "id": "thread-memory",
+      "name": "Thread Window Memory"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "state-1",
+              "name": "chatInput",
+              "value": "={{ $json.chatInput }}",
+              "type": "string"
+            },
+            {
+              "id": "state-2",
+              "name": "sessionId",
+              "value": "={{ $json.sessionId }}",
+              "type": "string"
+            },
+            {
+              "id": "state-3",
+              "name": "channel",
+              "value": "={{ $json.channel }}",
+              "type": "string"
+            },
+            {
+              "id": "state-4",
+              "name": "source",
+              "value": "={{ $json.source }}",
+              "type": "string"
+            },
+            {
+              "id": "state-5",
+              "name": "initialMessageTs",
+              "value": "={{ $json.initialMessageTs }}",
+              "type": "string"
+            },
+            {
+              "id": "state-6",
+              "name": "orgId",
+              "value": "={{ $json.orgId || $env.CLEO_DEFAULT_ORG_ID || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "state-7",
+              "name": "orgName",
+              "value": "={{ $json.orgName || $env.CLEO_DEFAULT_ORG_NAME || 'Production CloudHealth' }}",
+              "type": "string"
+            },
+            {
+              "id": "state-8",
+              "name": "awaitingOrgSelection",
+              "value": "={{ $json.awaitingOrgSelection || false }}",
+              "type": "boolean"
+            },
+            {
+              "id": "state-9",
+              "name": "orgList",
+              "value": "={{ $json.orgList || [] }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -40,
+        -40
+      ],
+      "id": "load-session-state",
+      "name": "Load Session State"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cond-reset",
+              "leftValue": "={{ $json.chatInput.toLowerCase() }}",
+              "rightValue": "/reset",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        180,
+        -40
+      ],
+      "id": "check-reset",
+      "name": "Reset Requested?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "r1",
+              "name": "orgId",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "r2",
+              "name": "orgName",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "r3",
+              "name": "awaitingOrgSelection",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "r4",
+              "name": "orgList",
+              "value": "=[]",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        380,
+        -240
+      ],
+      "id": "reset-session",
+      "name": "Reset Session State"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cond-has-session",
+              "leftValue": "={{ $json.orgId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        380,
+        -40
+      ],
+      "id": "check-session",
+      "name": "Has Confirmed Org?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cond-awaiting",
+              "leftValue": "={{ $json.awaitingOrgSelection }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        580,
+        80
+      ],
+      "id": "check-awaiting",
+      "name": "Awaiting Org Selection?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CLEO_BASE_URL || 'http://cleo:8080' }}/mcp",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"tools/call\",\n  \"params\": { \"name\": \"list_managed_orgs\", \"arguments\": {} },\n  \"id\": 1\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        580,
+        -240
+      ],
+      "id": "list-orgs",
+      "name": "List Managed Orgs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const mcpResponse = $input.first().json;\nlet orgs = [];\nlet isAuthError = false;\ntry {\n  if (mcpResponse.result && mcpResponse.result.isError) isAuthError = true;\n  const content = (mcpResponse.result || mcpResponse).content || [];\n  for (const item of content) {\n    if (item.type === 'text') {\n      if (item.text.includes('not authenticated') || item.text.includes('unauthorized') || item.text.includes('-32001')) {\n        isAuthError = true;\n      }\n      const parsed = JSON.parse(item.text);\n      orgs = Array.isArray(parsed) ? parsed : (parsed.organizations || parsed.data || []);\n    }\n  }\n} catch(e) {}\n\nconst state = $('Load Session State').first().json;\n\nif (isAuthError || orgs.length === 0) {\n  const msg = '⚠️ **CloudHealth MCP is not authenticated**\\n\\nPlease ensure the enterprise CloudHealth credentials are mounted at `/run/secrets/cleo-token/oauth_tokens.json`.\\n\\nType `/reset` once credentials are refreshed.';\n  return [{ json: { output: msg, orgList: [], awaitingOrgSelection: false, channel: state.channel, initialMessageTs: state.initialMessageTs, source: state.source } }];\n}\n\nlet menu = '👋 **Welcome to Cleo FinOps Assistant!**\\n\\nPlease reply with the **number** of the organization you want to query:\\n\\n';\norgs.forEach((org, i) => {\n  const name = org.name || org.orgName || org.displayName || `Org ${i+1}`;\n  const id = org.id || org.crn || org.orgId || '';\n  menu += `*${i+1}.* ${name}`;\n  if (id) menu += ` \\`${id}\\``;\n  menu += '\\n';\n});\nmenu += '\\n_Type `/reset` at any time to switch organizations._';\nreturn [{ json: { output: menu, orgList: orgs, awaitingOrgSelection: true, channel: state.channel, initialMessageTs: state.initialMessageTs, source: state.source } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800,
+        -240
+      ],
+      "id": "format-org-menu",
+      "name": "Format Org Menu"
+    },
+    {
+      "parameters": {
+        "jsCode": "const userInput = $('Load Session State').first().json.chatInput.trim();\nconst sessionData = $('Load Session State').first().json;\nconst orgList = sessionData.orgList || [];\nconst selection = parseInt(userInput, 10);\nif (isNaN(selection) || selection < 1 || selection > orgList.length) {\n  return [{\n    json: {\n      valid: false,\n      output: `⚠️ Please type a number between 1 and ${orgList.length} to select an organization.`,\n      orgList,\n      awaitingOrgSelection: true,\n      channel: sessionData.channel,\n      initialMessageTs: sessionData.initialMessageTs,\n      source: sessionData.source\n    }\n  }];\n}\nconst selected = orgList[selection - 1];\nconst orgName = selected.name || selected.orgName || selected.displayName || `Org ${selection}`;\nconst orgId = selected.id || selected.crn || selected.orgId;\nreturn [{\n  json: {\n    valid: true,\n    orgId,\n    orgName,\n    orgList,\n    awaitingOrgSelection: false,\n    channel: sessionData.channel,\n    initialMessageTs: sessionData.initialMessageTs,\n    source: sessionData.source,\n    output: `✅ *Connected to: ${orgName}*\\n\\nI'm ready for your CloudHealth FinOps queries in this thread. What would you like to know?\\n\\n_Examples:_\\n- What were our top 5 AWS services by cost last month?\\n- Show Azure monthly spend trends for Q3\\n- Compare AWS vs Azure costs this month`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        80
+      ],
+      "id": "parse-org-selection",
+      "name": "Parse Org Selection"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cond-valid-org",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1020,
+        80
+      ],
+      "id": "valid-selection",
+      "name": "Valid Org Number?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "so1",
+              "name": "orgId",
+              "value": "={{ $json.orgId }}",
+              "type": "string"
+            },
+            {
+              "id": "so2",
+              "name": "orgName",
+              "value": "={{ $json.orgName }}",
+              "type": "string"
+            },
+            {
+              "id": "so3",
+              "name": "awaitingOrgSelection",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "so4",
+              "name": "channel",
+              "value": "={{ $json.channel }}",
+              "type": "string"
+            },
+            {
+              "id": "so5",
+              "name": "initialMessageTs",
+              "value": "={{ $json.initialMessageTs }}",
+              "type": "string"
+            },
+            {
+              "id": "so6",
+              "name": "source",
+              "value": "={{ $json.source }}",
+              "type": "string"
+            },
+            {
+              "id": "so7",
+              "name": "chatInput",
+              "value": "={{ $('Load Session State').first().json.chatInput }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1240,
+        20
+      ],
+      "id": "store-confirmed-org",
+      "name": "Store Confirmed Org"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Classify this cloud cost question as 'simple' or 'complex'.\n\nSimple = direct lookup, one metric, one single month, one cloud, dataset discovery\nComplex = period-over-period trend, month-over-month variance, multi-cloud comparison, forecast, anomaly root-cause\n\nQuestion: {{ $('Load Session State').first().json.chatInput }}\n\nReply with ONE word only: simple or complex",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        1460,
+        -100
+      ],
+      "id": "query-classifier",
+      "name": "Query Classifier"
+    },
+    {
+      "parameters": {
+        "model": "gemini-1.5-flash",
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1460,
+        100
+      ],
+      "id": "classifier-llm",
+      "name": "Google Gemini Flash (Classifier)",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "",
+          "name": "Google Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cond-simple",
+              "leftValue": "={{ $json.text.toLowerCase() }}",
+              "rightValue": "simple",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1680,
+        -100
+      ],
+      "id": "check-complexity",
+      "name": "Simple or Complex?"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Today: {{ $now.toFormat('yyyy-MM-dd') }}\nTenant: {{ $('Store Confirmed Org').first().json.orgName || $('Load Session State').first().json.orgName }}\nOrgId: {{ $('Store Confirmed Org').first().json.orgId || $('Load Session State').first().json.orgId }}\nQuestion: {{ $('Load Session State').first().json.chatInput }}",
+        "options": {
+          "systemMessage": "=You are Cleo, an enterprise FinOps AI assistant for {{ $('Store Confirmed Org').first().json.orgName || $('Load Session State').first().json.orgName }}.\n\nRules:\n1. Answer using live CloudHealth data via the execute_datasource_query MCP tool.\n2. Always pass orgId: \"{{ $('Store Confirmed Org').first().json.orgId || $('Load Session State').first().json.orgId }}\" in all tool calls.\n3. Never SELECT * — select specific columns explicitly.\n4. Format responses cleanly for Slack: use markdown tables, *bold* headers, and currency symbols ($).\n5. Keep outputs concise and factual.",
+          "maxIterations": 15
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1920,
+        -240
+      ],
+      "id": "cleo-fast-agent",
+      "name": "Cleo Fast Agent",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Today: {{ $now.toFormat('yyyy-MM-dd') }}\nTenant: {{ $('Store Confirmed Org').first().json.orgName || $('Load Session State').first().json.orgName }}\nOrgId: {{ $('Store Confirmed Org').first().json.orgId || $('Load Session State').first().json.orgId }}\nQuestion: {{ $('Load Session State').first().json.chatInput }}",
+        "options": {
+          "systemMessage": "=You are Cleo Deep, an expert FinOps intelligence agent for {{ $('Store Confirmed Org').first().json.orgName || $('Load Session State').first().json.orgName }}. You handle complex multi-cloud, trend analysis, MoM cost variations, and forecasting.\n\nRules:\n1. Answer using live CloudHealth data via the execute_datasource_query MCP tool.\n2. Always pass orgId: \"{{ $('Store Confirmed Org').first().json.orgId || $('Load Session State').first().json.orgId }}\" in all tool calls.\n3. Perform step-by-step reasoning with the Think tool before formulating SQL.\n4. Format tables with Markdown, percentages (%), and MoM delta comparisons.\n5. Keep outputs structured and concise for Slack threads.",
+          "maxIterations": 30
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1920,
+        80
+      ],
+      "id": "cleo-deep-agent",
+      "name": "Cleo Deep Agent",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "endpointUrl": "={{ $env.CLEO_BASE_URL || 'http://cleo:8080' }}/mcp",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [
+        2140,
+        -80
+      ],
+      "id": "mcp-client-tool",
+      "name": "CloudHealth MCP Service"
+    },
+    {
+      "parameters": {
+        "description": "Plan SQL queries, dataset selection, and multi-step approaches silently."
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [
+        2140,
+        40
+      ],
+      "id": "think-tool",
+      "name": "Think Tool"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        2140,
+        160
+      ],
+      "id": "calculator-tool",
+      "name": "Calculator Tool"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fout-1",
+              "name": "output",
+              "value": "={{ $('Cleo Fast Agent').first()?.json?.output || $('Cleo Deep Agent').first()?.json?.output || $('Format Org Menu').first()?.json?.output || $('Parse Org Selection').first()?.json?.output || 'Cleo was unable to complete the query.' }}",
+              "type": "string"
+            },
+            {
+              "id": "fout-2",
+              "name": "channel",
+              "value": "={{ $('Load Session State').first().json.channel }}",
+              "type": "string"
+            },
+            {
+              "id": "fout-3",
+              "name": "initialMessageTs",
+              "value": "={{ $('Load Session State').first().json.initialMessageTs }}",
+              "type": "string"
+            },
+            {
+              "id": "fout-4",
+              "name": "source",
+              "value": "={{ $('Load Session State').first().json.source }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2420,
+        -100
+      ],
+      "id": "prepare-output",
+      "name": "Prepare Output"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cond-is-slack",
+              "leftValue": "={{ $json.source }}",
+              "rightValue": "slack",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2640,
+        -100
+      ],
+      "id": "check-source",
+      "name": "Is Slack Event?"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $json.channel }}",
+          "mode": "id"
+        },
+        "ts": "={{ $json.initialMessageTs }}",
+        "text": "={{ $json.output }}",
+        "updateFields": {},
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        2880,
+        -180
+      ],
+      "id": "update-slack-message",
+      "name": "Update Slack Placeholder in-place",
+      "credentials": {
+        "slackApi": {
+          "id": "",
+          "name": "Cleo Slack API"
+        }
+      },
+      "onError": "continueErrorOutput"
+    }
+  ],
+  "connections": {
+    "Slack Trigger (@cleo)": {
+      "main": [
+        [
+          {
+            "node": "Initial Reply (3s Timeout Guard)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initial Reply (3s Timeout Guard)": {
+      "main": [
+        [
+          {
+            "node": "Generate Slack Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Web Chat Fallback Trigger": {
+      "main": [
+        [
+          {
+            "node": "Generate Web Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Slack Input": {
+      "main": [
+        [
+          {
+            "node": "Load Session State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Web Input": {
+      "main": [
+        [
+          {
+            "node": "Load Session State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Session State": {
+      "main": [
+        [
+          {
+            "node": "Reset Requested?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reset Requested?": {
+      "main": [
+        [
+          {
+            "node": "Reset Session State",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Has Confirmed Org?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reset Session State": {
+      "main": [
+        [
+          {
+            "node": "List Managed Orgs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Confirmed Org?": {
+      "main": [
+        [
+          {
+            "node": "Query Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Awaiting Org Selection?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Awaiting Org Selection?": {
+      "main": [
+        [
+          {
+            "node": "Parse Org Selection",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "List Managed Orgs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Managed Orgs": {
+      "main": [
+        [
+          {
+            "node": "Format Org Menu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Org Menu": {
+      "main": [
+        [
+          {
+            "node": "Prepare Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Org Selection": {
+      "main": [
+        [
+          {
+            "node": "Valid Org Number?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Org Number?": {
+      "main": [
+        [
+          {
+            "node": "Store Confirmed Org",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Confirmed Org": {
+      "main": [
+        [
+          {
+            "node": "Query Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Classifier": {
+      "main": [
+        [
+          {
+            "node": "Simple or Complex?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple or Complex?": {
+      "main": [
+        [
+          {
+            "node": "Cleo Fast Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cleo Deep Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleo Fast Agent": {
+      "main": [
+        [
+          {
+            "node": "Prepare Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleo Deep Agent": {
+      "main": [
+        [
+          {
+            "node": "Prepare Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Output": {
+      "main": [
+        [
+          {
+            "node": "Is Slack Event?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Slack Event?": {
+      "main": [
+        [
+          {
+            "node": "Update Slack Placeholder in-place",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Flash (Classifier)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Query Classifier",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CloudHealth MCP Service": {
+      "ai_tool": [
+        [
+          {
+            "node": "Cleo Fast Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cleo Deep Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Think Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Cleo Fast Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cleo Deep Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Cleo Fast Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cleo Deep Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "id": "cleo-fina-enterprise-workflow",
+  "tags": [
+    {
+      "name": "finops"
+    },
+    {
+      "name": "cloudhealth"
+    },
+    {
+      "name": "enterprise"
+    },
+    {
+      "name": "slack"
+    }
+  ]
+}
