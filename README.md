@@ -90,51 +90,59 @@ Cleo needs to connect to your CloudHealth account to access your billing data. T
 | `~/.cleo/sessions.json` | Your chat history and conversation logs | Your home folder | **AES-256-GCM Encrypted** (`0600`) |
 | `~/.cleo/mcp_oauth_tokens.json` | Additional MCP tool OAuth tokens | Your home folder | **AES-256-GCM Encrypted** (`0600`) |
 
-> **`~`** means your home folder: `/Users/yourname/` on Mac, `C:\Users\yourname\` on Windows, `/home/yourname/` on Linux.
+Your token is automatically refreshed while Cleo is active. CloudHealth authorization tokens have a **24-hour validity period** — if your session expires after 24 hours of inactivity or token expiration, simply click the status pill in the UI to reconnect.
 
-Your token is automatically refreshed on every run. **You only need to log in once** — unless your token expires (typically after many months of inactivity).
-
-**To re-authenticate:** Delete `~/.cleo/oauth_tokens.json` and reconnect via the UI.
+**To re-authenticate:** Click the **CloudHealth** status pill in the UI, or delete `~/.cleo/oauth_tokens.json` and reconnect.
 
 ---
 
 ## 🧠 Choosing an AI Engine
 
-Cleo can answer your questions using several AI engines. You choose in the **Settings panel** (click the ⚙️ gear icon in the UI).
+Cleo supports multiple AI engines, from 100% offline local inference with hardware acceleration to cloud AI and a built-in deterministic query router. You can switch engines at any time in the **Settings panel** (click the ⚙️ gear icon in the top right of the UI).
 
-### Option A — Local AI (Free, No API Key)
+### Option A — Local AI (Free, 100% Private, Zero API Key)
 
-Run AI entirely on your machine. Recommended for privacy and zero ongoing cost.
+Run state-of-the-art open-weights models entirely offline on your computer. All queries, prompts, and cloud cost data remain strictly on your machine with zero external network egress.
 
-| Model | Platform | RAM Needed | Speed |
+| Model | Runtime & Platform | Hardware Acceleration | RAM Needed | Speed & Recommendation |
+|---|---|---|---|---|
+| **Qwen3.5-9B-4bit** | **Apple Silicon Mac (MLX)** | Apple Metal Unified Memory | ~5.5 GB | **Fast · Recommended Default for Mac** |
+| **Qwen3.5-4B-4bit** | **Apple Silicon Mac (MLX)** | Apple Metal Unified Memory | ~2.6 GB | **Very Fast · Ultra-lightweight** |
+| **Qwen3.5-9B (GGUF)** | **Windows / Linux / Mac (Ollama)** | NVIDIA CUDA / AMD ROCm / DirectML / CPU AVX2 | ~5.5 GB | **Fast · Recommended for PCs & Linux** |
+| **Qwen3.5-4B (GGUF)** | **Windows / Linux / Mac (Ollama)** | NVIDIA CUDA / AMD ROCm / DirectML / CPU AVX2 | ~2.6 GB | **Very Fast · Lightweight** |
+| **Qwen2.5-7B-Instruct** | **Windows / Linux / Mac (Ollama)** | GPU / CPU Acceleration | ~4.7 GB | Fast · Proven FinOps reasoning |
+| **Qwen2.5-3B-Instruct** | **Windows / Linux / Mac (Ollama)** | GPU / CPU Acceleration | ~1.9 GB | Very Fast · Minimal memory footprint |
+
+* **Automatic Hardware Detection:** Cleo automatically inspects your operating system, CPU architecture, and total physical memory (RAM) at startup, displaying hardware badges and highlighting the optimal recommended model for your machine.
+* **On Apple Silicon Mac (M1/M2/M3/M4):** Runs natively via **Apple MLX** using unified memory and Metal GPU cores. Click **Download** next to any model in Settings — Cleo streams the quantized model directly from Hugging Face with real-time download progress and speed meters.
+* **On Windows, Linux, & Intel Mac:** Runs natively via **Ollama** with GPU acceleration (NVIDIA CUDA, AMD ROCm, DirectML) and AVX2 CPU fallback. Cleo connects to your local Ollama daemon (`http://localhost:11434`) and can automatically install, launch, and manage the Ollama service in the background if it is not already running. Click **Download** in the Settings UI to pull models directly.
+
+### Option B — Direct FinOps Router (Instant, Zero Model Download, No GPU Needed)
+
+If your computer has low RAM or you want instantaneous answers without downloading multi-gigabyte models, select the **Direct FinOps Router (Built-in)**:
+* **Zero Model Overhead:** Requires 0 GB of model weights and no GPU acceleration.
+* **Deterministic Intelligence:** Parses questions, executes CloudHealth MCP queries, aggregates multi-cloud spend data, computes period-over-period variances, and renders charts directly.
+* **No API Key Required:** Completely free, offline, and works out of the box on any computer.
+
+### Option C — Cloud AI (Requires API Key)
+
+For cloud AI models with high context limits and reasoning power:
+
+| Engine | Default Model | Where to get a key | Env Variable |
 |---|---|---|---|
-| **Qwen2.5-7B** (recommended) | Apple Silicon Mac | ~5 GB | Fast |
-| **Qwen2.5-3B** (lighter) | Apple Silicon Mac | ~2 GB | Very fast |
-| **Qwen2.5-7B via Ollama** | Windows / Linux / Mac | ~5 GB | Fast |
-
-**On Apple Silicon Mac:** Cleo installs `mlx-lm` automatically. Just select a local model in the UI and click **Download** — Cleo pulls the model from Hugging Face (one-time download, ~4 GB).
-
-**On Windows/Linux:** Use Docker (see Docker section below).
-
-### Option B — Cloud AI (Requires API Key)
-
-| Engine | Where to get a key | Env variable |
-|---|---|---|
-| **Google Gemini** | [aistudio.google.com](https://aistudio.google.com) | `GEMINI_API_KEY` |
-| **OpenAI GPT-4o** | [platform.openai.com](https://platform.openai.com) | `OPENAI_API_KEY` |
-| **Anthropic Claude** | [console.anthropic.com](https://console.anthropic.com) | `ANTHROPIC_API_KEY` |
+| **Google Gemini** | `gemini-3.5-flash` (Gemini Live streaming supported) | [aistudio.google.com](https://aistudio.google.com) | `GEMINI_API_KEY` |
+| **OpenAI** | `gpt-4o` | [platform.openai.com](https://platform.openai.com) | `OPENAI_API_KEY` |
+| **Anthropic Claude** | `claude-3-7-sonnet-latest` | [console.anthropic.com](https://console.anthropic.com) | `ANTHROPIC_API_KEY` |
 
 **How to add your API key:**
 
-Option 1 — Enter it in the Cleo UI (Settings → API Keys). Cleo saves it to `~/.cleo/config.json`.
-
-Option 2 — Create a `.env` file in the `cleo/` folder:
-
-```bash
-cp .env.example .env
-# Then edit .env and add your key:
-GEMINI_API_KEY=AIza...
-```
+* **Option 1 (Recommended):** Enter your key in the Cleo UI (Settings ⚙️ → **API Keys** tab). Cleo encrypts and saves it locally in `~/.cleo/config.json` via AES-256-GCM.
+* **Option 2:** Set the environment variable in your terminal or create a `.env` file in the project folder:
+  ```bash
+  cp .env.example .env
+  # Add your API key:
+  GEMINI_API_KEY=AIza...
+  ```
 
 ---
 
@@ -188,9 +196,9 @@ Type a number to select:
 
 ---
 
-## 🐳 Optional: Docker Installation (Windows / Linux / Servers)
+## 🐳 Optional: Docker Installation (Headless Servers / Containers)
 
-Running via standard Python (`python3 cleo_server.py`) is the default and recommended method. If you prefer running Cleo inside a container without setting up a local Python environment:
+The **Cleo Desktop App** or standard launcher (`./run.sh` / `run.bat`) is the recommended method. If you prefer deploying Cleo in a containerized environment or headless Linux server:
 
 ### Prerequisites
 
@@ -261,6 +269,8 @@ cleo/
 ├── build-backend.sh     ← Standalone PyInstaller sidecar builder
 ├── cleo_server.py       ← Backend entry point & FastAPI web service
 ├── cleo_agent.py        ← AI brain: connects CloudHealth, calls AI, handles tools
+├── cleo_crypto.py       ← AES-256-GCM encryption engine & key derivation (Keychain / machine key)
+├── cleo_llm.py          ← LLM engine integration, hardware detection & model catalogs
 ├── cleo_charts.py       ← Chart generation & interactive analytics workbench
 ├── cleo_query.py        ← Deterministic query understanding & SQL generation
 ├── cleo_ui.html         ← The glassmorphic chat interface
@@ -284,20 +294,23 @@ cleo/
 
 ### Files Cleo Creates (in `~/.cleo/`)
 
-| File | Purpose | Safe to delete? |
-|---|---|---|
-| `oauth_tokens.json` | CloudHealth login tokens | Yes — you'll need to re-authenticate |
-| `config.json` | AI engine API keys, preferences | Yes — you'll need to re-enter API keys |
-| `sessions.json` | Chat history | Yes — history will be cleared |
-| `pkce_verifier.json` | Temporary OAuth state | Yes — auto-recreated |
+| File | Purpose | Security & Encryption | Safe to delete? |
+|---|---|---|---|
+| `oauth_tokens.json` | CloudHealth login and refresh tokens | **AES-256-GCM Encrypted** (`0600`) | Yes — you'll need to re-authenticate |
+| `config.json` | AI engine API keys, preferences | **AES-256-GCM Encrypted** (`0600`) | Yes — you'll need to re-enter API keys |
+| `sessions.json` | Chat history and conversation logs | **AES-256-GCM Encrypted** (`0600`) | Yes — chat history will be cleared |
+| `mcp_oauth_tokens.json` | Secondary MCP tool credentials | **AES-256-GCM Encrypted** (`0600`) | Yes — re-authenticate as needed |
+| `.machine_key` | Local symmetric key material | Strict owner-only permissions (`0600`) | Yes — auto-regenerated if deleted |
+| `pkce_verifier.json` | Temporary OAuth PKCE state | **AES-256-GCM Encrypted** (`0600`) | Yes — auto-recreated |
 
 ### Environment Variables
 
 | Variable | Purpose |
 |---|---|
-| `OPENAI_API_KEY` | OpenAI API key |
-| `ANTHROPIC_API_KEY` | Anthropic Claude API key |
-| `GEMINI_API_KEY` | Google Gemini API key |
+| `GEMINI_API_KEY` | Google Gemini API key (supports Gemini 3.5 Flash & Live) |
+| `OPENAI_API_KEY` | OpenAI API key (supports GPT-4o) |
+| `ANTHROPIC_API_KEY` | Anthropic Claude API key (supports Claude 3.7 Sonnet) |
+| `CLEO_PASSPHRASE` / `CLEO_ENCRYPTION_KEY` | User-defined master passphrase/key for AES-256-GCM encrypted storage |
 | `CLEO_VERBOSE=1` | Enable detailed debug logging |
 | `CLEO_AUTO_UPDATE=1` | Apply updates automatically at startup (off by default; see Auto-Updates) |
 | `CLEO_NO_UPDATE=1` | Skip the update check entirely |
@@ -387,9 +400,10 @@ python3 cleo_server.py
 ```
 
 ### Local model is slow or not loading
-- Check you have at least **5 GB free RAM** for Qwen2.5-7B, or **2 GB** for Qwen2.5-3B.
-- On Apple Silicon, make sure you're running native Python (not Rosetta). Check with `python3 -c "import platform; print(platform.machine())"` — it should say `arm64`.
-- Switch to a cloud AI engine (Gemini/OpenAI) while the model downloads.
+- Check that you have sufficient free RAM for your model: ~5.5 GB for Qwen3.5-9B / Qwen2.5-7B, or ~2.6 GB for Qwen3.5-4B / Qwen2.5-3B.
+- On Apple Silicon Mac, make sure you're running native ARM64 for Metal acceleration.
+- On Windows / Linux, make sure Ollama has access to your GPU (NVIDIA CUDA / AMD ROCm / DirectML) or AVX2 CPU.
+- If your system has limited RAM, switch to the built-in **Direct FinOps Router** (zero memory footprint, instant answers) or a cloud AI provider (Gemini / OpenAI / Claude).
 
 ### Questions return "$0" or "No data"
 - Make sure you selected a tenant after connecting (type the number shown in the welcome message).
