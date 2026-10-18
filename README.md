@@ -248,7 +248,9 @@ docker compose down
 
 ## 🔄 Auto-Updates
 
-Cleo automatically checks GitHub for the latest release **every time you start or restart** (`python3 cleo_server.py`). If a newer commit is detected, Cleo automatically fetches the latest code (using `git pull` or `curl` fallback), updates itself, and reloads seamlessly.
+Cleo checks GitHub for newer commits and shows an update banner in the Web UI. Updates are **never applied automatically** unless you opt in: the code comes from a remote branch without signature verification, so applying it unattended would turn a compromise of that repo into code execution on every launch.
+
+To opt in to applying updates at startup, set `CLEO_AUTO_UPDATE=1`.
 
 You can also update on-demand from the Web UI: if a newer version is released while Cleo is already running, an update banner appears at the top:
 
@@ -258,9 +260,9 @@ You can also update on-demand from the Web UI: if a newer version is released wh
 ```
 
 Click **Update now** — Cleo updates in the background and prompts you to restart.
-To skip the startup update check, use `--no-update` or set `CLEO_NO_UPDATE=1`.
+To skip the update check entirely, use `--no-update` or set `CLEO_NO_UPDATE=1`.
 
-> **Note:** If `git pull` fails (due to merge conflicts, uncommitted local edits, or if Cleo was extracted from a ZIP), Cleo automatically falls back to downloading and extracting the latest code archive via `curl`. Your `.env` file, virtual environment, and local configs are always preserved.
+> **Note:** Git checkouts update with `git pull --ff-only` only. If you have local commits or uncommitted edits that block a fast-forward, the update stops with an error and nothing is overwritten; update manually. Cleo extracted from a ZIP (no `.git`) downloads the code archive instead, with path-traversal protection (requires a recent Python). Your `.env`, virtual environment, and local configs are preserved.
 
 To manually update from the terminal at any time using `curl`:
 ```bash

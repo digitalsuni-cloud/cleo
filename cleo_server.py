@@ -2980,22 +2980,19 @@ def _get_latest_remote_sha() -> str:
         pass
     return ""
 
-def _apply_curl_update() -> tuple[bool, str]:
-    """Download latest repository archive via curl and extract into _CLEO_ROOT."""
-    tarball_url = f"https://github.com/{CLEO_GITHUB_REPO}/archive/refs/heads/main.tar.gz"
-    # 1. Standard curl piped to tar (preserves .env and local untracked configs)
-    try:
-        cmd = f"curl -sL --max-time 90 '{tarball_url}' | tar -xz --strip-components=1 -C '{_CLEO_ROOT}'"
-        res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
-        if res.returncode == 0:
-            return True, "Successfully downloaded and applied latest update via curl."
-        curl_err = res.stderr.strip() or f"curl exit code {res.returncode}"
-    except Exception as e:
-        curl_err = str(e)
+_REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
-    # 2. Python in-memory urllib + tarfile fallback
+def _apply_curl_update() -> tuple[bool, str]:
+    """Download latest repository archive (stdlib only, no shell) and extract into _CLEO_ROOT."""
+    import io, tarfile
+    # Security: no shell, validated repo slug, and refuse to extract without tarfile's "data" filter
+    # (blocks path traversal / symlink / device members). Requires Python 3.12+ (or 3.8-3.11 security patches).
+    if not _REPO_SLUG_RE.match(CLEO_GITHUB_REPO):
+        return False, f"Refusing update: invalid CLEO_GITHUB_REPO {CLEO_GITHUB_REPO!r}"
+    if not hasattr(tarfile, "data_filter"):
+        return False, "Refusing update: this Python lacks tarfile extraction filters (upgrade Python)."
+    tarball_url = f"https://github.com/{CLEO_GITHUB_REPO}/archive/refs/heads/main.tar.gz"
     try:
-        import io, tarfile
         req = urllib.request.Request(tarball_url, headers={"User-Agent": "Cleo-FinOps/2.1"})
         with urllib.request.urlopen(req, timeout=90) as resp:
             tar_bytes = io.BytesIO(resp.read())
@@ -3003,19 +3000,11 @@ def _apply_curl_update() -> tuple[bool, str]:
             for member in tar.getmembers():
                 parts = member.name.split("/", 1)
                 if len(parts) > 1 and parts[1]:
-                    safe_name = os.path.normpath(parts[1])
-                    # Security: reject path traversal attempts (M1 fix)
-                    if safe_name.startswith("..") or os.path.isabs(safe_name):
-                        logger.warning(f"[Update] Skipping unsafe tar member: {member.name!r}")
-                        continue
-                    member.name = safe_name
-                    try:
-                        tar.extract(member, path=_CLEO_ROOT, filter="data")  # Python 3.12+
-                    except TypeError:
-                        tar.extract(member, path=_CLEO_ROOT)
-        return True, "Successfully updated via Python tarfile extraction."
-    except Exception as pe:
-        return False, f"Curl failed ({curl_err}) and python extraction failed ({pe})"
+                    member.name = parts[1]  # strip the top-level archive dir
+                    tar.extract(member, path=_CLEO_ROOT, filter="data")
+        return True, "Successfully updated via archive download."
+    except Exception as e:
+        return False, f"Archive update failed: {e}"
 
 def _check_update_bg():
     """Background: compare local HEAD to GitHub latest commit SHA on main."""
@@ -3062,47 +3051,30 @@ def apply_update():
     output = ""
     git_ok = False
 
-    # 1. Attempt git pull if this is a git repository
-    if os.path.exists(os.path.join(_CLEO_ROOT, ".git")):
+    # 1. Attempt fast-forward-only git pull if this is a git repository.
+    # Security: never merge or `reset --hard` — that silently discards local work.
+    is_git = os.path.exists(os.path.join(_CLEO_ROOT, ".git"))
+    if is_git:
         try:
-            # First attempt: fast-forward pull
             result = subprocess.run(
                 ["git", "pull", "--ff-only"],
                 cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=45
             )
-            if result.returncode == 0:
-                git_ok = True
-                output = result.stdout.strip()
-            else:
-                logger.warning(f"[Update] 'git pull --ff-only' failed ({result.stderr.strip()}). Trying 'git pull origin main'...")
-                res_main = subprocess.run(
-                    ["git", "pull", "origin", "main"],
-                    cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=45
+            if result.returncode != 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Update needs a manual step (local changes or diverged history): "
+                           + (result.stderr.strip() or "git pull --ff-only failed"),
                 )
-                if res_main.returncode == 0:
-                    git_ok = True
-                    output = res_main.stdout.strip()
-                else:
-                    logger.warning(f"[Update] 'git pull origin main' failed ({res_main.stderr.strip()}). Trying 'git fetch & reset'...")
-                    res_fetch = subprocess.run(
-                        ["git", "fetch", "origin", "main"],
-                        cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=45
-                    )
-                    if res_fetch.returncode == 0:
-                        res_hard = subprocess.run(
-                            ["git", "reset", "--hard", "origin/main"],
-                            cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=30
-                        )
-                        if res_hard.returncode == 0:
-                            git_ok = True
-                            output = res_hard.stdout.strip()
-        except Exception as e:
-            logger.warning(f"[Update] Git pull execution error: {e}")
+            git_ok = True
+            output = result.stdout.strip()
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=504, detail="git pull timed out")
 
-    # 2. If git failed or directory is not a git repository, fallback to curl download
+    # 2. Not a git checkout (e.g. packaged install): download the archive instead
     if not git_ok:
-        logger.info("[Update] git pull failed or unavailable. Falling back to curl download...")
-        method_used = "curl"
+        logger.info("[Update] Not a git checkout. Falling back to archive download...")
+        method_used = "archive"
         ok, msg = _apply_curl_update()
         if not ok:
             raise HTTPException(status_code=500, detail=f"Update failed: {msg}")
@@ -3164,7 +3136,14 @@ def _wait_for_server_ready(port: int, timeout: float = 30.0) -> bool:
     return False
 
 def _auto_update_on_startup():
-    """Checks remote GitHub repo on startup and automatically fetches & applies updates."""
+    """Opt-in (CLEO_AUTO_UPDATE=1): on startup, fetch & apply updates from GitHub, then restart.
+
+    Security: off by default. Auto-applying unsigned code from a remote branch means a compromise
+    of that repo/account becomes code execution on every install at next launch. The Web UI
+    "Update now" button (explicit click) is the default path.
+    """
+    if os.environ.get("CLEO_AUTO_UPDATE", "").lower() not in ("1", "true", "yes"):
+        return
     if os.environ.get("CLEO_NO_UPDATE", "").lower() in ("1", "true", "yes") or "--no-update" in sys.argv:
         return
 
@@ -3183,25 +3162,13 @@ def _auto_update_on_startup():
 
         print(f"🔄 [Auto-Update] Newer version available ({current_sha[:7] if current_sha else 'unknown'} → {latest_sha[:7]}). Fetching latest code...")
 
-        git_ok = False
         if os.path.exists(os.path.join(_CLEO_ROOT, ".git")):
-            try:
-                res = subprocess.run(["git", "pull", "--ff-only"], cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=30)
-                if res.returncode == 0:
-                    git_ok = True
-                else:
-                    res2 = subprocess.run(["git", "pull", "origin", "main"], cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=30)
-                    if res2.returncode == 0:
-                        git_ok = True
-                    else:
-                        subprocess.run(["git", "fetch", "origin", "main"], cwd=_CLEO_ROOT, capture_output=True, timeout=30)
-                        res3 = subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=_CLEO_ROOT, capture_output=True, timeout=15)
-                        if res3.returncode == 0:
-                            git_ok = True
-            except Exception:
-                pass
-
-        if not git_ok:
+            # ff-only: never merge or `reset --hard` over local work
+            res = subprocess.run(["git", "pull", "--ff-only"], cwd=_CLEO_ROOT, capture_output=True, text=True, timeout=30)
+            if res.returncode != 0:
+                print(f"⚠️  [Auto-Update] git pull --ff-only failed; update manually. ({res.stderr.strip()})")
+                return
+        else:
             ok, msg = _apply_curl_update()
             if not ok:
                 print(f"⚠️  [Auto-Update] Could not apply update: {msg}")
