@@ -1,15 +1,13 @@
 name: 'Tauri Build'
 
-# Triggered by a signed version tag: git tag -s v1.0.1 -m "Cleo v1.0.1" && git push origin v1.0.1
-# Or when a GitHub release is published.
-# Or manually triggered via Actions UI / workflow_dispatch.
 # CHConfig / Tauri multi-platform build workflow:
-#   1. Builds native desktop binaries across macOS (ARM64), Linux (x86_64), and Windows (x86_64)
-#   2. Builds the Python PyInstaller backend sidecar for each platform
-#   3. Packages Tauri DMG, AppImage, DEB, and Windows portable .exe (no MSI)
-#   4. Uploads all platform assets to GitHub Release
-#   5. Consolidates SHA-256 checksums into SHA256SUMS.txt
-#   6. Updates GitHub Release notes with the CHConfig download table, platform badges, and verification guide
+#   1. macOS is built locally via ./build-release.sh and uploaded via gh release upload
+#   2. GitHub Actions builds:
+#      - Linux x86_64 (AppImage & DEB)
+#      - Windows x86_64 (Universal / Portable .exe — no MSI)
+#   3. Uploads Linux and Windows platform assets to the GitHub Release
+#   4. Consolidates SHA-256 checksums across all assets (macOS DMG from release + Linux + Windows)
+#   5. Updates GitHub Release notes with the CHConfig download table, platform badges, and verification guide
 
 on:
   push:
@@ -28,7 +26,7 @@ permissions:
   contents: write
 
 jobs:
-  # ── Matrix Desktop Build (macOS, Linux, Windows) ───────────────────────────
+  # ── Matrix Desktop Build (Linux x86_64 & Windows x86_64) ───────────────────
   build-tauri:
     name: Build (${{ matrix.platform.name }})
     runs-on: ${{ matrix.platform.os }}
@@ -36,10 +34,6 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          - name: macOS ARM64
-            os: macos-latest
-            target: aarch64-apple-darwin
-            rust_target: aarch64-apple-darwin
           - name: Linux x86_64
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -132,9 +126,7 @@ jobs:
           VERSION="${{ steps.version.outputs.VERSION }}"
           mkdir -p dist_release
 
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            find src-tauri/target -type f -name "*.dmg" -exec cp -f {} "dist_release/Cleo_${VERSION}_arm64.dmg" \;
-          elif [ "${{ runner.os }}" = "Linux" ]; then
+          if [ "${{ runner.os }}" = "Linux" ]; then
             find src-tauri/target -type f -name "*.AppImage" -exec cp -f {} "dist_release/Cleo_${VERSION}_amd64.AppImage" \;
             find src-tauri/target -type f -name "*.deb" -exec cp -f {} "dist_release/Cleo_${VERSION}_amd64.deb" \;
           elif [ "${{ runner.os }}" = "Windows" ]; then
@@ -217,11 +209,41 @@ jobs:
           path: all_checksums
           merge-multiple: true
 
-      - name: Consolidate SHA-256 Checksums
+      - name: Consolidate SHA-256 Checksums (including local uploads like macOS DMG)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          mkdir -p release_assets
+          # Download any assets already on the release (e.g. locally built macOS DMG)
+          gh release download "${{ steps.version.outputs.TAG }}" --dir release_assets || true
+
           mkdir -p release_out
-          cat all_checksums/checksums-*.txt | sort -u > release_out/SHA256SUMS.txt
-          echo "Consolidated Checksums:"
+          python3 -c "
+          import hashlib, os
+          existing_hashes = {}
+
+          # Read GitHub Action built checksums (Linux, Windows)
+          if os.path.exists('all_checksums'):
+              for root, _, files in os.walk('all_checksums'):
+                  for f in files:
+                      for line in open(os.path.join(root, f)):
+                          parts = line.strip().split()
+                          if len(parts) >= 2 and len(parts[0]) == 64:
+                              existing_hashes[os.path.basename(parts[1])] = parts[0]
+
+          # Read any assets already on GitHub Release (e.g. locally built macOS DMG)
+          if os.path.exists('release_assets'):
+              for fname in os.listdir('release_assets'):
+                  fpath = os.path.join('release_assets', fname)
+                  if os.path.isfile(fpath) and fname not in existing_hashes and fname != 'SHA256SUMS.txt':
+                      with open(fpath, 'rb') as f:
+                          existing_hashes[fname] = hashlib.sha256(f.read()).hexdigest()
+
+          with open('release_out/SHA256SUMS.txt', 'w') as out:
+              for fname in sorted(existing_hashes.keys()):
+                  out.write(f'{existing_hashes[fname]}  {fname}\n')
+                  print(f'{existing_hashes[fname]}  {fname}')
+          "
           cat release_out/SHA256SUMS.txt
 
       - name: Generate CHConfig-style Release Notes
