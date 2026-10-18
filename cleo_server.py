@@ -340,7 +340,7 @@ from typing import Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 import uvicorn
@@ -473,12 +473,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Security: no CORS — the UI is served same-origin, and a wildcard policy let any web page
+# read every API response. TrustedHostMiddleware rejects requests whose Host header isn't
+# loopback, which also blocks DNS-rebinding (attacker domain resolving to 127.0.0.1).
+# Extra hostnames (e.g. a reverse proxy) can be added via CLEO_ALLOWED_HOSTS=a.example,b.example
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    TrustedHostMiddleware,
+    allowed_hosts=["127.0.0.1", "localhost", "[::1]"]
+    + [h.strip() for h in os.environ.get("CLEO_ALLOWED_HOSTS", "").split(",") if h.strip()],
 )
 
 # Check for local MLX models on Apple Silicon
