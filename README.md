@@ -321,6 +321,11 @@ cleo/
 | `ANTHROPIC_API_KEY` | Anthropic Claude API key |
 | `GEMINI_API_KEY` | Google Gemini API key |
 | `CLEO_VERBOSE=1` | Enable detailed debug logging |
+| `CLEO_AUTO_UPDATE=1` | Apply updates automatically at startup (off by default; see Auto-Updates) |
+| `CLEO_NO_UPDATE=1` | Skip the update check entirely |
+| `CLEO_ALLOWED_HOSTS=a.example,b.example` | Extra `Host` names to accept. Cleo only answers `127.0.0.1`, `localhost` and `[::1]` by default (blocks DNS rebinding) |
+| `CLEO_EXTRA_MODELS=a,b` | Extra models the UI may download beyond the built-in catalog (`mlx:` prefix or `mlx-community/` for MLX repos, otherwise Ollama names) |
+| `CLEO_PIP_MIRROR=https://host/simple` | Opt-in `pip` index to retry with if PyPI is blocked by a proxy during first-run setup. No mirror is ever used unless you set this |
 
 ---
 

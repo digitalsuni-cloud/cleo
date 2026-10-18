@@ -7,6 +7,6 @@
 # google-genai>=1.0.0        # Google Gemini (Optional)
 
 # Web Server Mode
-fastapi>=0.112.0
-uvicorn[standard]>=0.30.0
-zstandard>=0.22.0
+fastapi>=0.112.0,<1.0
+uvicorn[standard]>=0.30.0,<1.0
+zstandard>=0.22.0,<1.0

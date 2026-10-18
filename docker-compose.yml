@@ -14,8 +14,10 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: cleo-ollama
+    # Loopback only: Ollama has no authentication. The cleo service reaches it over the compose
+    # network (http://ollama:11434), so no host port is needed except for local debugging.
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama_data:/root/.ollama
     # For NVIDIA GPU acceleration, uncomment:
@@ -52,7 +54,7 @@ services:
     build: .
     container_name: cleo-agent
     ports:
-      - "${PORT:-8080}:8080"
+      - "127.0.0.1:${PORT:-8080}:8080"   # Cleo has no login: keep it off the LAN
     environment:
       AI_ENGINE: ollama
       OLLAMA_HOST: http://ollama:11434

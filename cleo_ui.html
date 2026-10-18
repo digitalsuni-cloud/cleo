@@ -11076,7 +11076,8 @@
     setInterval(checkHealth, 5000);
 
     // Check for updates once, 7 s after page load (server background check fires at 5 s)
-    setTimeout(checkForUpdate, 7000);
+    // (checkForUpdate is defined in the next <script>, so call it lazily)
+    setTimeout(() => checkForUpdate(), 7000);
   </script>
 
   <script>
