@@ -1,11 +1,27 @@
 """
 test_streaming.py — Integration self-check for Cleo SSE streaming and non-streaming responses.
 """
+import os
+import tempfile
+
+# CRITICAL: Isolate session storage BEFORE importing cleo_server so test messages
+# NEVER write to or pollute the user's real ~/.cleo/sessions.json
+_temp_dir = tempfile.TemporaryDirectory()
+_temp_sessions_file = os.path.join(_temp_dir.name, "sessions.json")
+os.environ["CLEO_SESSIONS_FILE"] = _temp_sessions_file
+os.environ["CLEO_TESTING"] = "1"
+os.environ.setdefault("CLEO_ALLOWED_HOSTS", "testserver,localhost,127.0.0.1")
+
 import json
+import uuid
 from fastapi.testclient import TestClient
 import cleo_server
 from cleo_server import app
 from cleo_agent import AIClient
+
+# Ensure in-memory sessions are completely isolated
+cleo_server.SESSIONS_CACHE_FILE = _temp_sessions_file
+cleo_server._sessions = {}
 
 class MockMCP:
     def call_tool(self, name, args):
@@ -19,18 +35,20 @@ def run_checks():
     cleo_server._mcp = MockMCP()
     cleo_server._tools = [{"name": "list_orgs", "description": "List orgs"}]
     cleo_server._ai = AIClient("direct", {}, cleo_server._tools)
+    cleo_server._sessions = {}
 
     client = TestClient(app, base_url="http://localhost:8080")
+    test_sid = str(uuid.uuid4())
 
     # 1. Non-streaming JSON verification
-    r1 = client.post("/chat", json={"message": "hello", "stream": False})
+    r1 = client.post("/chat", json={"message": "hello", "stream": False, "session_id": test_sid})
     assert r1.status_code == 200, f"Expected 200, got {r1.status_code}"
     data1 = r1.json()
     assert "response" in data1, "Expected response field in JSON output"
     print("✓ Non-streaming JSON mode verified successfully.")
 
     # 2. Live SSE Streaming verification
-    r2 = client.post("/chat", json={"message": "hello", "stream": True})
+    r2 = client.post("/chat", json={"message": "hello", "stream": True, "session_id": test_sid})
     assert r2.status_code == 200, f"Expected 200, got {r2.status_code}"
     assert "text/event-stream" in r2.headers.get("content-type", "")
     lines = [line for line in r2.text.splitlines() if line.startswith("data: ")]
@@ -43,5 +61,8 @@ def run_checks():
     print(f"✓ Streaming SSE verified successfully ({len(lines)} events: {set(types)}).")
 
 if __name__ == "__main__":
-    run_checks()
-    print("All streaming checks passed.")
+    try:
+        run_checks()
+        print("All streaming checks passed.")
+    finally:
+        _temp_dir.cleanup()

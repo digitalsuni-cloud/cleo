@@ -658,6 +658,8 @@ def _load_sessions() -> dict:
 
 def _save_sessions():
     global _sessions
+    if os.environ.get("CLEO_TESTING") == "1" or os.environ.get("PYTEST_CURRENT_TEST"):
+        return
     sessions_file = os.environ.get("CLEO_SESSIONS_FILE", SESSIONS_CACHE_FILE)
     try:
         os.makedirs(os.path.dirname(sessions_file), exist_ok=True)
