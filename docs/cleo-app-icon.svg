@@ -1,0 +1,31 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- App icon: the same cube as docs/cleo-icon.svg (the in-app logo) on a dark macOS-style tile.
+       Tile follows Apple's icon grid (824px inside a 1024px canvas); the cube is scaled up so it
+       stays legible at 16-32px in Finder and the Dock. -->
+  <defs>
+    <linearGradient id="tile" x1="512" y1="100" x2="512" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#0b0f19" />
+    </linearGradient>
+    <linearGradient id="cleoGradTop" x1="24" y1="4" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="cleoGradLeft" x1="6" y1="14" x2="24" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+    <linearGradient id="cleoGradRight" x1="42" y1="14" x2="24" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)" />
+  <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" stroke="#ffffff" stroke-opacity="0.10" stroke-width="3" />
+  <g transform="translate(512 512) scale(14) translate(-24 -24)">
+    <polygon points="24,4 42,14 24,24 6,14" fill="url(#cleoGradTop)" />
+    <polygon points="6,14 24,24 24,44 6,34" fill="url(#cleoGradLeft)" />
+    <polygon points="42,14 42,34 24,44 24,24" fill="url(#cleoGradRight)" />
+    <circle cx="24" cy="24" r="3.5" fill="#ffffff" />
+  </g>
+</svg>
