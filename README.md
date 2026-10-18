@@ -8,88 +8,60 @@
 
 ---
 
-## 📋 What You Need Before Starting
+## 🚀 Quickstart: Desktop Application (Recommended)
 
-| Requirement | Why |
-|---|---|
-| **Python 3.11 or newer** | Cleo is written in Python |
-| **A CloudHealth account** | Where your cloud billing data lives |
-| **Internet access** | To connect to CloudHealth |
-| **4 GB RAM minimum** | 8 GB+ recommended if using local AI models |
+**Cleo is packaged as a native desktop application with a bundled standalone Python runtime.**
+* **Zero Python setup required:** You do **not** need Python, `pip`, `venv`, Node.js, or Rust installed on your computer.
+* **All packages included:** The PyInstaller sidecar bundles the entire FinOps intelligence engine, FastAPI server, CloudHealth OAuth handler, interactive charting workbench, and AI model connectors.
+* **Native desktop experience:** Fast, responsive Dark glassmorphism UI with custom dock/desktop icons, offline cache, and real-time streaming.
 
-**Optional — to use a local AI model (no API key needed):**
+### ⬇️ Download Cleo Desktop
 
-| Platform | What you need |
-|---|---|
-| Apple Silicon Mac (M1/M2/M3/M4) | Nothing extra — Cleo installs it automatically |
-| Windows / Linux | Docker Desktop (for Docker install path) |
+| Architecture | Platform | File to Download | Notes |
+| :---: | :--- | :--- | :--- |
+| ![macOS](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/macos.svg) | **macOS (Apple Silicon)** | [Cleo_1.0.0_arm64.dmg](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_1.0.0_arm64.dmg) | M1/M2/M3/M4 Macs · Native `.dmg` installer |
+| ![Windows](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/windows.svg) | **Windows (x64)** | [Cleo_1.0.0_x64.exe](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_1.0.0_x64.exe) | Universal / Portable `.exe` · No install required |
+| ![Linux App](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/linux-app.svg) | **Linux (x64)** | [Cleo_1.0.0_amd64.AppImage](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_1.0.0_amd64.AppImage) | Portable Linux AppImage |
+| ![Linux Deb](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/linux-deb.svg) | **Linux (x64)** | [Cleo_1.0.0_amd64.deb](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_1.0.0_amd64.deb) | Ubuntu / Debian package |
+
+> **macOS Gatekeeper Note:** If macOS displays an unsigned app prompt on first run, open your Terminal and run:
+> ```bash
+> xattr -rd com.apple.quarantine "/Applications/Cleo.app"
+> ```
 
 ---
 
-## ⚡ Quickstart (3 steps)
+## 💻 Developer & Server Setup (Optional)
 
-### Step 1 — Download Cleo
+If you are developing Cleo, deploying on a headless Linux server, or running in Docker:
 
-Choose whichever option is easiest for your setup:
-
-#### Option A — With Git (Standard)
+### Option A — One-Click Launchers (From Source)
 
 ```bash
+# 1. Clone the repository
 git clone https://github.com/digitalsuni-cloud/cleo.git
 cd cleo
+
+# 2. Start using the one-click launcher for your platform:
+./run.sh              # macOS & Linux (or ./run)
+run.bat               # Windows (File Explorer or Command Prompt)
+.\run.ps1             # Windows PowerShell
 ```
 
-#### Option B — Direct Download (No Git or Xcode Tools Needed)
+Cleo's launcher automatically:
+- Locates Python 3.11+
+- Verifies signed GPG release tags (`cleo-release.asc`)
+- Provisions an isolated virtual environment (`.venv/`) and installs dependencies
+- Launches the server and opens your browser to **http://127.0.0.1:8080**
 
-If you do not have Git installed, or if your Mac prompts `xcode-select: note: No developer tools were found`, download and unzip directly from your terminal:
+### Option B — Manual Python Command
 
 ```bash
-curl -L https://github.com/digitalsuni-cloud/cleo/archive/refs/heads/main.zip -o cleo.zip
-unzip cleo.zip
-cd cleo-main
+python3 -m venv .venv
+source .venv/bin/activate       # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python3 cleo_server.py
 ```
-
-*(You can also download the ZIP directly in your browser from GitHub → click **Code → Download ZIP**, extract it, and `cd` into the extracted folder in your terminal).*
-
----
-
-### Step 2 — Start Cleo
-
-Start Cleo using the one-click launcher for your operating system:
-
-| Platform | Command / Action |
-|---|---|
-| **Windows (File Explorer)** | **Double-click `run.bat`** |
-| **Windows (Command Prompt / PowerShell)** | `run` *(or `.\run.ps1`)* |
-| **macOS & Linux** | `./run.sh` *(or `./run`)* |
-| *Manual Fallback (Any OS)* | `python3 cleo_server.py` *(or `python cleo_server.py`)* |
-
-Cleo will automatically:
-- Locate your Python 3 environment
-- Create an isolated virtual environment (`.venv/`) and install dependencies if needed
-- Start the server and **automatically open your browser** to **http://127.0.0.1:8080**
-
-You should see output like:
-```
-⚙️  Setting up isolated virtual environment in .venv ...
-📦 Installing required packages from requirements.txt ...
-🍎 Apple Silicon detected. Auto-installing 'mlx-lm' for local Qwen support...
-✅ Setup complete! Starting Cleo Server...
-
-INFO:     Uvicorn running on http://127.0.0.1:8080
-```
-
----
-
-### Step 3 — Open the Web UI
-
-Open your browser and go to:
-
-```
-http://localhost:8080
-```
-
-You'll see the Cleo chat interface. Before you can ask questions, you need to connect your CloudHealth account (see below).
 
 ---
 
@@ -281,16 +253,21 @@ curl http://localhost:8080/api/update/check
 
 ```text
 cleo/
-├── cleo_server.py       ← Main entry point. Run this to start Cleo.
+├── src-tauri/           ← Native desktop app (Tauri 2 + Rust)
+│   ├── src/lib.rs       ← App lifecycle & sidecar process supervisor
+│   └── tauri.conf.json  ← App configuration, window styling, and bundle settings
+├── build-release.sh     ← macOS local production build script (DMG)
+├── build-backend.sh     ← Standalone PyInstaller sidecar builder
+├── cleo_server.py       ← Backend entry point & FastAPI web service
 ├── cleo_agent.py        ← AI brain: connects CloudHealth, calls AI, handles tools
 ├── cleo_charts.py       ← Chart generation & interactive analytics workbench
 ├── cleo_query.py        ← Deterministic query understanding & SQL generation
-├── cleo_ui.html         ← The web chat interface
+├── cleo_ui.html         ← The glassmorphic chat interface
 ├── cleo_logger.py       ← Logging system
 ├── cleo_memory.py       ← Self-learning memory across sessions
 ├── cleo_finops_refs.py  ← FinOps knowledge base (cost optimization rules)
 ├── auth/
-│   └── oauth.py         ← CloudHealth OAuth 2.0 authentication handler
+│   └── oauth.py         ← CloudHealth OAuth 2.0 PKCE authentication handler
 ├── workflows/
 │   └── cleo-v2.json     ← n8n workflow (for n8n users — optional)
 ├── credentials.example.json  ← Template for n8n credentials
