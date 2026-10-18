@@ -5,59 +5,84 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
-# 1. Import Cleo release signing key (once, silently — enables verified auto-updates)
-$_CleoKeyFp = "3DB30B754E26A1D0C4B0308AD8C920CBEA46CBF6"
-$_CleoAsc   = Join-Path $ScriptDir "cleo-release.asc"
-if ((Get-Command gpg -ErrorAction SilentlyContinue) -and (Test-Path $_CleoAsc)) {
-    $alreadyImported = (& gpg --list-keys $_CleoKeyFp 2>$null; $LASTEXITCODE -eq 0)
-    if (-not $alreadyImported) {
-        & gpg --import $_CleoAsc 2>$null
-        if ($LASTEXITCODE -eq 0) { Write-Host "✓ Cleo release signing key imported (enables verified updates)." }
-    }
-}
-
-# 2. Auto-pull latest verified signed release (skip if CLEO_NO_UPDATE=1 or --no-update)
+# 1. Auto-pull latest updates from GitHub (skip if CLEO_NO_UPDATE=1 or --no-update)
 if ($env:CLEO_NO_UPDATE -ne "1" -and $args -notcontains "--no-update") {
-    if ((Get-Command git -ErrorAction SilentlyContinue) -and (Test-Path "$ScriptDir\.git")) {
-        & git fetch --tags --quiet origin 2>$null
+    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+    if ($gitCmd -and (Test-Path "$ScriptDir\.git")) {
+        & git fetch --tags --force --quiet origin 2>$null
+        $currentBranch = (& git symbolic-ref --short -q HEAD 2>$null)
+        if ($currentBranch) {
+            & git pull --ff-only --quiet origin $currentBranch 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                $status = (& git status --porcelain 2>$null)
+                if (-not $status) {
+                    & git reset --hard "origin/$currentBranch" --quiet 2>$null
+                }
+            }
+        }
         $latestTag = (& git tag -l "v*" --sort=-v:refname 2>$null | Select-Object -First 1)
         if ($latestTag) {
             & git merge-base --is-ancestor $latestTag HEAD 2>$null
             if ($LASTEXITCODE -ne 0) {
-                if (Get-Command gpg -ErrorAction SilentlyContinue) {
-                    & git verify-tag $latestTag 2>$null
-                    if ($LASTEXITCODE -eq 0) {
-                        Write-Host "🔄 Updating Cleo to verified release $latestTag..."
-                        & git checkout $latestTag --quiet 2>$null
-                    } else {
-                        Write-Host "⚠️  New release $latestTag found, but signature could not be verified. Skipping update." -ForegroundColor Yellow
-                    }
+                Write-Host "[Cleo] Updating to release $latestTag..."
+                & git checkout $latestTag --quiet 2>$null
+                if ($LASTEXITCODE -ne 0) {
+                    & git merge --ff-only $latestTag --quiet 2>$null
                 }
             }
         }
     }
 }
 
-# 3. Find Python
-if ((Get-Command python -ErrorAction SilentlyContinue) -and (& python -c "import sys" 2>$null; $LASTEXITCODE -eq 0)) {
-    $PyCmd = "python"
-} elseif ((Get-Command py -ErrorAction SilentlyContinue) -and (& py -3 -c "import sys" 2>$null; $LASTEXITCODE -eq 0)) {
-    $PyCmd = "py"
-} elseif ((Get-Command python3 -ErrorAction SilentlyContinue) -and (& python3 -c "import sys" 2>$null; $LASTEXITCODE -eq 0)) {
-    $PyCmd = "python3"
-} elseif (Test-Path "$ScriptDir\.venv\Scripts\python.exe") {
-    $PyCmd = "$ScriptDir\.venv\Scripts\python.exe"
-} else {
+# 2. Find working Python interpreter
+$PyCmd = $null
+$pyCheck = Get-Command python -ErrorAction SilentlyContinue
+if ($pyCheck) {
+    & python -c "import sys" 2>$null
+    if ($LASTEXITCODE -eq 0) { $PyCmd = "python" }
+}
+
+if (-not $PyCmd) {
+    $pyLauncher = Get-Command py -ErrorAction SilentlyContinue
+    if ($pyLauncher) {
+        & py -3 -c "import sys" 2>$null
+        if ($LASTEXITCODE -eq 0) { $PyCmd = "py" }
+    }
+}
+
+if (-not $PyCmd) {
+    $python3Check = Get-Command python3 -ErrorAction SilentlyContinue
+    if ($python3Check) {
+        & python3 -c "import sys" 2>$null
+        if ($LASTEXITCODE -eq 0) { $PyCmd = "python3" }
+    }
+}
+
+if (-not $PyCmd) {
+    $venvPy = Join-Path $ScriptDir ".venv\Scripts\python.exe"
+    if (Test-Path $venvPy) {
+        $PyCmd = $venvPy
+    }
+}
+
+if (-not $PyCmd) {
     Write-Host "----------------------------------------------------------------------" -ForegroundColor Red
-    Write-Host "[Error] Python 3 was not found in system PATH." -ForegroundColor Red
+    Write-Host "[Error] Python 3 was not found in your system PATH." -ForegroundColor Red
     Write-Host "Please install Python 3.10+ from https://www.python.org/downloads/" -ForegroundColor Yellow
+    Write-Host "(Important: Check 'Add Python to PATH' during installation)" -ForegroundColor Yellow
     Write-Host "----------------------------------------------------------------------" -ForegroundColor Red
     Read-Host "Press Enter to exit..."
     exit 1
 }
 
+# 3. Launch Cleo server
 if ($PyCmd -eq "py") {
-    & py -3 cleo_server.py $args
+    & py -3 cleo_server.py @args
 } else {
-    & $PyCmd cleo_server.py $args
+    & $PyCmd cleo_server.py @args
+}
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "Cleo server exited with error code $LASTEXITCODE."
+    Read-Host "Press Enter to exit..."
 }

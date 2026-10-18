@@ -13,6 +13,13 @@ if not "%CLEO_NO_UPDATE%"=="1" if not "%1"=="--no-update" (
         git fetch --tags --force --quiet origin 2>nul
         for /f "tokens=*" %%B in ('git symbolic-ref --short -q HEAD 2^>nul') do (
             git pull --ff-only --quiet origin %%B 2>nul
+            if errorlevel 1 (
+                set "CLEO_DIRTY="
+                for /f %%S in ('git status --porcelain 2^>nul') do set "CLEO_DIRTY=1"
+                if not defined CLEO_DIRTY (
+                    git reset --hard origin/%%B --quiet 2>nul
+                )
+            )
         )
         set "LATEST_TAG="
         for /f "tokens=*" %%T in ('git tag -l "v*" --sort=-v:refname 2^>nul') do (

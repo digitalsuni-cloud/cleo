@@ -17,7 +17,11 @@ if [ "${CLEO_NO_UPDATE:-0}" != "1" ] && [ "${1:-}" != "--no-update" ]; then
         # If on a branch (e.g. main), fast-forward pull latest code
         CURRENT_BRANCH=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
         if [ -n "$CURRENT_BRANCH" ]; then
-            git pull --ff-only --quiet origin "$CURRENT_BRANCH" 2>/dev/null || true
+            git pull --ff-only --quiet origin "$CURRENT_BRANCH" 2>/dev/null || {
+                if [ -z "$(git status --porcelain 2>/dev/null)" ]; then
+                    git reset --hard origin/"$CURRENT_BRANCH" --quiet 2>/dev/null || true
+                fi
+            }
         fi
 
         # Check for latest release tag if not already an ancestor
