@@ -62,6 +62,7 @@ local_tests/
 # Internal release checklists & notes
 RELEASE_CHECKLIST.md
 *checklist*.md
+RELEASE_NOTES.md
 scripts/
 
 # Agent skills & internal dev rules
@@ -69,14 +70,19 @@ agent/
 skills-lock.json
 .agents/skills/*
 !.agents/skills/cloud-finops/
-.agents/rules/graphify.md
-.agents/workflows/graphify.md
+.agents/rules/
+.agents/workflows/
 
 # Tauri & Desktop Build Artifacts (Ignore build outputs & node_modules, keep sources)
 node_modules/
 src-tauri/target/
 src-tauri/binaries/
+src-tauri/icons/android/
+src-tauri/icons/ios/
+src-tauri/icons/Square*.png
+src-tauri/icons/StoreLogo.png
 release/
 build/
 *.spec
+
 
