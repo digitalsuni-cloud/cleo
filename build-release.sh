@@ -61,7 +61,7 @@ echo ""
 
 # ── 3. Build Standalone Python Backend Sidecar ──────────────────────────────
 echo "→ Building Python standalone backend sidecar..."
-bash "$SCRIPT_DIR/build-backend.sh"
+bash "$SCRIPT_DIR/build-backend.sh" --force
 echo ""
 
 # ── 4. Run the Tauri build ───────────────────────────────────────────────────
