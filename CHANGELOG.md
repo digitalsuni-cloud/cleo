@@ -48,10 +48,27 @@
 - Corporate PyPI 403 block detection with mirror fallback
 - Windows daemon connection timeout fix for Ollama
 
----
+## 📦 File Details
 
-### Download
+| Architecture | Platform | File to Download | SHA-256 Checksum |
+| :---: | :--- | :--- | :--- |
+| ![macOS](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/macos.svg) | Apple Silicon (ARM64) | [Cleo_1.0.0_arm64.dmg](https://github.com/digitalsuni-cloud/cleo/releases/download/v1.0.0/Cleo_1.0.0_arm64.dmg) | `9782d612ce3ca04e676dbd918cc4b17ff0f1c2513bf05823fbd2c3070fa14d6f` |
+| ![Linux App](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/linux-app.svg) | Linux x64 (AppImage) | [Cleo_1.0.0_amd64.AppImage](https://github.com/digitalsuni-cloud/cleo/releases/download/v1.0.0/Cleo_1.0.0_amd64.AppImage) | *Automated via GitHub Actions* |
+| ![Linux Deb](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/linux-deb.svg) | Linux x64 (DEB) | [Cleo_1.0.0_amd64.deb](https://github.com/digitalsuni-cloud/cleo/releases/download/v1.0.0/Cleo_1.0.0_amd64.deb) | *Automated via GitHub Actions* |
+| ![Windows](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/windows.svg) | Universal / Portable | [Cleo_1.0.0_x64.exe](https://github.com/digitalsuni-cloud/cleo/releases/download/v1.0.0/Cleo_1.0.0_x64.exe) | *Automated via GitHub Actions* |
+| 📄 | Checksums Manifest | [SHA256SUMS.txt](https://github.com/digitalsuni-cloud/cleo/releases/download/v1.0.0/SHA256SUMS.txt) | *Complete checksum manifest* |
 
-| Platform | File | SHA-256 |
-|----------|------|---------|
-| macOS Apple Silicon | `Cleo_1.0.0_arm64.dmg` | `9782d612ce3ca04e676dbd918cc4b17ff0f1c2513bf05823fbd2c3070fa14d6f` |
+## 🛠 macOS Installation Note
+This application is built for internal use and is unsigned. If you see an error saying the app is "damaged" or cannot be opened, run this command in your Terminal:
+
+```bash
+xattr -rd com.apple.quarantine "/Applications/Cleo.app"
+```
+
+## 🔐 Cryptographic Verification
+Releases and tags are signed with Cleo's release signing key:
+- **Public Key**: [`cleo-release.asc`](https://raw.githubusercontent.com/digitalsuni-cloud/cleo/main/cleo-release.asc)
+- **Key Fingerprint**: `3DB3 0B75 4E26 A1D0 C4B0  308A D8C9 20CB EA46 CBF6`
+- **Verify Tag**: `git verify-tag v1.0.0`
+- **Verify Download**: `sha256sum -c SHA256SUMS.txt`
+
