@@ -341,6 +341,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from html import escape as html_escape
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 import uvicorn
@@ -1547,7 +1548,7 @@ def oauth_callback(code: Optional[str] = None, state: Optional[str] = None, erro
         <html><body style="font-family:sans-serif;background:#0f1117;color:#f87171;display:flex;align-items:center;justify-content:center;height:100vh;">
             <div style="background:#1a1d27;padding:32px;border-radius:12px;text-align:center;max-width:500px;border:1px solid #2d3148;">
                 <h2>Authentication Failed</h2>
-                <p style="color:#94a3b8;margin:16px 0;">{err_msg}</p>
+                <p style="color:#94a3b8;margin:16px 0;">{html_escape(err_msg)}</p>
                 <a href="/" style="color:#6366f1;text-decoration:none;font-weight:600;">Return to Cleo</a>
             </div>
         </body></html>
@@ -1563,7 +1564,7 @@ def oauth_callback(code: Optional[str] = None, state: Optional[str] = None, erro
         <html><body style="font-family:sans-serif;background:#0f1117;color:#f87171;display:flex;align-items:center;justify-content:center;height:100vh;">
             <div style="background:#1a1d27;padding:32px;border-radius:12px;text-align:center;max-width:500px;border:1px solid #2d3148;">
                 <h2>Authentication Failed</h2>
-                <p style="color:#94a3b8;margin:16px 0;">{_last_error}</p>
+                <p style="color:#94a3b8;margin:16px 0;">{html_escape(_last_error)}</p>
                 <a href="/" style="color:#6366f1;text-decoration:none;font-weight:600;">Return to Cleo</a>
             </div>
         </body></html>
@@ -1588,7 +1589,7 @@ def oauth_callback(code: Optional[str] = None, state: Optional[str] = None, erro
         <html><body style="font-family:sans-serif;background:#0f1117;color:#f87171;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
             <div style="background:#1a1d27;padding:36px;border-radius:16px;text-align:center;max-width:540px;border:1px solid #2d3148;">
                 <h2 style="color:#f87171;margin-bottom:12px;">Authentication Issue</h2>
-                <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:24px;word-break:break-all;">{err}</p>
+                <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:24px;word-break:break-all;">{html_escape(err)}</p>
                 <a href="/auth/login" style="background:#6366f1;color:white;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;">Retry Connection</a>
             </div>
         </body></html>
