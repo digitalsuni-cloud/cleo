@@ -1160,21 +1160,27 @@ class AIClient:
         if engine.startswith("mlx:") or "mlx-community" in engine:
             repo_id = engine.removeprefix("mlx:").strip()
             try:
+                logger.info(f"🤖 [LLM Call] Invoking MLX model '{repo_id}'...")
                 ans = call_mlx_generate(repo_id, clean_messages, stats_out=target_stats, on_token=on_token)
                 if ans:
+                    logger.info(f"✅ [LLM Call] MLX model '{repo_id}' responded ({len(ans)} chars).")
                     return ans, ""
                 return "", f"MLX returned empty response for model {repo_id}."
             except Exception as e:
+                logger.warning(f"⚠️ [LLM Call Error] MLX inference error ({e}).")
                 return "", f"MLX inference error ({e}). Ensure model weights exist in Hugging Face cache."
 
         elif engine.startswith("ollama"):
             model = engine.split(":", 1)[1] if ":" in engine else "qwen2.5:7b"
             try:
+                logger.info(f"🤖 [LLM Call] Invoking Ollama model '{model}'...")
                 ans = call_ollama_chat(model, clean_messages, stats_out=target_stats, on_token=on_token)
                 if ans:
+                    logger.info(f"✅ [LLM Call] Ollama model '{model}' responded ({len(ans)} chars).")
                     return ans, ""
                 return "", f"Ollama returned empty response for model {model}."
             except Exception as e:
+                logger.warning(f"⚠️ [LLM Call Error] Ollama invocation failed ({e}).")
                 return "", f"Could not connect to Ollama daemon ({e}). Make sure 'ollama serve' is running."
 
         elif engine == "gemini":
@@ -1223,6 +1229,54 @@ class AIClient:
                 return "", f"Anthropic API error: {e}"
 
         return "", ""
+
+    @staticmethod
+    def _extract_json_object(text: str) -> dict:
+        """Robustly extracts a JSON object from LLM response text, ignoring markdown fences,
+        preambles, trailing commentary, and extra data."""
+        if not text or not text.strip():
+            raise ValueError("Empty LLM response")
+        s = text.strip()
+
+        # 1. Direct parse attempt
+        try:
+            obj = json.loads(s)
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+
+        # 2. Extract from markdown code fence ```json ... ``` or ``` ... ```
+        fence_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', s, re.IGNORECASE)
+        if fence_match:
+            try:
+                obj = json.loads(fence_match.group(1))
+                if isinstance(obj, dict):
+                    return obj
+            except Exception:
+                pass
+
+        # 3. Use JSONDecoder.raw_decode from first '{' (tolerates trailing text/extra data)
+        start_idx = s.find('{')
+        if start_idx != -1:
+            try:
+                obj, _ = json.JSONDecoder().raw_decode(s[start_idx:])
+                if isinstance(obj, dict):
+                    return obj
+            except Exception:
+                pass
+
+        # 4. Outermost '{' to '}'
+        end_idx = s.rfind('}')
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            try:
+                obj = json.loads(s[start_idx:end_idx + 1])
+                if isinstance(obj, dict):
+                    return obj
+            except Exception:
+                pass
+
+        raise ValueError(f"Could not extract valid JSON object from LLM response (length {len(s)})")
 
     def _understand_query(self, messages: list[dict], mcp: MCPClient = None) -> dict:
         """
@@ -1424,10 +1478,7 @@ class AIClient:
                 {"role": "user", "content": user_prompt}
             ])
             if raw_res and not err:
-                cleaned = re.sub(r'^```json\s*|\s*```$', '', raw_res.strip(), flags=re.MULTILINE).strip()
-                if not cleaned:
-                    raise ValueError("empty LLM response after strip")
-                parsed = json.loads(cleaned)
+                parsed = self._extract_json_object(raw_res)
                 logger.info(f"[LLM-First Intent Analysis] Parsed: {parsed}")
                 if "is_new_data_fetch" in parsed and "intent" in parsed:
                     bdowns = parsed.get("breakdowns") or det_info["breakdowns"]

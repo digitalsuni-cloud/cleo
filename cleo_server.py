@@ -493,42 +493,56 @@ app.add_middleware(
     + [h.strip() for h in os.environ.get("CLEO_ALLOWED_HOSTS", "").split(",") if h.strip()],
 )
 
-# Check for local MLX models on Apple Silicon
-_init_mlx = get_installed_mlx_models()
-_ready_mlx = {m["repo_id"]: m for m in _init_mlx if m.get("downloaded")}
-if "mlx-community/Qwen3.5-9B-MLX-4bit" in _ready_mlx:
-    _init_engine_key = "mlx:mlx-community/Qwen3.5-9B-MLX-4bit"
-    _init_engine_label = "Qwen3.5-9B-4bit (MLX Default)"
-elif "mlx-community/Qwen2.5-7B-Instruct-4bit" in _ready_mlx:
-    _init_engine_key = "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit"
-    _init_engine_label = "Qwen2.5-7B-Instruct-4bit (MLX Default)"
-elif _ready_mlx:
-    first_repo = list(_ready_mlx.keys())[0]
-    _init_engine_key = f"mlx:{first_repo}"
-    _init_engine_label = f"{first_repo.split('/')[-1]} (MLX)"
-else:
-    # Linux / Non-MLX environment: prefer installed Ollama models
-    installed_ollama = [m.get("name", "") for m in get_installed_ollama_models()]
-    if any("qwen2.5:7b" in n for n in installed_ollama):
-        _init_engine_key = "ollama:qwen2.5:7b"
-        _init_engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
-    elif any("qwen2.5:3b" in n for n in installed_ollama):
-        _init_engine_key = "ollama:qwen2.5:3b"
-        _init_engine_label = "Qwen2.5-3B-Instruct-4bit (Ollama)"
-    elif any("Qwen3.5-9B" in n for n in installed_ollama):
-        match = next(n for n in installed_ollama if "Qwen3.5-9B" in n)
-        _init_engine_key = f"ollama:{match}"
-        _init_engine_label = "Qwen3.5-9B-4bit (Ollama)"
-    elif any("Qwen3.5-4B" in n for n in installed_ollama):
-        match = next(n for n in installed_ollama if "Qwen3.5-4B" in n)
-        _init_engine_key = f"ollama:{match}"
-        _init_engine_label = "Qwen3.5-4B-4bit (Ollama)"
-    elif installed_ollama:
-        _init_engine_key = f"ollama:{installed_ollama[0]}"
-        _init_engine_label = f"{installed_ollama[0]} (Ollama)"
+# Check for saved engine preference first
+_cfg_init = _load_config()
+_saved_engine = _cfg_init.get("AI_ENGINE")
+if _saved_engine and (_saved_engine in AI_ENGINES or _saved_engine.startswith("mlx:") or _saved_engine.startswith("ollama:") or _saved_engine in ("gemini", "openai", "anthropic", "direct")):
+    _init_engine_key = _saved_engine
+    if _saved_engine in AI_ENGINES:
+        _init_engine_label = AI_ENGINES[_saved_engine][0]
+    elif _saved_engine.startswith("ollama:"):
+        _init_engine_label = f"Ollama ({_saved_engine.split(':', 1)[1]})"
+    elif _saved_engine.startswith("mlx:"):
+        _init_engine_label = f"{_saved_engine.removeprefix('mlx:').split('/')[-1]} (MLX)"
     else:
-        _init_engine_key = "ollama:qwen2.5:7b"
-        _init_engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
+        _init_engine_label = _saved_engine
+else:
+    # Check for local MLX models on Apple Silicon
+    _init_mlx = get_installed_mlx_models()
+    _ready_mlx = {m["repo_id"]: m for m in _init_mlx if m.get("downloaded")}
+    if "mlx-community/Qwen3.5-9B-MLX-4bit" in _ready_mlx:
+        _init_engine_key = "mlx:mlx-community/Qwen3.5-9B-MLX-4bit"
+        _init_engine_label = "Qwen3.5-9B-4bit (MLX Default)"
+    elif "mlx-community/Qwen2.5-7B-Instruct-4bit" in _ready_mlx:
+        _init_engine_key = "mlx:mlx-community/Qwen2.5-7B-Instruct-4bit"
+        _init_engine_label = "Qwen2.5-7B-Instruct-4bit (MLX Default)"
+    elif _ready_mlx:
+        first_repo = list(_ready_mlx.keys())[0]
+        _init_engine_key = f"mlx:{first_repo}"
+        _init_engine_label = f"{first_repo.split('/')[-1]} (MLX)"
+    else:
+        # Linux / Non-MLX environment: prefer installed Ollama models
+        installed_ollama = [m.get("name", "") for m in get_installed_ollama_models()]
+        if any("qwen2.5:7b" in n for n in installed_ollama):
+            _init_engine_key = "ollama:qwen2.5:7b"
+            _init_engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
+        elif any("qwen2.5:3b" in n for n in installed_ollama):
+            _init_engine_key = "ollama:qwen2.5:3b"
+            _init_engine_label = "Qwen2.5-3B-Instruct-4bit (Ollama)"
+        elif any("Qwen3.5-9B" in n for n in installed_ollama):
+            match = next(n for n in installed_ollama if "Qwen3.5-9B" in n)
+            _init_engine_key = f"ollama:{match}"
+            _init_engine_label = "Qwen3.5-9B-4bit (Ollama)"
+        elif any("Qwen3.5-4B" in n for n in installed_ollama):
+            match = next(n for n in installed_ollama if "Qwen3.5-4B" in n)
+            _init_engine_key = f"ollama:{match}"
+            _init_engine_label = "Qwen3.5-4B-4bit (Ollama)"
+        elif installed_ollama:
+            _init_engine_key = f"ollama:{installed_ollama[0]}"
+            _init_engine_label = f"{installed_ollama[0]} (Ollama)"
+        else:
+            _init_engine_key = "ollama:qwen2.5:7b"
+            _init_engine_label = "Qwen2.5-7B-Instruct-4bit (Ollama)"
 
 # Global runtime state
 _mcp: Optional[MCPClient] = None
