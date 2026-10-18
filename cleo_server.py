@@ -943,11 +943,15 @@ def _start_ollama_daemon(timeout: float = 25.0) -> bool:
     logger.info(f"🚀 Starting Ollama daemon ({bin_path} serve)...")
     try:
         if platform.system() == "Windows":
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 0x00000001)
+            si.wShowWindow = 0  # SW_HIDE
             subprocess.Popen(
                 [bin_path, "serve"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | getattr(subprocess, "DETACHED_PROCESS", 0)
+                startupinfo=si,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
             )
         else:
             subprocess.Popen(

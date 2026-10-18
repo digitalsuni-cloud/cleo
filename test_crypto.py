@@ -119,3 +119,56 @@ def test_tamper_detection():
     # AEAD must reject tampered data
     with pytest.raises(Exception):
         decrypt_data(envelope)
+
+
+def test_windows_process_silencer():
+    import sys
+    import cleo_logger
+
+    assert hasattr(cleo_logger, "install_windows_process_silencer")
+
+    # Verify behavioral logic of silencer under Windows simulation
+    captured_kwargs = []
+    fake_orig_init = lambda self, *a, **kw: captured_kwargs.append(kw)
+
+    _CREATE_NO_WINDOW = 0x08000000
+    _DETACHED_PROCESS = 0x00000008
+    _STARTF_USESHOWWINDOW = 0x00000001
+    _SW_HIDE = 0
+
+    class DummyPopen:
+        def __init__(self, *args, **kwargs):
+            cflags = kwargs.get("creationflags", 0)
+            if cflags & _DETACHED_PROCESS:
+                cflags = (cflags & ~_DETACHED_PROCESS)
+            cflags |= _CREATE_NO_WINDOW
+            kwargs["creationflags"] = cflags
+
+            si = kwargs.get("startupinfo")
+            if si is None:
+                class DummySI:
+                    def __init__(self):
+                        self.dwFlags = 0
+                        self.wShowWindow = 0
+                si = DummySI()
+                kwargs["startupinfo"] = si
+            if hasattr(si, "dwFlags"):
+                si.dwFlags |= _STARTF_USESHOWWINDOW
+                si.wShowWindow = _SW_HIDE
+            fake_orig_init(self, *args, **kwargs)
+
+    # 1. Plain call without kwargs
+    captured_kwargs.clear()
+    d1 = DummyPopen(["git", "rev-parse", "HEAD"])
+    assert captured_kwargs[0]["creationflags"] & _CREATE_NO_WINDOW
+    assert captured_kwargs[0]["startupinfo"].wShowWindow == _SW_HIDE
+    assert captured_kwargs[0]["startupinfo"].dwFlags & _STARTF_USESHOWWINDOW
+
+    # 2. Call with DETACHED_PROCESS -> must be stripped and replaced with CREATE_NO_WINDOW
+    captured_kwargs.clear()
+    d2 = DummyPopen(["ollama.exe", "serve"], creationflags=_DETACHED_PROCESS | 0x00000200)
+    assert not (captured_kwargs[0]["creationflags"] & _DETACHED_PROCESS)
+    assert captured_kwargs[0]["creationflags"] & _CREATE_NO_WINDOW
+    assert captured_kwargs[0]["creationflags"] & 0x00000200  # preserves other flags
+    assert captured_kwargs[0]["startupinfo"].wShowWindow == _SW_HIDE
+

@@ -83,6 +83,47 @@ if _orig_stderr is not None and hasattr(_orig_stderr, "reconfigure"):
     except Exception:
         pass
 
+# ── Suppress Windows Flashing Command Prompt Popups ───────────────────────────
+def install_windows_process_silencer():
+    """On Windows, ensures that all subprocess invocations (git, pip, python, ollama, etc.)
+    run silently without flashing black command prompt windows or console windows."""
+    if sys.platform != "win32":
+        return
+    import subprocess
+    if getattr(subprocess.Popen, "_cleo_silent_patched", False):
+        return
+
+    _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    _DETACHED_PROCESS = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    _STARTF_USESHOWWINDOW = getattr(subprocess, "STARTF_USESHOWWINDOW", 0x00000001)
+    _SW_HIDE = 0
+
+    _orig_popen_init = subprocess.Popen.__init__
+
+    def _silent_windows_popen_init(self, *args, **kwargs):
+        cflags = kwargs.get("creationflags", 0)
+        # Strip DETACHED_PROCESS if present so Windows does not ignore CREATE_NO_WINDOW
+        if cflags & _DETACHED_PROCESS:
+            cflags = (cflags & ~_DETACHED_PROCESS)
+        cflags |= _CREATE_NO_WINDOW
+        kwargs["creationflags"] = cflags
+
+        si = kwargs.get("startupinfo")
+        if si is None and hasattr(subprocess, "STARTUPINFO"):
+            si = subprocess.STARTUPINFO()
+            kwargs["startupinfo"] = si
+        if si and hasattr(si, "dwFlags"):
+            si.dwFlags |= _STARTF_USESHOWWINDOW
+            si.wShowWindow = _SW_HIDE
+
+        _orig_popen_init(self, *args, **kwargs)
+
+    subprocess.Popen.__init__ = _silent_windows_popen_init
+    subprocess.Popen._cleo_silent_patched = True
+
+install_windows_process_silencer()
+
+
 # ── Global Fatal Uncaught Exception Hooks ──────────────────────────────────────
 def _fatal_excepthook(exc_type, exc_val, exc_tb):
     """Logs any uncaught exception with full traceback directly to ~/.cleo/cleo.log."""
