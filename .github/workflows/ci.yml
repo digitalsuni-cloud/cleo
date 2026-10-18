@@ -14,9 +14,9 @@ jobs:
 
       - name: Version consistency check
         run: |
-          PKG=$(node -p "require('./package.json').version")
+          PKG=$(python3 -c "import json; print(json.load(open('package.json'))['version'])")
           CARGO=$(grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/version = "//;s/"//')
-          TAURI=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          TAURI=$(python3 -c "import json; print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
           echo "package.json : $PKG"
           echo "Cargo.toml   : $CARGO"
           echo "tauri.conf   : $TAURI"
