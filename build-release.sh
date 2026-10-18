@@ -21,7 +21,14 @@ BUNDLE_BASE_ARM="$SCRIPT_DIR/src-tauri/target/aarch64-apple-darwin/release/bundl
 BUNDLE_BASE_INTEL="$SCRIPT_DIR/src-tauri/target/x86_64-apple-darwin/release/bundle"
 
 # ── 1. Read version from package.json ────────────────────────────────────────
-VERSION=$(python3 -c "import json; print(json.load(open('package.json'))['version'])")
+if [ -f "$SCRIPT_DIR/.venv/bin/python" ]; then
+  PY_CMD="$SCRIPT_DIR/.venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+  PY_CMD="python3"
+else
+  PY_CMD="python"
+fi
+VERSION=$("$PY_CMD" -c "import json; print(json.load(open('package.json'))['version'])")
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║      Cleo FinOps Copilot  ·  Release Build  v$VERSION     ║"
@@ -30,21 +37,26 @@ echo ""
 
 # ── 2. Archive any existing release packages ──────────────────────────────────
 shopt -s nullglob
-EXISTING_DMGS=("$RELEASE_DIR"/*.dmg)
-EXISTING_APPS=("$RELEASE_DIR"/*.app)
+EXISTING_PACKAGES=(
+  "$RELEASE_DIR"/*.dmg
+  "$RELEASE_DIR"/*.app
+  "$RELEASE_DIR"/*.AppImage
+  "$RELEASE_DIR"/*.deb
+  "$RELEASE_DIR"/*.exe
+)
 
 HAS_EXISTING=false
-for f in "${EXISTING_DMGS[@]}" "${EXISTING_APPS[@]}"; do
+for f in "${EXISTING_PACKAGES[@]}"; do
   [ -e "$f" ] && HAS_EXISTING=true && break
 done
 
 if [ "$HAS_EXISTING" = true ]; then
-  EXISTING_VERSION=$(basename "${EXISTING_DMGS[0]:-}" 2>/dev/null | sed -E 's/.*_([0-9]+\.[0-9]+\.[0-9]+)_.*/\1/' || echo "")
+  EXISTING_VERSION=$(basename "${EXISTING_PACKAGES[0]:-}" 2>/dev/null | sed -E 's/.*_([0-9]+\.[0-9]+\.[0-9]+)_.*/\1/' || echo "")
   [ -z "$EXISTING_VERSION" ] && EXISTING_VERSION="previous"
   ARCHIVE_TARGET="$ARCHIVE_DIR/${EXISTING_VERSION:-previous}"
   mkdir -p "$ARCHIVE_TARGET"
   echo "→ Archiving existing v${EXISTING_VERSION:-previous} packages to release/archive/${EXISTING_VERSION:-previous}/"
-  for f in "$RELEASE_DIR"/*.dmg "$RELEASE_DIR"/*.app; do
+  for f in "${EXISTING_PACKAGES[@]}"; do
     if [ -e "$f" ]; then
       TS=$(date +%Y%m%d_%H%M%S)
       DEST_DIR="$ARCHIVE_TARGET/$TS"
@@ -64,7 +76,20 @@ echo "→ Building Python standalone backend sidecar..."
 bash "$SCRIPT_DIR/build-backend.sh" --force
 echo ""
 
-# ── 4. Run the Tauri build ───────────────────────────────────────────────────
+# ── 4. Verify Tauri Build Prerequisites ──────────────────────────────────────
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo "❌ Error: Node.js and npm are required to build Tauri packages."
+  echo "   Install Node.js 18+ from https://nodejs.org or via your system package manager."
+  exit 1
+fi
+
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "❌ Error: Rust / Cargo is required to build Tauri packages."
+  echo "   Install Rust via: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+  exit 1
+fi
+
+# ── 5. Run the Tauri build ───────────────────────────────────────────────────
 OS_TYPE="$(uname -s)"
 echo "→ Detected OS: $OS_TYPE"
 
@@ -99,7 +124,26 @@ if [ "$OS_TYPE" == "Darwin" ]; then
 elif [ "$OS_TYPE" == "Linux" ]; then
   echo "→ Building v$VERSION (Linux)..."
   ARCH="$(uname -m)"
-  npx @tauri-apps/cli build
+
+  # Check Linux system dependencies for WebKitGTK and bundling
+  if command -v pkg-config >/dev/null 2>&1; then
+    if ! pkg-config --exists webkit2gtk-4.1 && ! pkg-config --exists webkit2gtk-4.0; then
+      echo "⚠️  WebKitGTK development headers not found via pkg-config."
+      echo "   If the build fails, install required system libraries with:"
+      echo "   sudo apt update && sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf"
+    fi
+  fi
+
+  if ! npx @tauri-apps/cli build; then
+    echo ""
+    echo "❌ Tauri build failed on Linux."
+    echo "On Ubuntu / Debian, ensure the following packages are installed:"
+    echo "  sudo apt update && sudo apt install -y \\"
+    echo "    libwebkit2gtk-4.1-dev build-essential curl wget file \\"
+    echo "    libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf"
+    exit 1
+  fi
+
   mkdir -p "$RELEASE_DIR"
 
   APPIMAGE_PATH="$SCRIPT_DIR/src-tauri/target/release/bundle/appimage"

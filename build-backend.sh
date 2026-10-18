@@ -17,7 +17,7 @@ if [ "$OS" = "Darwin" ]; then
         TARGET="x86_64-apple-darwin"
     fi
 elif [ "$OS" = "Linux" ]; then
-    if [ "$ARCH" = "aarch64" ]; then
+    if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
         TARGET="aarch64-unknown-linux-gnu"
     else
         TARGET="x86_64-unknown-linux-gnu"
@@ -39,19 +39,75 @@ fi
 
 echo "→ Building Cleo standalone backend for $TARGET..."
 
-# Resolve PyInstaller binary
-PYINSTALLER="pyinstaller"
-if command -v pyinstaller >/dev/null 2>&1; then
-    PYINSTALLER="pyinstaller"
-elif [ -f ".venv/bin/pyinstaller" ]; then
-    PYINSTALLER=".venv/bin/pyinstaller"
-elif [ -f ".venv/Scripts/pyinstaller.exe" ]; then
-    PYINSTALLER=".venv/Scripts/pyinstaller.exe"
-elif command -v python3 >/dev/null 2>&1; then
-    PYINSTALLER="python3 -m PyInstaller"
-elif command -v python >/dev/null 2>&1; then
-    PYINSTALLER="python -m PyInstaller"
+# Resolve or prepare PyInstaller
+find_pyinstaller() {
+    if [ -f "$SCRIPT_DIR/.venv/bin/pyinstaller" ]; then
+        echo "$SCRIPT_DIR/.venv/bin/pyinstaller"
+    elif [ -f "$SCRIPT_DIR/.venv/Scripts/pyinstaller.exe" ]; then
+        echo "$SCRIPT_DIR/.venv/Scripts/pyinstaller.exe"
+    elif [ -n "${VIRTUAL_ENV:-}" ] && [ -f "${VIRTUAL_ENV}/bin/pyinstaller" ]; then
+        echo "${VIRTUAL_ENV}/bin/pyinstaller"
+    elif command -v pyinstaller >/dev/null 2>&1; then
+        echo "pyinstaller"
+    elif python3 -c "import PyInstaller" 2>/dev/null; then
+        echo "python3 -m PyInstaller"
+    elif python -c "import PyInstaller" 2>/dev/null; then
+        echo "python -m PyInstaller"
+    else
+        echo ""
+    fi
+}
+
+PYINSTALLER="$(find_pyinstaller)"
+
+if [ -z "$PYINSTALLER" ]; then
+    echo "→ PyInstaller not detected. Attempting automatic environment setup..."
+
+    # 1. If .venv exists, install PyInstaller and requirements into it
+    if [ -f "$SCRIPT_DIR/.venv/bin/pip" ]; then
+        echo "→ Installing PyInstaller and dependencies into .venv..."
+        "$SCRIPT_DIR/.venv/bin/pip" install --quiet --upgrade pip 2>/dev/null || true
+        "$SCRIPT_DIR/.venv/bin/pip" install --quiet -r "$SCRIPT_DIR/requirements.txt" pyinstaller 2>/dev/null || true
+    # 2. If no .venv exists, try creating one
+    elif command -v python3 >/dev/null 2>&1; then
+        echo "→ Creating virtual environment at .venv..."
+        if python3 -m venv "$SCRIPT_DIR/.venv" 2>/dev/null; then
+            "$SCRIPT_DIR/.venv/bin/pip" install --quiet --upgrade pip 2>/dev/null || true
+            "$SCRIPT_DIR/.venv/bin/pip" install --quiet -r "$SCRIPT_DIR/requirements.txt" pyinstaller 2>/dev/null || true
+        fi
+    fi
+
+    # 3. Re-check if PyInstaller is available now
+    PYINSTALLER="$(find_pyinstaller)"
+
+    # 4. Fallback to user pip install if .venv creation was blocked
+    if [ -z "$PYINSTALLER" ]; then
+        if command -v pip3 >/dev/null 2>&1 || command -v pip >/dev/null 2>&1; then
+            echo "→ Attempting pip install for PyInstaller..."
+            python3 -m pip install --quiet --user pyinstaller 2>/dev/null || \
+            python3 -m pip install --quiet --break-system-packages --user pyinstaller 2>/dev/null || \
+            pip install --quiet pyinstaller 2>/dev/null || true
+            PYINSTALLER="$(find_pyinstaller)"
+        fi
+    fi
 fi
+
+if [ -z "$PYINSTALLER" ]; then
+    echo ""
+    echo "❌ Error: PyInstaller is required to build the standalone backend sidecar."
+    echo ""
+    echo "To resolve on Ubuntu / Debian:"
+    echo "  sudo apt update && sudo apt install -y python3-venv python3-pip"
+    echo "  python3 -m venv .venv"
+    echo "  .venv/bin/pip install -r requirements.txt pyinstaller"
+    echo ""
+    echo "To resolve on macOS / other systems:"
+    echo "  pip install -r requirements.txt pyinstaller"
+    echo ""
+    exit 1
+fi
+
+echo "→ Using PyInstaller: $PYINSTALLER"
 
 # Run PyInstaller with all required hidden imports and data files
 $PYINSTALLER --noconfirm --clean --onefile \

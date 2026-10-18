@@ -14,14 +14,20 @@ if exist "%OUT_BIN%" if not "%1"=="--force" (
 
 echo [Backend] Building Cleo standalone backend for %TARGET%...
 
-where pyinstaller >nul 2>nul
-if %errorlevel% equ 0 (
-    set "PYINSTALLER=pyinstaller"
+if exist ".venv\Scripts\pyinstaller.exe" (
+    set "PYINSTALLER=.venv\Scripts\pyinstaller.exe"
 ) else (
-    if exist ".venv\Scripts\pyinstaller.exe" (
-        set "PYINSTALLER=.venv\Scripts\pyinstaller.exe"
+    where pyinstaller >nul 2>nul
+    if !errorlevel! equ 0 (
+        set "PYINSTALLER=pyinstaller"
     ) else (
-        set "PYINSTALLER=python -m PyInstaller"
+        if exist ".venv\Scripts\pip.exe" (
+            echo [Backend] Installing PyInstaller into .venv...
+            .venv\Scripts\pip.exe install -r requirements.txt pyinstaller
+            set "PYINSTALLER=.venv\Scripts\pyinstaller.exe"
+        ) else (
+            set "PYINSTALLER=python -m PyInstaller"
+        )
     )
 )
 
