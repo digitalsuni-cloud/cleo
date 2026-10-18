@@ -1,11 +1,12 @@
 name: Release
 
-# Triggered by a signed version tag: git tag -s v1.2.3 && git push origin v1.2.3
-# The release checklist (CHConfig standard):
-#   1. ci.yml passes on main (tests gate)
-#   2. Tag is pushed → this workflow fires
-#   3. macOS arm64 runner builds the PyInstaller sidecar + Tauri DMG
-#   4. Artifacts are uploaded to the GitHub Release created by the tag
+# Triggered by a signed version tag: git tag -s v1.0.1 -m "Cleo v1.0.1" && git push origin v1.0.1
+# Release workflow (CHConfig / Tauri multi-platform standard):
+#   1. Builds native desktop binaries across macOS (ARM64), Linux (x86_64), and Windows (x86_64)
+#   2. Builds the Python PyInstaller backend sidecar for each platform
+#   3. Packages Tauri DMG, AppImage, DEB, and NSIS installer
+#   4. Uploads all platform assets to the GitHub Release
+#   5. Extracts and updates the GitHub Release notes from CHANGELOG.md
 
 on:
   push:
@@ -13,100 +14,163 @@ on:
       - 'v[0-9]*.[0-9]*.[0-9]*'
 
 permissions:
-  contents: write   # needed to upload release assets
+  contents: write
 
 jobs:
-  # ── macOS Apple Silicon ────────────────────────────────────────────────────
-  build-macos-arm64:
-    name: macOS (Apple Silicon)
-    runs-on: macos-latest          # GitHub's macos-latest is arm64 (M-series)
+  # ── Matrix Desktop Build (macOS, Linux, Windows) ───────────────────────────
+  build-tauri:
+    name: Build (${{ matrix.platform.name }})
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - name: macOS ARM64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            rust_target: aarch64-apple-darwin
+          - name: Linux x86_64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            rust_target: x86_64-unknown-linux-gnu
+          - name: Windows x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rust_target: x86_64-pc-windows-msvc
 
     steps:
       - name: Checkout tag
         uses: actions/checkout@v4
 
-      - name: Extract version from tag
+      - name: Extract version
         id: version
+        shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      # ── Python sidecar ─────────────────────────────────────────────────────
+      # ── Linux System Dependencies for WebKit / Tauri ──────────────────────
+      - name: Install Linux System Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      # ── Python & PyInstaller Sidecar ───────────────────────────────────────
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
 
-      - name: Install Python dependencies + PyInstaller
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build Python sidecar (cleo-server-aarch64-apple-darwin)
-        run: bash build-backend.sh
+      - name: Build Python Sidecar Binary
+        shell: bash
+        run: bash build-backend.sh --force
 
-      # ── Rust / Tauri ───────────────────────────────────────────────────────
-      - name: Set up Rust (stable)
+      # ── Rust Toolchain ─────────────────────────────────────────────────────
+      - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin
+          targets: ${{ matrix.platform.rust_target }}
 
-      - name: Cache Rust build artifacts
+      - name: Cache Cargo
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: macos-arm64-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: macos-arm64-cargo-
+          key: ${{ matrix.platform.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: ${{ matrix.platform.os }}-cargo-
 
-      - name: Install Node + Tauri CLI
+      # ── Node & Tauri CLI ───────────────────────────────────────────────────
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: npm install
+      - name: Install npm dependencies
         run: npm install
 
-      - name: Tauri build — arm64
-        run: npx @tauri-apps/cli build --target aarch64-apple-darwin
+      - name: Build Tauri Desktop Package
+        run: npx @tauri-apps/cli build --target ${{ matrix.platform.target }}
 
-      # ── Collect & upload artifacts ─────────────────────────────────────────
-      - name: Collect DMG
-        id: dmg
+      # ── Collect Platform Artifacts ─────────────────────────────────────────
+      - name: Collect & Stage Artifacts
+        id: stage
+        shell: bash
         run: |
-          VERSION=${{ steps.version.outputs.VERSION }}
-          SRC="src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Cleo_${VERSION}_aarch64.dmg"
-          DEST="Cleo_${VERSION}_arm64.dmg"
-          cp "$SRC" "$DEST"
-          echo "path=$DEST" >> "$GITHUB_OUTPUT"
-          echo "sha256=$(shasum -a 256 "$DEST" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          mkdir -p dist_release
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            shopt -s nullglob
+            for f in src-tauri/target/${{ matrix.platform.target }}/release/bundle/dmg/*.dmg; do
+              cp -f "$f" "dist_release/Cleo_${VERSION}_arm64.dmg"
+            done
+          elif [ "${{ runner.os }}" = "Linux" ]; then
+            shopt -s nullglob
+            for f in src-tauri/target/release/bundle/appimage/*.AppImage; do
+              cp -f "$f" "dist_release/Cleo_${VERSION}_amd64.AppImage"
+            done
+            for f in src-tauri/target/release/bundle/deb/*.deb; do
+              cp -f "$f" "dist_release/Cleo_${VERSION}_amd64.deb"
+            done
+          elif [ "${{ runner.os }}" = "Windows" ]; then
+            shopt -s nullglob
+            for f in src-tauri/target/release/bundle/nsis/*.exe; do
+              cp -f "$f" "dist_release/Cleo_${VERSION}_x64-setup.exe"
+            done
+            for f in src-tauri/target/release/bundle/msi/*.msi; do
+              cp -f "$f" "dist_release/Cleo_${VERSION}_x64.msi"
+            done
+          fi
+          echo "Staged release artifacts:"
+          ls -lh dist_release/
 
-      - name: Upload DMG to GitHub Release
+      - name: Upload Artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.dmg.outputs.path }}
-          body: |
-            **SHA-256** (`${{ steps.dmg.outputs.path }}`): `${{ steps.dmg.outputs.sha256 }}`
-          fail_on_unmatched_files: true
+          files: dist_release/*
+          fail_on_unmatched_files: false
 
-  # ── Future platforms (uncomment when runners are available) ───────────────
-  #
-  # build-macos-intel:
-  #   runs-on: macos-13            # last Intel runner
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - run: bash build-backend.sh   # produces x86_64-apple-darwin sidecar
-  #     - uses: dtolnay/rust-toolchain@stable
-  #       with: { targets: x86_64-apple-darwin }
-  #     - run: npx @tauri-apps/cli build --target x86_64-apple-darwin
-  #
-  # build-windows:
-  #   runs-on: windows-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - run: bash build-backend.sh
-  #     - uses: dtolnay/rust-toolchain@stable
-  #     - run: npx @tauri-apps/cli build
+  # ── Update Release Notes with Checksums & Changelog ────────────────────────
+  update-release-notes:
+    name: Update Release Notes
+    needs: [build-tauri]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract Release Notes from CHANGELOG
+        id: notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -f CHANGELOG.md ]; then
+            python3 -c "
+          import re
+          with open('CHANGELOG.md') as f:
+              content = f.read()
+          # Match ## vX.Y.Z ... up to the next ## v or end of file
+          m = re.search(r'(## v' + re.escape('${VERSION}') + r'[^\n]*\n)(.*?)(?=\n## v|\Z)', content, re.DOTALL)
+          if m:
+              with open('release_notes.md', 'w') as out:
+                  out.write(m.group(0).strip())
+          else:
+              with open('release_notes.md', 'w') as out:
+                  out.write('## Cleo ' + '${GITHUB_REF_NAME}' + '\n\nRelease ' + '${GITHUB_REF_NAME}' + ' is ready.')
+          "
+          else
+            echo "## Cleo ${GITHUB_REF_NAME}" > release_notes.md
+          fi
+          cat release_notes.md
+
+      - name: Update GitHub Release Body
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release_notes.md

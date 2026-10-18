@@ -8,6 +8,8 @@ cd "$SCRIPT_DIR"
 ARCH="$(uname -m)"
 OS="$(uname -s)"
 
+EXT=""
+SEP=":"
 if [ "$OS" = "Darwin" ]; then
     if [ "$ARCH" = "arm64" ]; then
         TARGET="aarch64-apple-darwin"
@@ -22,11 +24,13 @@ elif [ "$OS" = "Linux" ]; then
     fi
 else
     TARGET="x86_64-pc-windows-msvc"
+    EXT=".exe"
+    SEP=";"
 fi
 
 BIN_DIR="$SCRIPT_DIR/src-tauri/binaries"
 mkdir -p "$BIN_DIR"
-OUT_BIN="$BIN_DIR/cleo-server-$TARGET"
+OUT_BIN="$BIN_DIR/cleo-server-$TARGET$EXT"
 
 if [ -f "$OUT_BIN" ] && [ "${1:-}" != "--force" ]; then
     echo "✓ Backend binary already exists: $OUT_BIN (pass --force to rebuild)"
@@ -35,13 +39,27 @@ fi
 
 echo "→ Building Cleo standalone backend for $TARGET..."
 
+# Resolve PyInstaller binary
+PYINSTALLER="pyinstaller"
+if command -v pyinstaller >/dev/null 2>&1; then
+    PYINSTALLER="pyinstaller"
+elif [ -f ".venv/bin/pyinstaller" ]; then
+    PYINSTALLER=".venv/bin/pyinstaller"
+elif [ -f ".venv/Scripts/pyinstaller.exe" ]; then
+    PYINSTALLER=".venv/Scripts/pyinstaller.exe"
+elif command -v python3 >/dev/null 2>&1; then
+    PYINSTALLER="python3 -m PyInstaller"
+elif command -v python >/dev/null 2>&1; then
+    PYINSTALLER="python -m PyInstaller"
+fi
+
 # Run PyInstaller with all required hidden imports and data files
-.venv/bin/pyinstaller --noconfirm --clean --onefile \
+$PYINSTALLER --noconfirm --clean --onefile \
   --name "cleo-server-$TARGET" \
   --distpath "$BIN_DIR" \
   --workpath "$SCRIPT_DIR/build/pyinstaller" \
-  --add-data "cleo_ui.html:." \
-  --add-data ".agents/skills/cloud-finops:.agents/skills/cloud-finops" \
+  --add-data "cleo_ui.html${SEP}." \
+  --add-data ".agents/skills/cloud-finops${SEP}.agents/skills/cloud-finops" \
   --hidden-import "uvicorn" \
   --hidden-import "uvicorn.logging" \
   --hidden-import "uvicorn.loops" \
@@ -69,5 +87,5 @@ echo "→ Building Cleo standalone backend for $TARGET..."
   --hidden-import "auth.oauth" \
   cleo_server.py
 
-chmod +x "$OUT_BIN"
+chmod +x "$OUT_BIN" 2>/dev/null || true
 echo "✓ Backend built successfully: $OUT_BIN"
