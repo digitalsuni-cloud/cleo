@@ -45,6 +45,7 @@ test*.py
 !test_streaming.py
 !test_area_chart_integration.py
 !test_crypto.py
+!test_optimization.py
 conftest.py
 tests/
 update_compare.py

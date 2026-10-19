@@ -18,6 +18,7 @@ except ImportError:
     logger.setLevel(logging.INFO)
 
 from cleo_charts import is_no_chart_requested, is_no_mom_requested, is_exclude_other_requested, is_other_category_name, is_no_insights_requested
+from cleo_optimization import is_finops_optimization_request, classify_optimization_focus
 
 # ── Canonical Multi-Cloud & FOCUS 1.2 Column Synonyms & Metadata ────────
 COLUMN_SYNONYMS: Dict[str, Dict[str, Any]] = {
@@ -2409,12 +2410,14 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "who was #1", "what was #1", "who spent the most", "total spend", "what was the total"
     ]) and not has_explicit_data_subject
 
+    is_opt_req = is_finops_optimization_request(last_msg)
     is_rec = any(w in low for w in [
         "recommendation", "recommendations", "optimize", "optimization", "saving", "savings",
         "reduce cost", "cost reduction", "rightsizing", "waste", "underutilized",
         "roi", "simulation", "simulate", "breakeven", "break-even", "payback",
         "efficiency calculation", "efficiency calculations", "payback period"
-    ])
+    ]) or is_opt_req
+    opt_focus = classify_optimization_focus(last_msg) if is_rec else None
     is_anomaly = any(w in low for w in [
         "anomal", "spike", "unusual spend", "unexpected cost",
         "inactive ones", "the inactive ones", "active ones", "the active ones",
@@ -2427,7 +2430,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     )) and not any(w in low for w in ["tag", "tags", "tagged"])
 
     # General Cloud FinOps Advisory / Conceptual Question (no live data needed)
-    is_general_finops = any(phrase in low for phrase in [
+    is_general_finops = (not is_opt_req) and any(phrase in low for phrase in [
         "what is the difference", "difference between", "what is billedcost", "what is effectivecost",
         "what is focus", "what is finops", "explain finops", "finops framework", "finops phases",
         "inform optimize operate", "savings plan vs", "savings plans vs", "ri vs", "reserved instance vs",
@@ -2753,6 +2756,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
 
     result = {
         "intent": intent,
+        "optimization_focus": opt_focus,
         "cloud": cloud,
         "target_dataset": target_dataset,
         "service": service,

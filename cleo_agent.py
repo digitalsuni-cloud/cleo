@@ -981,6 +981,12 @@ def build_system_prompt(tools: list[dict], engine_label: str = None) -> str:
     return prompt
 
 # ── Multi-Cloud Service Catalogs & Query Understanding (from cleo_query.py) ───
+from cleo_optimization import (
+    is_finops_optimization_request,
+    classify_optimization_focus,
+    calculate_actionable_savings,
+    format_optimization_response,
+)
 from cleo_query import (
     ServiceMatch,
     CLOUD_SERVICES_MAP,
@@ -1578,6 +1584,11 @@ class AIClient:
                         parsed["intent"] = "fetch_data"
                         parsed["is_new_data_fetch"] = True
 
+                    if is_finops_optimization_request(last_msg):
+                        parsed["intent"] = "finops_recommendations"
+                        parsed["optimization_focus"] = classify_optimization_focus(last_msg)
+                        parsed["is_new_data_fetch"] = True
+
                     if cont_ctx.get("is_continuation"):
                         if (parsed.get("intent") in ("unsupported_capability", "general_finops_advisory", "general_chat", "none", None) or not parsed.get("is_new_data_fetch")) and parsed.get("intent") not in ("reformat_previous", "history_qa"):
                             if cont_ctx.get("prior_query_type") == "anomalies":
@@ -1623,6 +1634,7 @@ class AIClient:
 
                     return {
                         "intent": parsed.get("intent", det_info["intent"]),
+                        "optimization_focus": parsed.get("optimization_focus") or det_info.get("optimization_focus") or classify_optimization_focus(last_msg),
                         "cloud": parsed.get("cloud") or det_info.get("cloud"),
                         "service": parsed.get("service") or det_info["service"],
                         "services": parsed.get("services") or det_info.get("services") or ([parsed.get("service")] if parsed.get("service") else []),
@@ -2828,7 +2840,21 @@ class AIClient:
             ])
         )
 
-        finops_adv = get_finops_advisory(last_msg) if (not is_live_data_followup and not is_data_query) else None
+        # ── 2d-Opt. Actionable FinOps Optimization Engine (Direct / Standalone / No MCP) ──
+        is_optimization = (
+            intent_info.get("intent") == "finops_recommendations"
+            or is_finops_optimization_request(last_msg)
+        )
+        if is_optimization and not mcp:
+            focus = intent_info.get("optimization_focus") or classify_optimization_focus(last_msg)
+            req_cloud = intent_info.get("cloud") or "all"
+            opt_data = calculate_actionable_savings(cloud=req_cloud, focus=focus, baseline_spend=None)
+            resp = format_optimization_response(opt_data, cloud=req_cloud, focus=focus, user_query=last_msg)
+            if on_token:
+                on_token(resp)
+            return resp
+
+        finops_adv = get_finops_advisory(last_msg) if (not is_live_data_followup and not is_data_query and not is_optimization) else None
         is_finops_topic = bool(finops_adv) or any(t in low for t in [
             "finops", "cloud", "focus", "cost", "spend", "billed", "effective", "pricing", "rate",
             "ri", "reserved", "savings plan", "commitment", "ebs", "ec2", "rds", "s3", "azure", "gcp",
@@ -2841,6 +2867,7 @@ class AIClient:
         is_general_finops_query = (
             not is_data_query and
             not named_customer and
+            not is_optimization and
             not any(w in low for w in ["compare", "comparison", "service level", "services cost", "projected cost", "run-rate", "run rate"]) and
             (
                 (intent_info.get("intent") == "general_finops_advisory" and not any(w in low for w in ["cost", "spend", "usage", "billed", "service", "services"]))
@@ -8429,13 +8456,17 @@ class AIClient:
                 )
 
             # 3-Rec. Cost Optimization Recommendations & ROI Simulation
-            is_rec_query = any(w in low for w in [
-                "recommendation", "recommendations", "optimize", "optimization",
-                "rightsizer", "rightsizing", "reduce cost", "cost reduction",
-                "save money", "savings opportunity", "savings opportunities",
-                "roi", "simulation", "simulate", "breakeven", "break-even", "payback",
-                "efficiency calculation", "efficiency calculations", "payback period"
-            ])
+            is_rec_query = (
+                intent_info.get("intent") == "finops_recommendations"
+                or is_finops_optimization_request(last_msg)
+                or any(w in low for w in [
+                    "recommendation", "recommendations", "optimize", "optimization",
+                    "rightsizer", "rightsizing", "reduce cost", "cost reduction",
+                    "save money", "savings opportunity", "savings opportunities",
+                    "roi", "simulation", "simulate", "breakeven", "break-even", "payback",
+                    "efficiency calculation", "efficiency calculations", "payback period"
+                ])
+            )
             if is_rec_query and named_customer and named_customer_crn:
                 days_match = re.search(r'(?:last|past|for)?\s*(\d{1,3})\s*days?', low)
                 rec_days = int(days_match.group(1)) if days_match else 30
@@ -8726,8 +8757,9 @@ class AIClient:
                     any(w in low for w in ["all cloud", "all clouds", "multi-cloud", "multicloud", "cross-cloud", "every cloud", "providers", "all providers", "estate"])
                 )
 
-                # 1. Fetch Multi-Cloud Spend Telemetry
+                # 1. Fetch Multi-Cloud Spend Telemetry from CloudHealth
                 mc_rows = []
+                baseline_spend = {}
                 try:
                     q_params = {
                         "queryInput": {
@@ -8746,178 +8778,37 @@ class AIClient:
                         p = r.get("provider") or "AWS"
                         if s and c > 0:
                             mc_rows.append((p, s, c))
+                            p_key = p.lower()
+                            if "aws" in p_key or "amazon" in p_key:
+                                baseline_spend["aws"] = baseline_spend.get("aws", 0.0) + c
+                            elif "azure" in p_key or "microsoft" in p_key:
+                                baseline_spend["azure"] = baseline_spend.get("azure", 0.0) + c
+                            elif "gcp" in p_key or "google" in p_key:
+                                baseline_spend["gcp"] = baseline_spend.get("gcp", 0.0) + c
                 except Exception as e:
                     logger.warning(f"[MultiCloud Recommendations Query] {e}")
 
-                if not mc_rows:
-                    return (
-                        f"### 💡 CloudHealth Multi-Cloud FinOps Optimization Recommendations\n\n"
-                        f"No live multi-cloud billing data was returned. This usually means the connected CloudHealth "
-                        f"account/scope doesn't have visibility into current spend, or there was no spend this period.\n\n"
-                        f"*Source: MULTICLOUD_FOCUS_COST_AND_USAGE via CloudHealth FlexReports.*"
-                    )
-
                 mc_rows.sort(key=lambda x: x[2], reverse=True)
-                total_mc_spend = _fetch_total_cost(
-                    mcp, "SELECT SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE",
-                    "MONTHLY", {"last": 1, "qualifier": "MONTH"},
-                    crn=named_customer_crn
-                ) or sum(r[2] for r in mc_rows)
-                cust_prefix = f"for **{named_customer}** " if named_customer else ""
-                rec_title = f"{cust_prefix}Across All Cloud Providers" if is_multi_cloud else f"{cust_prefix}for {target_cloud_rec.upper()}"
 
-                def _match_cost(keywords):
-                    return sum(c for _, s, c in mc_rows if any(k in s.lower() for k in keywords))
+                opt_focus = intent_info.get("optimization_focus") or classify_optimization_focus(last_msg)
+                opt_cloud = target_cloud_rec if (target_cloud_rec and not is_multi_cloud) else (intent_info.get("cloud") or "all")
 
-                storage_cost = _match_cost(["ebs", "s3", "blob", "disk", "storage"])
-                db_cost = _match_cost(["rds", "sql", "cosmos", "autonomous database", "cloud sql", "spanner"])
-                compute_cost = _match_cost(["ec2", "virtual machine", "compute engine"])
-                ai_cost = _match_cost(["bedrock", "openai", "vertex ai", "sonnet", "claude", "titan"])
-
-                # Levers are only included when real matched spend exists; savings are a
-                # documented industry-standard percentage applied to that real baseline —
-                # never a hardcoded dollar figure.
-                lever_defs = [
-                    ("Multi-Cloud Storage Modernization & Waste Elimination", "Storage Modernization & Waste Elimination (Quick Win)",
-                     "🔻 Low / Easy", storage_cost, 0.20,
-                     "Upgrade AWS EBS/RDS `gp2` volumes to `gp3`, remove orphaned/unattached Azure managed disks, and apply Azure/GCP storage lifecycle tiering (Hot→Cool/Archive, Standard→Nearline/Coldline).",
-                     "Immediate / Day 1 (0–14 days)", "> 1,000% (Instantaneous)"),
-                    ("Commercial Database Modernization & Licensing Rightsizing", "Database Licensing & Architecture Modernization (Strategic)",
-                     "🔴 High", db_cost, 0.30,
-                     "Modernize proprietary commercial database engines (Oracle/SQL Server on RDS) to Amazon Aurora PostgreSQL, rightsize Azure SQL DTU/vCore allocations.",
-                     "90–180 days (3–6 months)", "180% – 300% Net ROI"),
-                    ("Architecture & Silicon Modernization (ARM64/Graviton)", "Hardware Efficiency & Silicon Modernization (Strategic)",
-                     "🟡 Medium", compute_cost, 0.18,
-                     "Transition stateless compute to ARM64/Graviton-class instances (AWS Graviton, GCP Tau, Azure Ampere) for better price-performance with minimal application changes.",
-                     "90–150 days (3–5 months)", "150% – 250% Net ROI"),
-                    ("AI Token Economics & Batch Inference Optimization", "AI/GenAI Capacity Planning & Token Economics (Strategic)",
-                     "🟡 Medium", ai_cost, 0.35,
-                     "Enable prompt caching on Claude/Bedrock and Azure OpenAI models to cut repeated prompt-token costs, and route non-realtime workloads through batch inference APIs for discounted rates.",
-                     "Immediate (< 14 days)", "> 800% Net ROI"),
-                ]
-
-                levers_md = []
-                opp_rows = []
-                total_savings = 0.0
-                for idx, (title, category, complexity, base_cost, pct, action, payback, roi_label) in enumerate(lever_defs, start=1):
-                    if base_cost <= 0:
-                        continue
-                    sav = base_cost * pct
-                    total_savings += sav
-                    levers_md.append(
-                        f"##### {idx}. {title}\n"
-                        f"- **FinOps Category**: {category}\n"
-                        f"- **Implementation Complexity**: {complexity}\n"
-                        f"- **Current Baseline Telemetry**: **${base_cost:,.2f}/month** in matched live spend.\n"
-                        f"- **Action Plan**: {action}\n"
-                        f"- **Estimated Monthly Savings**: **{pct*100:.0f}% (~${sav:,.2f}/month)**.\n"
-                        f"- **Break-Even & Payback Horizon**: **{payback}** (Expected ROI: **{roi_label}**).\n"
-                    )
-                    opp_rows.append((title, base_cost, complexity, sav, payback, roi_label, category))
-
-                if not levers_md:
-                    generic_sav = total_mc_spend * 0.15
-                    total_savings = generic_sav
-                    levers_md.append(
-                        f"##### 1. Rate & Modernization Review\n"
-                        f"- **FinOps Category**: General Optimization\n"
-                        f"- **Implementation Complexity**: 🟡 Medium\n"
-                        f"- **Current Baseline Telemetry**: **${total_mc_spend:,.2f}/month** total analyzed spend.\n"
-                        f"- **Action Plan**: Apply commitment coverage (Savings Plans/Reservations/CUDs) to steady-state baseline and enforce mandatory tagging for defensible cost allocation.\n"
-                        f"- **Estimated Monthly Savings**: **~15% (~${generic_sav:,.2f}/month)** (rule-of-thumb estimate; no single waste category dominates this estate).\n"
-                        f"- **Break-Even Horizon**: **7–9 months (1-Yr Term)** at ≥80% baseline utilization.\n"
-                    )
-
-                # Real top-line spend table (no fabricated per-row savings breakdown)
-                top_rows_tbl = [
-                    f"| **{p}** | {s} | **${c:,.2f}** | {(c/total_mc_spend*100):.1f}% |"
-                    for p, s, c in mc_rows[:10]
-                ]
-                spend_table = (
-                    f"| Cloud Provider | Service | Spend | % of Total |\n"
-                    f"|:---|:---|:---|:---|\n"
-                    f"{chr(10).join(top_rows_tbl)}\n"
-                    f"| **Total** | **All Providers & Services** | **${total_mc_spend:,.2f}** | **100.0%** |"
+                opt_data = calculate_actionable_savings(
+                    cloud=opt_cloud,
+                    focus=opt_focus,
+                    baseline_spend=baseline_spend if baseline_spend else None
                 )
 
-                savings_pct = (total_savings / total_mc_spend * 100) if total_mc_spend else 0.0
-
-                if opp_rows:
-                    sc_rows = [
-                        f"| **{title}** | {complexity} | ${base_cost:,.2f} | **${sav:,.2f}** | {(sav/base_cost*100):.1f}% | {payback} | {roi_label} |"
-                        for title, base_cost, complexity, sav, payback, roi_label, _ in opp_rows
-                    ]
-                    scorecard_table = (
-                        f"| Optimization Opportunity / Lever | Complexity | Baseline Spend | Est. Monthly Savings | % Reduction | Break-Even Horizon | Net Annualized ROI |\n"
-                        f"|:---|:---|:---|:---|:---|:---|:---|\n"
-                        f"{chr(10).join(sc_rows)}\n"
-                        f"| **Total Projected Savings Opportunity** | | **${total_mc_spend:,.2f}** | **${total_savings:,.2f} / month** | **{savings_pct:.1f}%** | — | — |"
-                    )
-
-                    # Dynamic FinOps ROI Simulation rows
-                    sim_rows = []
-                    for title, base_cost, complexity, sav, payback, roi_label, cat in opp_rows:
-                        ann_sav = sav * 12.0
-                        if "Quick Win" in cat or "Immediate" in payback:
-                            impl_cost = "$0 CapEx (~2 hrs dev review)"
-                            dest = "Spend Removed (Next billing cycle)"
-                        elif "Strategic" in cat or "90" in payback:
-                            est_cost = max(4000.0, sav * 1.5)
-                            impl_cost = f"~${est_cost:,.2f} (Dev Sprints + Cutover)"
-                            dest = "Spend Removed (License & silicon exit)"
-                        else:
-                            impl_cost = "$0 Upfront (No-Upfront Commitment)"
-                            dest = "Spend Avoided (Baseline discount)"
-                        sim_rows.append(
-                            f"| **{title}** | {impl_cost} | -${sav:,.2f} / mo | ${ann_sav:,.2f} / yr | **{payback}** | **{roi_label}** | {dest} |"
-                        )
-                    sim_table = (
-                        f"| Optimization Lever / Strategy | Implementation Cost (CapEx / Dev) | Monthly Run-Rate Delta | Annualized Net Savings | Break-Even Horizon | Expected 1-Year ROI | Value Realization Gate |\n"
-                        f"|:---|:---|:---|:---|:---|:---|:---|\n"
-                        f"{chr(10).join(sim_rows)}"
-                    )
-                else:
-                    scorecard_table = (
-                        f"| Metric | Value |\n"
-                        f"|:---|:---|\n"
-                        f"| **Total Monthly Spend Analyzed** | **${total_mc_spend:,.2f}** |\n"
-                        f"| **Total Projected Savings Opportunity** | **${total_savings:,.2f} / month** |\n"
-                        f"| **Potential Spend Reduction** | **{savings_pct:.1f}%** |\n"
-                        f"| **Break-Even Horizon (Rate Optimization)** | **7–9 Months (1-Yr Term)** |"
-                    )
-                    sim_table = (
-                        f"| Optimization Lever / Strategy | Implementation Cost | Monthly Run-Rate Delta | Annualized Net Savings | Break-Even Horizon | Expected 1-Year ROI | Value Realization Gate |\n"
-                        f"|:---|:---|:---|:---|:---|:---|:---|\n"
-                        f"| **Commitments & Modernization Review** | $0 Upfront | -${total_savings:,.2f} / mo | ${total_savings*12:,.2f} / yr | **7–9 Months** | **25%–35%** | Spend Avoided |"
-                    )
-
-                is_roi_query = any(w in low for w in ["roi", "simulate", "simulation", "breakeven", "break-even", "payback", "efficiency calculation"])
-                heading_banner = (
-                    f"### 📈 CloudHealth Multi-Cloud FinOps ROI Simulation & Break-Even Analysis {rec_title}\n"
-                    if is_roi_query else
-                    f"### 💡 CloudHealth Multi-Cloud FinOps Optimization: Top Strategic Recommendations {rec_title}\n"
+                resp = format_optimization_response(
+                    opt_data,
+                    cloud=opt_cloud,
+                    focus=opt_focus,
+                    user_query=last_msg,
+                    top_spend_rows=mc_rows if mc_rows else None
                 )
-
-                rec_sections = [
-                    heading_banner,
-                    f"Based on live multi-cloud telemetry retrieved from **CloudHealth FOCUS & Billing Datasets** "
-                    f"(Total Analyzed Monthly Spend: **${total_mc_spend:,.2f}**):\n",
-                    f"#### 🔍 Top Spend by Provider & Service\n\n{spend_table}\n",
-                    f"#### 🎯 Prioritized Multi-Cloud FinOps Levers\n",
-                    *levers_md,
-                    f"#### 📊 Executive Savings & Payback Scorecard\n\n{scorecard_table}\n",
-                    f"#### 📈 FinOps ROI & Break-Even Simulation Model\n\n{sim_table}\n\n"
-                    f"##### 🎯 FinOps Efficiency Metrics & KPIs\n"
-                    f"- **Effective Savings Rate (ESR)**: **{savings_pct:.1f}%** (target benchmark: 15%–25% across balanced multi-cloud estates).\n"
-                    f"- **Commitment Coverage Target**: **70% to 80%** of steady-state compute (never 100% to preserve headroom for rightsizing).\n"
-                    f"- **Commitment Utilization Target**: **≥ 80% to 95%** (break-even utilization threshold: `1 - discount %`).\n"
-                    f"- **Realized vs. Potential Savings**: Sized potential backlog is **${total_savings:,.2f} / month**; realized savings will be booked upon sprint cutover.\n"
-                    f"- **Governed Break-Even Taxonomy**: Rejects flat 22-day blanket assumptions — zero friction quick wins pay back on Day 1, while structural database and silicon migrations require a realistic 3–6 month amortized payback window.\n\n",
-                    f"*Source: CloudHealth FOCUS & Multi-Cloud Billing Datasets (AWS CUR, Azure Cost Management, GCP BigQuery). "
-                    f"Savings and ROI figures are grounded in the FinOps Foundation Framework and live telemetry.*"
-                ]
-
-                return "\n".join(rec_sections)
+                if on_token:
+                    on_token(resp)
+                return resp
 
             # ── Monthly trend / MoM waterfall builder, shared by 3d (below) and the multi-
             # provider follow-up continuity check just after it. Defined here (not inline in 3d)
