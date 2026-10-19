@@ -3642,13 +3642,17 @@ def redirect_to_new_chat(request: Request):
 @app.get("/chat/{session_id}", response_class=HTMLResponse)
 def serve_gui(session_id: Optional[str] = None):
     ui_path = ""
+    bundled_dir = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
+    bundled_ui = os.path.join(bundled_dir, "cleo_ui.html")
     if _cleo_src_dir:
         ota_ui = os.path.join(_cleo_src_dir, "cleo_ui.html")
         if os.path.exists(ota_ui):
-            ui_path = ota_ui
+            if os.path.exists(bundled_ui):
+                ui_path = ota_ui if os.path.getmtime(ota_ui) >= os.path.getmtime(bundled_ui) else bundled_ui
+            else:
+                ui_path = ota_ui
     if not ui_path:
-        base_dir = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
-        ui_path = os.path.join(base_dir, "cleo_ui.html")
+        ui_path = bundled_ui
     if os.path.exists(ui_path):
         with open(ui_path, "r", encoding="utf-8") as f:
             content = f.read()
