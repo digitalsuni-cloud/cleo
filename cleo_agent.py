@@ -1412,7 +1412,12 @@ class AIClient:
         if active_customer:
             active_entities.append(f"- Active Customer: {active_customer}")
 
-        active_cloud = cont_ctx.get("new_cloud")
+        cur_cloud = extract_requested_cloud(last_msg)
+        cur_svc, _ = extract_requested_service(last_msg)
+
+        active_cloud = cont_ctx.get("new_cloud") or cur_cloud
+        if not active_cloud and cur_svc and PCODE_TO_PROVIDER.get(str(cur_svc)):
+            active_cloud = PCODE_TO_PROVIDER[str(cur_svc)]
         if not active_cloud:
             for u in reversed(prior_user_msgs):
                 c = extract_requested_cloud(u)
@@ -1422,7 +1427,7 @@ class AIClient:
         if active_cloud:
             active_entities.append(f"- Active Cloud Provider: {active_cloud}")
 
-        active_svc = cont_ctx.get("new_service")
+        active_svc = cont_ctx.get("new_service") or cur_svc
         if not active_svc:
             for u in reversed(prior_user_msgs):
                 s, _ = extract_requested_service(u)
@@ -1707,12 +1712,27 @@ class AIClient:
                             res_target_dim = None
                         bdowns = [b for b in bdowns if b not in ("service", "services", "service_subcategory")]
 
+                    # Ensure service provider takes precedence over stale conversational cloud context
+                    cur_svc_pcode, _ = extract_requested_service(last_msg)
+                    if not cur_svc_pcode and det_info.get("service"):
+                        cur_svc_pcode = det_info["service"]
+                    cur_svc_prov = PCODE_TO_PROVIDER.get(str(cur_svc_pcode)) if cur_svc_pcode else None
+                    cur_msg_cloud = extract_requested_cloud(last_msg)
+
+                    resolved_cloud = parsed.get("cloud") or det_info.get("cloud")
+                    if cur_svc_prov and not cur_msg_cloud and resolved_cloud != cur_svc_prov:
+                        resolved_cloud = cur_svc_prov
+
+                    resolved_service = parsed.get("service") or det_info.get("service")
+                    if cur_svc_pcode and not resolved_service:
+                        resolved_service = cur_svc_pcode
+
                     return {
                         "intent": parsed.get("intent", det_info["intent"]),
                         "optimization_focus": parsed.get("optimization_focus") or det_info.get("optimization_focus") or classify_optimization_focus(last_msg),
-                        "cloud": parsed.get("cloud") or det_info.get("cloud"),
-                        "service": parsed.get("service") or det_info["service"],
-                        "services": parsed.get("services") or det_info.get("services") or ([parsed.get("service")] if parsed.get("service") else []),
+                        "cloud": resolved_cloud,
+                        "service": resolved_service,
+                        "services": parsed.get("services") or det_info.get("services") or ([resolved_service] if resolved_service else []),
                         "customer": parsed.get("customer") or det_info["customer"],
                         "metric_type": parsed.get("metric_type") or det_info.get("metric_type", "cost"),
                         "target_dimension": res_target_dim,
@@ -3088,7 +3108,8 @@ class AIClient:
             # If LLM identified a target_ym from typos or context that regex missed, incorporate it
             # only when the query is NOT asking for a multi-month timeframe/duration
             req_months = intent_info.get("timeframe_months") or time_ctx.get("timeframe_months")
-            if intent_info.get("target_ym") and not is_specific and not (req_months and req_months > 1):
+            has_daily_request = bool(time_ctx.get("timeframe_days") or intent_info.get("timeframe_days") or time_ctx.get("daily_range"))
+            if intent_info.get("target_ym") and not is_specific and not (req_months and req_months > 1) and not has_daily_request:
                 target_ym = intent_info["target_ym"]
                 is_specific = True
                 try:
@@ -3193,7 +3214,8 @@ class AIClient:
                         break
 
             # ── Extract or inherit requested cloud provider (aws, azure, gcp, all) ──
-            active_cloud = extract_requested_cloud(last_msg) or intent_info.get("cloud")
+            explicit_msg_cloud = extract_requested_cloud(last_msg)
+            active_cloud = explicit_msg_cloud or intent_info.get("cloud")
             if not active_cloud and is_followup:
                 for u_msg in reversed(prior_user_msgs):
                     c = extract_requested_cloud(u_msg)
@@ -3210,8 +3232,13 @@ class AIClient:
             if requested_service and active_cloud:
                 svc_prov = PCODE_TO_PROVIDER.get(str(requested_service))
                 if svc_prov and svc_prov != active_cloud:
-                    requested_service = None
-                    requested_service_disp = None
+                    if not explicit_msg_cloud:
+                        # User did not explicitly request a conflicting cloud in the current message;
+                        # the current service's native provider takes precedence over conversational cloud history!
+                        active_cloud = svc_prov
+                    else:
+                        requested_service = None
+                        requested_service_disp = None
 
             # Prior topic check from conversational history
             prior_topic = ""
@@ -10614,6 +10641,35 @@ class AIClient:
                 # ── Unified Dimensional Breakdown Router ──
                 # Supports all FOCUS 1.2 dimensions, AI & Foundation Model dimensions, and Commitment/Emissions datasets.
                 DIMENSIONAL_BREAKDOWNS = [
+                    # AWS Native Volume Type & Storage Class Dimensions
+                    {
+                        "id": "volume_type",
+                        "column": "product_volumeType",
+                        "label": "EBS Volume Type",
+                        "dataset": "AWS_CUR",
+                        "metric": "lineItem_UnblendedCost",
+                        "provider_col": "lineItem_ProductCode",
+                        "time_col": "timeInterval_Month",
+                        "triggers": [
+                            "by volume type", "volume type", "volume types", "ebs volume type",
+                            "ebs volume types", "by ebs volume type", "volume_type", "ebs type",
+                            "ebs types", "volume tier", "volume tiers"
+                        ]
+                    },
+                    {
+                        "id": "storage_class",
+                        "column": "product_storageClass",
+                        "label": "S3 Storage Class",
+                        "dataset": "AWS_CUR",
+                        "metric": "lineItem_UnblendedCost",
+                        "provider_col": "lineItem_ProductCode",
+                        "time_col": "timeInterval_Month",
+                        "triggers": [
+                            "by storage class", "storage class", "storage classes", "s3 storage class",
+                            "s3 storage classes", "s3 tier", "s3 tiers", "by storage tier",
+                            "storage_class", "storage tier", "storage tiers", "lifecycle tier"
+                        ]
+                    },
                     # FOCUS Dataset Dimensions
                     {
                         "id": "service_subcategory",
@@ -11188,11 +11244,25 @@ class AIClient:
                                 else:
                                     where_clauses.append(f"(MeterCategory = '{requested_service}' OR ConsumedService = '{requested_service}')")
                             elif q_ds == "AWS_CUR":
-                                where_clauses.append(f"lineItem_ProductCode = '{requested_service}'")
+                                if requested_service in ("AmazonEC2_EBS", "EBS", "AmazonEBS") or dim_col == "product_volumeType":
+                                    where_clauses.append("(lineItem_ProductCode = 'AmazonEC2' OR lineItem_ProductCode = 'AmazonEC2_EBS')")
+                                    if dim_col == "product_volumeType":
+                                        where_clauses.append("product_volumeType IS NOT NULL AND product_volumeType != ''")
+                                elif requested_service == "AmazonS3" or dim_col == "product_storageClass":
+                                    where_clauses.append("lineItem_ProductCode = 'AmazonS3'")
+                                    if dim_col == "product_storageClass":
+                                        where_clauses.append("product_storageClass IS NOT NULL AND product_storageClass != ''")
+                                else:
+                                    where_clauses.append(f"lineItem_ProductCode = '{requested_service}'")
+                        elif q_ds == "AWS_CUR":
+                            if dim_col == "product_volumeType":
+                                where_clauses.append("(lineItem_ProductCode = 'AmazonEC2' OR lineItem_ProductCode = 'AmazonEC2_EBS') AND product_volumeType IS NOT NULL AND product_volumeType != ''")
+                            elif dim_col == "product_storageClass":
+                                where_clauses.append("lineItem_ProductCode = 'AmazonS3' AND product_storageClass IS NOT NULL AND product_storageClass != ''")
 
                         if has_two_comp_months and has_time_col:
                             where_clauses.append(f"{time_col} IN ('{comp_months[0]}', '{comp_months[1]}')")
-                        elif is_specific and target_ym and not is_multi_month_dim and q_ds in ("AZURE_COST_USAGE", "AWS_CUR"):
+                        elif is_specific and target_ym and not is_multi_month_dim and not (time_ctx.get("timeframe_days") or time_ctx.get("daily_range")) and q_ds in ("AZURE_COST_USAGE", "AWS_CUR"):
                             where_clauses.append(f"{time_col} = '{target_ym}'")
 
                         where_str = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""

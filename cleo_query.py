@@ -2395,8 +2395,11 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     if not service:
         if all_svcs:
             service = all_svcs[0][0]
-            if not cloud:
-                cloud = getattr(all_svcs[0], "provider", None) or PCODE_TO_PROVIDER.get(service)
+            svc_prov = getattr(all_svcs[0], "provider", None) or PCODE_TO_PROVIDER.get(service)
+            if not extract_requested_cloud(last_msg) and svc_prov:
+                cloud = svc_prov
+            elif not cloud:
+                cloud = svc_prov
 
     if not service:
         if cloud == "azure":
