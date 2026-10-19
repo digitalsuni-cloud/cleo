@@ -337,6 +337,21 @@ COLUMN_SYNONYMS: Dict[str, Dict[str, Any]] = {
         ],
         "description": "Multi-cloud rate commitment type (Compute Savings Plans, EC2 Instance Savings Plans, Standard RIs, Azure Reservations)"
     },
+    "Commitment_Savings": {
+        "label": "Commitment Savings",
+        "synonyms": ["commitment savings", "savings plan savings", "reservation savings", "ri savings", "commitment discount savings"],
+        "description": "Realized monetary savings from multi-cloud commitment plans and reservations"
+    },
+    "Potential_Savings": {
+        "label": "Potential Rightsizing Savings",
+        "synonyms": ["potential savings", "rightsizing savings", "downsizing savings", "estimated savings", "savings opportunity", "rightsizing potential"],
+        "description": "Estimated monetary savings achievable via multi-cloud compute/database rightsizing"
+    },
+    "ProjectedMonthlyCost": {
+        "label": "Projected Monthly Waste Cost",
+        "synonyms": ["projected monthly cost", "waste cost", "wasted spend", "idle cost", "unattached cost", "waste opportunity cost", "projected waste"],
+        "description": "Projected monthly dollar waste from idle, unattached, or abandoned cloud resources"
+    },
     "Country": {
         "label": "Emissions Geography / Country",
         "synonyms": ["country", "emissions country", "carbon country", "datacenter country", "geography"],
@@ -380,6 +395,16 @@ DATASET_CANONICAL_MAP = {
     "multicloud_commitment_savings": "MULTICLOUD_COMMITMENT_SAVINGS",
     "multicloud commitment savings": "MULTICLOUD_COMMITMENT_SAVINGS",
     "commitment savings": "MULTICLOUD_COMMITMENT_SAVINGS",
+    "multicloud_rightsizing_recommendations": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+    "multicloud rightsizing recommendations": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+    "rightsizing_recommendations": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+    "rightsizing recommendations": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+    "rightsizing recommendation": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+    "rightsizing": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+    "waste_opportunity": "WASTE_OPPORTUNITY",
+    "waste opportunity": "WASTE_OPPORTUNITY",
+    "waste opportunities": "WASTE_OPPORTUNITY",
+    "cloud waste": "WASTE_OPPORTUNITY",
     "multicloud_operational_emissions": "MULTICLOUD_OPERATIONAL_EMISSIONS",
     "multicloud operational emissions": "MULTICLOUD_OPERATIONAL_EMISSIONS",
     "operational emissions": "MULTICLOUD_OPERATIONAL_EMISSIONS",
@@ -403,6 +428,9 @@ DATASET_CLOUD_MAP = {
     "AWS_AI_COST_AND_USAGE": "aws",
     "GCP_FOCUS_COST_AND_USAGE": "gcp",
     "GCP_BIGQUERY_RESOURCE_USAGE": "gcp",
+    "MULTICLOUD_COMMITMENT_SAVINGS": "all",
+    "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS": "all",
+    "WASTE_OPPORTUNITY": "all",
 }
 
 def extract_target_dataset(text: str) -> Optional[str]:

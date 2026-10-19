@@ -415,14 +415,29 @@ def find_dataset_for_specific_column(requested_dim_or_col: str, cloud: Optional[
 
     # Check COLUMN_SYNONYMS to resolve canonical column name if known
     canonical_col = None
+    # Pass 1: Exact matches on key or synonym
     for col_key, col_info in COLUMN_SYNONYMS.items():
         if norm == re.sub(r"[_\s\-]+", "", col_key).lower():
             canonical_col = col_key
             break
         syns = [s.lower() for s in col_info.get("synonyms", [])]
-        if any(norm == re.sub(r"[_\s\-]+", "", s).lower() or low_str == s or s in low_str for s in syns):
+        if any(norm == re.sub(r"[_\s\-]+", "", s).lower() or low_str == s for s in syns):
             canonical_col = col_key
             break
+
+    # Pass 2: Word-boundary phrase matching if no exact match (longer phrases prioritized)
+    if not canonical_col:
+        best_match = None
+        longest_len = 0
+        for col_key, col_info in COLUMN_SYNONYMS.items():
+            syns = [s.lower() for s in col_info.get("synonyms", [])]
+            for s in syns:
+                if re.search(r'\b' + re.escape(s) + r'\b', low_str):
+                    if len(s) > longest_len:
+                        longest_len = len(s)
+                        best_match = col_key
+        if best_match:
+            canonical_col = best_match
 
     target_candidate = canonical_col or raw_str
     target_norm = re.sub(r"[_\s\-]+", "", target_candidate).lower()
@@ -446,6 +461,8 @@ def find_dataset_for_specific_column(requested_dim_or_col: str, cloud: Optional[
         "MULTICLOUD_AI_COST_AND_USAGE",
         "UNIFIED_AI_TOKENOMICS",
         "MULTICLOUD_COMMITMENT_SAVINGS",
+        "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+        "WASTE_OPPORTUNITY",
         "MULTICLOUD_OPERATIONAL_EMISSIONS",
         "MULTICLOUD_FOCUS_COST_AND_USAGE",
     ]
@@ -568,6 +585,10 @@ def find_dataset_for_specific_column(requested_dim_or_col: str, cloud: Optional[
             metric_col = "EffectiveCost"
         elif ds_name == "MULTICLOUD_COMMITMENT_SAVINGS":
             metric_col = "Commitment_Savings"
+        elif ds_name == "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS":
+            metric_col = "Potential_Savings"
+        elif ds_name == "WASTE_OPPORTUNITY":
+            metric_col = "ProjectedMonthlyCost"
         elif ds_name == "MULTICLOUD_OPERATIONAL_EMISSIONS":
             metric_col = "Carbon"
         else:
@@ -864,6 +885,9 @@ def build_system_prompt(tools: list[dict], engine_label: str = None) -> str:
         "     * Key columns: Service (or CloudProduct in GCP), CostImpact (dollar variance), CostImpactPercentage (%), CostImpactType (Increase/Decrease), Status (ACTIVE/INACTIVE/ARCHIVED), Region, AccountID (or SubscriptionID in Azure, ProjectID in GCP), Duration_Days, timeInterval_Month.\n"
         "     * When user asks about anomalies, cost spikes, unusual spend, or anomaly detection, query AWS_COST_ANOMALY / AZURE_COST_ANOMALY / GCP_COST_ANOMALY!\n"
         "     * By default, always query for Active anomalies (Status = 'ACTIVE') unless the user explicitly asks for Inactive ones (e.g. 'inactive', 'resolved', 'closed', 'archived').\n"
+        "   - MULTICLOUD_COMMITMENT_SAVINGS: Multi-cloud commitment savings, reservations, and savings plans dataset. Key columns: Provider, Commitment_Plan, Service, Month, Commitment_Savings, Commitment_Covered_On_Demand_Cost, Commitment_Used_Cost, Commitment_Purchase_Cost, On_Demand_Equivalent_Cost, Negotiated_Discount, Billing_Account_Name, Billing_Account_Id.\n"
+        "   - MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS: Multi-cloud compute and database rightsizing optimization dataset. Key columns: Provider, Service, Region, Potential_Savings, Current_Cost, Potential_Cost, Billing_Account, SubAccount_Name.\n"
+        "   - WASTE_OPPORTUNITY: CloudHealth identified infrastructure waste and cleanup opportunities (idle VMs, unattached EBS/disks, orphaned snapshots/IPs). Key columns: Provider, Region, CloudAccountId, ProjectedMonthlyCost.\n"
         "2. FLEXREPORT SQL QUERY RULES:\n"
         "   - NEVER use 'SELECT *' — always specify explicit column names.\n"
         "   - Every selected column or aggregated measure MUST have an alias (e.g. 'SUM(Usage) AS cost').\n"
@@ -969,7 +993,8 @@ def build_system_prompt(tools: list[dict], engine_label: str = None) -> str:
         "7. CloudHealth MCP does NOT support tenant user management or user identity listing (e.g. users in tenant, user accounts, IAM permissions). When asked to list users in a tenant, clearly explain that CloudHealth MCP is strictly focused on multi-cloud FinOps (cost, usage, anomalies, organizations) and direct the user to the CloudHealth console (Setup -> Users) or their SSO/IdP directory.\n"
         "8. When user asks about AI model specs, token rates, per-token pricing, or comparing LLMs (e.g. Claude 3.7 vs GPT-4o, DeepSeek, Gemini token rates), Cleo has live access to real-time AI token economics and context specs via get_live_model_specs.\n"
         "9. When user asks for public cloud retail/list prices or Azure rate cards (e.g. Standard_D4s_v5 in eastus, spot rates, 1-yr reservation list prices), Cleo has live access to official Azure Retail Prices API rates via get_live_cloud_pricing.\n"
-        "10. When user asks for current FinOps industry trends, FOCUS specification updates, or real-world cloud cost news, Cleo has live web search access via search_finops_web.\n\n"
+        "10. When user asks for current FinOps industry trends, FOCUS specification updates, or real-world cloud cost news, Cleo has live web search access via search_finops_web.\n"
+        "11. When user asks about rightsizing, downsizing recommendations, or potential savings from rightsizing, query 'MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS'. When user asks about cloud waste, zombie resources, or waste opportunities, query 'WASTE_OPPORTUNITY'. When user asks about commitment savings, savings plans, or reservations across clouds, query 'MULTICLOUD_COMMITMENT_SAVINGS'.\n\n"
         "CONVERSATIONAL MEMORY & MULTI-TURN CONTEXT:\n"
         "- You maintain full conversational memory across all turns in this session.\n"
         "- When the user asks about prior queries, results, or context (e.g. 'which month was I asking for?', 'who spent the most?', 'summarize the table', 'why?'), ALWAYS use the conversation history to answer directly, accurately, and concisely.\n"
@@ -2543,6 +2568,7 @@ class AIClient:
             "CLOUDHEALTH_CONSUMPTION_BREAKDOWN", "AWS_COST_ANOMALY", "AZURE_COST_ANOMALY",
             "AWS_FOCUS_COST_AND_USAGE", "AZURE_FOCUS_COST_AND_USAGE",
             "DX_PRICING_AWS_EC2", "DX_PRICING_AWS_ECS", "AWS_ASSET_INVENTORY",
+            "MULTICLOUD_COMMITMENT_SAVINGS", "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS", "WASTE_OPPORTUNITY",
         ]
         # Also match colloquial forms: "ec2 instance dataset", "ec2 cost and usage"
         _COLLOQUIAL_DATASET_MAP = {
@@ -2555,6 +2581,17 @@ class AIClient:
             "cur dataset": "AWS_CUR",
             "focus dataset": "MULTICLOUD_FOCUS_COST_AND_USAGE",
             "consumption breakdown": "CLOUDHEALTH_CONSUMPTION_BREAKDOWN",
+            "commitment savings": "MULTICLOUD_COMMITMENT_SAVINGS",
+            "commitment savings dataset": "MULTICLOUD_COMMITMENT_SAVINGS",
+            "multi cloud commitment savings": "MULTICLOUD_COMMITMENT_SAVINGS",
+            "rightsizing recommendations": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+            "rightsizing recommendation": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+            "rightsizing dataset": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+            "multicloud rightsizing": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+            "waste opportunity": "WASTE_OPPORTUNITY",
+            "waste opportunity dataset": "WASTE_OPPORTUNITY",
+            "waste dataset": "WASTE_OPPORTUNITY",
+            "waste opportunities": "WASTE_OPPORTUNITY",
         }
         _explicit_dataset = None
         for ds in _KNOWN_DATASETS:
@@ -10841,6 +10878,30 @@ class AIClient:
                         "triggers": [
                             "by country", "emissions by country", "carbon by country", "emissions by geography",
                             "carbon by geography", "by datacenter country"
+                        ]
+                    },
+                    # Rightsizing Recommendations
+                    {
+                        "id": "rightsizing_service",
+                        "column": "Service",
+                        "label": "Rightsizing Savings by Service",
+                        "dataset": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+                        "metric": "Potential_Savings",
+                        "provider_col": "Provider",
+                        "triggers": [
+                            "rightsizing by service", "rightsizing savings by service", "potential savings by service"
+                        ]
+                    },
+                    # Waste Opportunity
+                    {
+                        "id": "waste_region",
+                        "column": "Region",
+                        "label": "Waste Opportunity by Region",
+                        "dataset": "WASTE_OPPORTUNITY",
+                        "metric": "ProjectedMonthlyCost",
+                        "provider_col": "Provider",
+                        "triggers": [
+                            "waste by region", "waste opportunity by region", "projected waste by region"
                         ]
                     }
                 ]
