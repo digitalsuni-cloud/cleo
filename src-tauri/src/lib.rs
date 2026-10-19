@@ -240,7 +240,7 @@ pub fn run() {
           let spawned = sidecar_cmd
             .env("PORT", BACKEND_PORT.to_string())
             .env("CLEO_NO_BROWSER", "1")
-            .env("CLEO_NO_UPDATE", "1")
+            .env("CLEO_OTA_SYNC", "1")
             .env("CLEO_TAURI_PID", std::process::id().to_string())
             .spawn();
 

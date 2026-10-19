@@ -19,10 +19,10 @@
 
 | Architecture | Platform | File to Download | Notes |
 | :---: | :--- | :--- | :--- |
-| ![macOS](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/macos.svg) | **macOS (Apple Silicon)** | [Cleo_1.0.0_arm64.dmg](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_1.0.0_arm64.dmg) | M1/M2/M3/M4 Macs · Native `.dmg` installer |
-| ![Windows](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/windows.svg) | **Windows (x64)** | [Cleo_1.0.0_x64.exe](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_1.0.0_x64.exe) | Universal / Portable `.exe` · No install required |
-| ![Linux App](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/linux-app.svg) | **Linux (x64)** | [Cleo_1.0.0_amd64.AppImage](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_1.0.0_amd64.AppImage) | Portable Linux AppImage |
-| ![Linux Deb](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/linux-deb.svg) | **Linux (x64)** | [Cleo_1.0.0_amd64.deb](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_1.0.0_amd64.deb) | Ubuntu / Debian package |
+| ![macOS](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/macos.svg) | **macOS (Apple Silicon)** | [Cleo_2.0.0_arm64.dmg](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_2.0.0_arm64.dmg) | M1/M2/M3/M4 Macs · Native `.dmg` installer |
+| ![Windows](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/windows.svg) | **Windows (x64)** | [Cleo_2.0.0_x64.exe](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_2.0.0_x64.exe) | Universal / Portable `.exe` · No install required |
+| ![Linux App](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/linux-app.svg) | **Linux (x64)** | [Cleo_2.0.0_amd64.AppImage](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_2.0.0_amd64.AppImage) | Portable Linux AppImage |
+| ![Linux Deb](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/linux-deb.svg) | **Linux (x64)** | [Cleo_2.0.0_amd64.deb](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_2.0.0_amd64.deb) | Ubuntu / Debian package |
 
 > **macOS Gatekeeper Note:** If macOS displays an unsigned app prompt on first run, open your Terminal and run:
 > ```bash

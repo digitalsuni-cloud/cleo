@@ -1775,6 +1775,18 @@ def parse_query_time_context(query: str, context_ym: str = None) -> dict:
             target_ym = current_ym
             is_specific = True
             daily_range = {"from": start_d.strftime("%Y-%m-%d"), "to": end_d.strftime("%Y-%m-%d")}
+        elif any(w in low for w in [
+            "daily view", "daily breakdown", "daily trend", "day by day", "by day",
+            "each day", "per day", "daily spend", "daily cost", "show daily",
+            "daily table", "daily data", "daily", "by date", "date by date"
+        ]):
+            timeframe_days = 30
+            start_d = now - datetime.timedelta(days=timeframe_days)
+            end_d = now - datetime.timedelta(days=1)  # Ignore current date (in-flight); end closed window at yesterday
+            target_label = f"Last {timeframe_days} Days Trend ({start_d.strftime('%Y-%m-%d')} to {end_d.strftime('%Y-%m-%d')})"
+            target_ym = current_ym
+            is_specific = True
+            daily_range = {"from": start_d.strftime("%Y-%m-%d"), "to": end_d.strftime("%Y-%m-%d")}
 
     is_ytd = bool(re.search(r'\b(?:ytd|year\s*to\s*date|this\s*year)\b', low))
     is_qtd = bool(re.search(r'\b(?:qtd|quarter\s*to\s*date|this\s*quarter)\b', low))
@@ -1994,6 +2006,12 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
     last_asst_head = last_asst.split("\n")[0].lower() if last_asst else ""
     last_asst_body = last_asst[:2500].lower() if last_asst else ""
 
+    # Inherit dataset from prior assistant turn if user did not specify a new dataset
+    if not target_ds_req and last_asst:
+        inherited_ds = extract_target_dataset(last_asst)
+        if inherited_ds:
+            target_ds_req = inherited_ds
+
     # Detect newly requested entity in current prompt
     new_cloud = extract_requested_cloud(last_msg)
     new_svc, new_svc_disp = extract_requested_service(last_msg)
@@ -2053,6 +2071,8 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
     inherited_target_year = None
     inherited_period_title = None
     inherited_timeframe_months = None
+    inherited_timeframe_days = None
+    inherited_dim = None
     inherited_target_ym = None
     for prev_u in reversed(prior_user_msgs):
         u_tctx = parse_query_time_context(prev_u)
@@ -2131,6 +2151,17 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         any(w in last_user_low for w in ["instance type", "engine type", "storage class", "volume type"])
     ):
         prior_type = "service_breakdown"
+        if "volume type" in (last_asst_head + " " + last_asst_body).lower() or "volume type" in last_user_low:
+            inherited_dim = "volume_type"
+        elif "storage class" in (last_asst_head + " " + last_asst_body).lower() or "storage class" in last_user_low:
+            inherited_dim = "storage_class"
+        elif "instance type" in (last_asst_head + " " + last_asst_body).lower() or "instance type" in last_user_low:
+            inherited_dim = "instance_type"
+        elif "engine" in (last_asst_head + " " + last_asst_body).lower() or "engine type" in last_user_low:
+            inherited_dim = "engine_type"
+        else:
+            inherited_dim = None
+
         if "year-to-date" in last_asst_body or "(ytd" in last_asst_body or "ytd" in last_user_low:
             inherited_is_ytd = True
             inherited_timeframe_months = datetime.date.today().month
@@ -2144,6 +2175,8 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
             m_d = re.search(r'last\s*(\d{1,3})\s*days?', last_asst_body + " " + last_user_low)
             if m_d:
                 inherited_timeframe_days = int(m_d.group(1))
+            elif any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily", "show daily", "daily spend"]):
+                inherited_timeframe_days = 30
 
     # Check for Coverage Type & Commitment / Lease Type Breakdown:
     elif (
@@ -2164,9 +2197,14 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         "cost by model" in last_asst_head or
         "spend by model" in last_asst_head or
         "top ai model" in last_asst_body or
+        "multicloud_ai_cost_and_usage" in last_asst.lower() or
         any(w in last_user_low for w in ["ai usage", "ai model", "ai models", "foundation model", "foundation models", "llm", "llms", "model breakdown"])
     ):
         prior_type = "ai_model_breakdown"
+        inherited_dim = "model"
+        m_d = re.search(r'last\s*(\d{1,3})\s*days?', low + " " + last_asst_head + " " + last_user_low)
+        if m_d:
+            inherited_timeframe_days = int(m_d.group(1))
         m_m = re.search(r'last\s*(\d{1,2})\s*months?', last_asst_head + " " + last_user_low)
         inherited_timeframe_months = int(m_m.group(1)) if m_m else 6
 
@@ -2250,12 +2288,20 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
     elif prior_type == "region_breakdown":
         expanded_query = f"show {prov_disp} spend breakdown by region"
     elif prior_type == "service_breakdown":
-        expanded_query = f"show {prov_disp} spend breakdown"
+        is_daily_req = any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily", "show daily"])
+        dim_phrase = f" by {inherited_dim.replace('_', ' ')}" if ('inherited_dim' in locals() and inherited_dim) else ""
+        daily_phrase = f" daily for the last {inherited_timeframe_days or 30} days" if is_daily_req else ""
+        expanded_query = f"show {prov_disp} spend breakdown{dim_phrase}{daily_phrase}".strip()
     elif prior_type == "coverage_breakdown":
         acc_phrase = " by account names" if any(w in low for w in ["account", "accounts", "subaccount", "subaccounts", "account name", "account names"]) else ""
         expanded_query = f"give me the {new_svc_disp or 'compute'} coverage type and commitment breakdown{acc_phrase}".strip()
     elif prior_type == "ai_model_breakdown":
-        expanded_query = f"give me the multi-cloud spend by ai model for the last {inherited_timeframe_months or 6} months"
+        is_daily_req = any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily", "show daily"])
+        if is_daily_req or ('inherited_timeframe_days' in locals() and inherited_timeframe_days):
+            t_d = inherited_timeframe_days if ('inherited_timeframe_days' in locals() and inherited_timeframe_days) else 7
+            expanded_query = f"give me the multi-cloud spend by ai model daily for the last {t_d} days"
+        else:
+            expanded_query = f"give me the multi-cloud spend by ai model for the last {inherited_timeframe_months or 6} months"
     elif prior_type == "top_services":
         expanded_query = f"show top services by spend for {prov_disp}"
     elif prior_type == "customer_spend":
@@ -2271,18 +2317,29 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
             new_cloud = "azure"
         elif target_ds_req in ("AWS_CUR", "AWS_EC2_COST_AND_USAGE"):
             new_cloud = "aws"
-        if not new_svc and inherited_service:
+        elif target_ds_req in ("MULTICLOUD_AI_COST_AND_USAGE", "MULTICLOUD_FOCUS_COST_AND_USAGE"):
+            new_cloud = "all"
+        if not new_svc and ('inherited_service' in locals() and inherited_service):
             new_svc = inherited_service
             new_svc_disp = inherited_service_disp
+
+    ret_days = inherited_timeframe_days if 'inherited_timeframe_days' in locals() and inherited_timeframe_days else None
+    if not ret_days:
+        m_day_req = re.search(r'last\s*(\d{1,3})\s*days?', low)
+        if m_day_req:
+            ret_days = int(m_day_req.group(1))
+        elif any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily"]):
+            ret_days = 30
 
     return {
         "is_continuation": True,
         "prior_query_type": prior_type,
+        "inherited_dim": inherited_dim if 'inherited_dim' in locals() else None,
         "target_dataset": target_ds_req,
         "inherited_target_year": inherited_target_year or 2027,
         "inherited_target_period_title": inherited_period_title or f"FY {inherited_target_year or 2027}",
         "inherited_timeframe_months": inherited_timeframe_months or 12,
-        "inherited_timeframe_days": inherited_timeframe_days if 'inherited_timeframe_days' in locals() else None,
+        "inherited_timeframe_days": ret_days,
         "inherited_target_ym": inherited_target_ym,
         "inherited_is_ytd": inherited_is_ytd if 'inherited_is_ytd' in locals() else False,
         "inherited_is_qtd": inherited_is_qtd if 'inherited_is_qtd' in locals() else False,
@@ -2339,17 +2396,25 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
             mem = get_memory()
             active_corrs = mem.get_active_corrections(last_msg)
             q_tok = _tokenize(last_msg)
-            for c in active_corrs:
-                ds = c.get("target_dataset") or extract_target_dataset(c.get("instruction") or c.get("correction") or "")
-                if ds:
-                    ds_cloud = DATASET_CLOUD_MAP.get(ds)
-                    if cloud and ds_cloud and ds_cloud != "all" and cloud != "all" and ds_cloud != cloud:
-                        continue
-                    corr_q = c.get("query", "")
-                    if corr_q and _score(q_tok, _tokenize(corr_q)) < 0.2:
-                        continue
-                    target_dataset = ds
-                    break
+            is_anaphoric = any(w in low for w in ["above", "this data", "the data", "these", "those", "same", "it"])
+            if not is_anaphoric or not cont_ctx.get("is_continuation"):
+                for c in active_corrs:
+                    ds = c.get("target_dataset") or extract_target_dataset(c.get("instruction") or c.get("correction") or "")
+                    if ds:
+                        ds_cloud = DATASET_CLOUD_MAP.get(ds)
+                        if cloud and ds_cloud and ds_cloud != "all" and cloud != "all" and ds_cloud != cloud:
+                            continue
+                        corr_q = c.get("query", "")
+                        generic_toks = {"give", "me", "the", "above", "data", "in", "daily", "view", "for", "last", "days", "with", "bar", "chart", "show", "table"}
+                        spec_q = [t for t in q_tok if t not in generic_toks]
+                        spec_corr = [t for t in _tokenize(corr_q) if t not in generic_toks]
+                        if spec_q and spec_corr:
+                            if _score(set(spec_q), set(spec_corr)) < 0.35:
+                                continue
+                        elif corr_q and _score(q_tok, _tokenize(corr_q)) < 0.5:
+                            continue
+                        target_dataset = ds
+                        break
         except Exception:
             pass
 
@@ -2471,8 +2536,17 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
             timeframe_months = 12
             timeframe_days = None
         elif cont_ctx.get("prior_query_type") in ("monthly_trend", "ai_model_breakdown"):
-            timeframe_months = cont_ctx.get("inherited_timeframe_months", 6)
-            timeframe_days = None
+            is_daily = (
+                has_explicit_days
+                or any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily"])
+                or bool(cont_ctx.get("inherited_timeframe_days"))
+            )
+            if is_daily:
+                timeframe_days = int(m_days.group(1)) if m_days else (cont_ctx.get("inherited_timeframe_days") or 7)
+                timeframe_months = None
+            else:
+                timeframe_months = cont_ctx.get("inherited_timeframe_months", 6)
+                timeframe_days = None
         elif cont_ctx.get("prior_query_type") in ("multi_service", "service_breakdown"):
             if is_ytd:
                 timeframe_months = datetime.date.today().month
@@ -2480,12 +2554,15 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
             elif is_qtd:
                 timeframe_months = ((datetime.date.today().month - 1) % 3) + 1
                 timeframe_days = None
-            elif cont_ctx.get("inherited_timeframe_months"):
-                timeframe_months = cont_ctx.get("inherited_timeframe_months")
-                timeframe_days = None
+            elif has_explicit_days or any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily"]):
+                timeframe_days = int(m_days.group(1)) if m_days else (cont_ctx.get("inherited_timeframe_days") or 30)
+                timeframe_months = None
             elif cont_ctx.get("inherited_timeframe_days"):
                 timeframe_days = cont_ctx.get("inherited_timeframe_days")
                 timeframe_months = None
+            elif cont_ctx.get("inherited_timeframe_months"):
+                timeframe_months = cont_ctx.get("inherited_timeframe_months")
+                timeframe_days = None
             elif has_explicit_months:
                 timeframe_months = int(m_months.group(1)) if m_months else 12
             elif has_explicit_days:
@@ -2580,6 +2657,14 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         ])
     ) and not has_explicit_data_subject and not is_breakdown_requested
 
+    is_daily_req = any(w in low for w in [
+        "daily view", "daily breakdown", "daily trend", "day by day", "by day",
+        "each day", "per day", "daily spend", "daily cost", "show daily",
+        "daily table", "daily data", "daily", "by date", "date by date"
+    ])
+    if is_daily_req:
+        is_pure_reformat = False
+
     is_history_qa = any(w in low for w in [
         "which customer", "what customer", "which service", "what service", "which month", "what month",
         "who was #1", "what was #1", "who spent the most", "total spend", "what was the total"
@@ -2655,7 +2740,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     elif is_anomaly:
         intent = "anomalies"
         is_new_data_fetch = True
-    elif service or customer or has_fetch_verb or is_unique_instance_request(low) or any(w in low for w in ["spend", "spent", "cost", "usage", "billed", "hours", "breakdown", "service", "services", "data", "telemetry", "figures", "numbers", "ytd", "mtd", "qtd", "team", "teams", "project", "projects", "perspective", "tag", "tags"]) or cont_ctx.get("is_continuation"):
+    elif is_daily_req or service or customer or has_fetch_verb or is_unique_instance_request(low) or any(w in low for w in ["spend", "spent", "cost", "usage", "billed", "hours", "breakdown", "service", "services", "data", "telemetry", "figures", "numbers", "ytd", "mtd", "qtd", "team", "teams", "project", "projects", "perspective", "tag", "tags"]) or cont_ctx.get("is_continuation"):
         intent = "fetch_data"
         is_new_data_fetch = True
     else:
@@ -2866,7 +2951,25 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
                 target_dimension = "product_InstanceType"
 
     if not target_dimension and not (cont_ctx.get("is_continuation") and cont_ctx.get("prior_query_type") in ("forecast", "monthly_trend")):
-        if service == "AmazonEC2":
+        if cont_ctx.get("inherited_dim"):
+            inh_d = cont_ctx["inherited_dim"]
+            if inh_d == "volume_type":
+                target_dimension = "product_volumeType"
+                if "volume_type" not in breakdowns:
+                    breakdowns.append("volume_type")
+            elif inh_d == "storage_class":
+                target_dimension = "product_storageClass"
+                if "storage_class" not in breakdowns:
+                    breakdowns.append("storage_class")
+            elif inh_d == "instance_type":
+                target_dimension = "product_InstanceType"
+                if "instance_type" not in breakdowns:
+                    breakdowns.append("instance_type")
+            elif inh_d == "engine_type":
+                target_dimension = "InstanceType"
+                if "engine_type" not in breakdowns:
+                    breakdowns.append("engine_type")
+        if not target_dimension and service == "AmazonEC2":
             target_dimension = "product_InstanceType"
             if "instance_type" not in breakdowns:
                 breakdowns.append("instance_type")

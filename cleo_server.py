@@ -352,6 +352,162 @@ from datetime import datetime, timezone
 from typing import Optional
 from contextlib import asynccontextmanager
 
+# ── Over-The-Air (OTA) Dynamic Code Loader ──────────────────────────────────
+# Enables Tauri desktop app and standalone binaries to pull and run the latest
+# Python business logic and HTML UI from ~/.cleo/src (or CLEO_DEV_SRC) without
+# requiring native rebuilds of the binary.
+
+_cleo_src_dir: Optional[str] = None
+
+def _download_ota_tarball(src_dir: str, repo_slug: str, branch: str):
+    """Fallback archive download when git CLI is not installed or network clone failed."""
+    import io, tarfile
+    try:
+        ver_file = os.path.join(src_dir, ".version")
+        local_sha = ""
+        if os.path.exists(ver_file):
+            try:
+                with open(ver_file, "r", encoding="utf-8") as f:
+                    local_sha = f.read().strip()
+            except Exception:
+                pass
+
+        api_url = f"https://api.github.com/repos/{repo_slug}/commits/{branch}"
+        req = urllib.request.Request(api_url, headers={"Accept": "application/vnd.github+json", "User-Agent": "Cleo-FinOps/2.1"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+            remote_sha = data.get("sha", "").strip()
+
+        has_py_files = os.path.isdir(src_dir) and any(f.endswith(".py") for f in os.listdir(src_dir))
+        if remote_sha and remote_sha == local_sha and has_py_files:
+            return
+
+        tar_url = f"https://github.com/{repo_slug}/archive/refs/heads/{branch}.tar.gz"
+        req_tar = urllib.request.Request(tar_url, headers={"User-Agent": "Cleo-FinOps/2.1"})
+        with urllib.request.urlopen(req_tar, timeout=25) as resp:
+            tar_bytes = io.BytesIO(resp.read())
+
+        os.makedirs(src_dir, exist_ok=True)
+        with tarfile.open(fileobj=tar_bytes, mode="r:gz") as tar:
+            for member in tar.getmembers():
+                parts = member.name.split("/", 1)
+                if len(parts) > 1 and parts[1]:
+                    member.name = parts[1]
+                    if hasattr(tarfile, "data_filter"):
+                        tar.extract(member, path=src_dir, filter="data")
+                    else:
+                        tar.extract(member, path=src_dir)
+
+        if remote_sha:
+            with open(ver_file, "w", encoding="utf-8") as f:
+                f.write(remote_sha + "\n")
+    except Exception:
+        pass
+
+
+def _sync_ota_repository(src_dir: str):
+    """
+    Syncs latest Cleo code from GitHub into src_dir (~/.cleo/src).
+    Uses shallow git clone/pull if git is available, otherwise falls back to GitHub archive download.
+    Guaranteed not to crash or hang startup if offline.
+    """
+    repo_slug = os.environ.get("CLEO_GITHUB_REPO", "digitalsuni-cloud/cleo")
+    branch = os.environ.get("CLEO_GITHUB_BRANCH", "main")
+
+    if not re.match(r'^[a-zA-Z0-9_\-\.]+/[a-zA-Z0-9_\-\.]+$', repo_slug):
+        return
+
+    os.makedirs(os.path.dirname(src_dir), exist_ok=True)
+    has_git = shutil.which("git") is not None
+
+    if has_git:
+        git_dir = os.path.join(src_dir, ".git")
+        if os.path.isdir(git_dir):
+            try:
+                ls_res = subprocess.run(
+                    ["git", "ls-remote", f"https://github.com/{repo_slug}.git", f"refs/heads/{branch}"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if ls_res.returncode == 0 and ls_res.stdout.strip():
+                    remote_sha = ls_res.stdout.split()[0].strip()
+                    rev_res = subprocess.run(
+                        ["git", "rev-parse", "HEAD"],
+                        cwd=src_dir, capture_output=True, text=True, timeout=3
+                    )
+                    local_sha = rev_res.stdout.strip() if rev_res.returncode == 0 else ""
+                    if remote_sha and remote_sha != local_sha:
+                        print(f"🔄 [OTA Sync] Updating Cleo code from GitHub ({local_sha[:7]} -> {remote_sha[:7]})...")
+                        subprocess.run(
+                            ["git", "fetch", "--depth", "1", "origin", branch],
+                            cwd=src_dir, capture_output=True, timeout=15
+                        )
+                        subprocess.run(
+                            ["git", "reset", "--hard", f"origin/{branch}"],
+                            cwd=src_dir, capture_output=True, timeout=10
+                        )
+                        print(f"🚀 [OTA Sync] Successfully updated to {remote_sha[:7]}!")
+                    else:
+                        print(f"✅ [OTA Sync] Code in {src_dir} is up-to-date ({local_sha[:7]}).")
+            except Exception as e:
+                print(f"ℹ️  [OTA Sync] Network check skipped ({e}). Using cached code in {src_dir}.")
+        else:
+            try:
+                print(f"📥 [OTA Sync] Initializing Cleo live code in {src_dir} from GitHub...")
+                if os.path.exists(src_dir) and not os.path.isdir(git_dir):
+                    shutil.rmtree(src_dir, ignore_errors=True)
+                res = subprocess.run(
+                    ["git", "clone", "--depth", "1", "-b", branch, f"https://github.com/{repo_slug}.git", src_dir],
+                    capture_output=True, text=True, timeout=25
+                )
+                if res.returncode == 0:
+                    print(f"🚀 [OTA Sync] Initial sync completed successfully!")
+                else:
+                    _download_ota_tarball(src_dir, repo_slug, branch)
+            except Exception as e:
+                print(f"ℹ️  [OTA Sync] Clone skipped ({e}). Falling back to archive...")
+                _download_ota_tarball(src_dir, repo_slug, branch)
+    else:
+        _download_ota_tarball(src_dir, repo_slug, branch)
+
+
+def _init_ota_code_loader():
+    global _cleo_src_dir
+    if os.environ.get("CLEO_NO_OTA", "").lower() in ("1", "true", "yes"):
+        return
+
+    dev_src = os.environ.get("CLEO_DEV_SRC")
+    is_frozen = getattr(sys, "frozen", False)
+    is_ota_sync = os.environ.get("CLEO_OTA_SYNC") == "1" or os.environ.get("CLEO_FORCE_OTA") == "1"
+
+    if dev_src:
+        cand_dir = os.path.abspath(os.path.expanduser(dev_src))
+        if os.path.isdir(cand_dir) and any(f.endswith(".py") for f in os.listdir(cand_dir)):
+            _cleo_src_dir = cand_dir
+            print(f"⚡ [OTA Loader] Using local dev source: {_cleo_src_dir}")
+    elif is_frozen or is_ota_sync:
+        cand_dir = os.path.expanduser("~/.cleo/src")
+        _sync_ota_repository(cand_dir)
+        if os.path.isdir(cand_dir) and any(f.endswith(".py") for f in os.listdir(cand_dir)):
+            agent_file = os.path.join(cand_dir, "cleo_agent.py")
+            if os.path.exists(agent_file):
+                try:
+                    with open(agent_file, "r", encoding="utf-8") as f:
+                        compile(f.read(), "cleo_agent.py", "exec")
+                    _cleo_src_dir = cand_dir
+                    print(f"⚡ [OTA Loader] Cleo running live from: {_cleo_src_dir}")
+                except Exception as e:
+                    print(f"⚠️  [OTA Loader] Syntax check failed on {agent_file}: {e}. Falling back to bundled code.")
+
+    if _cleo_src_dir:
+        if _cleo_src_dir not in sys.path:
+            sys.path.insert(0, _cleo_src_dir)
+        from importlib.machinery import PathFinder
+        if PathFinder in sys.meta_path:
+            sys.meta_path.remove(PathFinder)
+            sys.meta_path.insert(0, PathFinder)
+
+_init_ota_code_loader()
+
 from fastapi import FastAPI, HTTPException, Request, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from html import escape as html_escape
@@ -3124,7 +3280,7 @@ def delete_memory_entry(entry_id: str):
 
 CLEO_GITHUB_REPO = os.environ.get("CLEO_GITHUB_REPO", "digitalsuni-cloud/cleo")
 _CLEO_ROOT       = os.path.dirname(os.path.abspath(__file__))
-CLEO_VERSION     = "1.0.0"
+CLEO_VERSION     = "2.0.0"
 try:
     _pkg_path = os.path.join(_CLEO_ROOT, "package.json")
     if os.path.exists(_pkg_path):
@@ -3256,7 +3412,7 @@ def _check_update_bg():
         update_available = _is_newer_version(tag, CLEO_VERSION)
 
         if update_available:
-            if is_frozen:
+            if is_frozen and not _cleo_src_dir:
                 msg = f"Update available ({tag}). Click 'Update' to open the download page."
             else:
                 msg = f"Update available ({tag}) — click 'Update' to apply."
@@ -3304,6 +3460,16 @@ def apply_update(request: Request):
 
     is_frozen = getattr(sys, "frozen", False)
     if is_frozen:
+        if _cleo_src_dir:
+            try:
+                _sync_ota_repository(_cleo_src_dir)
+                return {
+                    "status": "updated",
+                    "method": "ota",
+                    "message": f"Successfully pulled the latest code into {_cleo_src_dir}. Please restart Cleo to apply.",
+                }
+            except Exception as e:
+                logger.warning(f"[Update] OTA sync error: {e}")
         import webbrowser
         release_url = f"https://github.com/{CLEO_GITHUB_REPO}/releases/latest"
         try:
@@ -3475,8 +3641,14 @@ def redirect_to_new_chat(request: Request):
 @app.get("/chat/newchat", response_class=HTMLResponse)
 @app.get("/chat/{session_id}", response_class=HTMLResponse)
 def serve_gui(session_id: Optional[str] = None):
-    base_dir = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
-    ui_path = os.path.join(base_dir, "cleo_ui.html")
+    ui_path = ""
+    if _cleo_src_dir:
+        ota_ui = os.path.join(_cleo_src_dir, "cleo_ui.html")
+        if os.path.exists(ota_ui):
+            ui_path = ota_ui
+    if not ui_path:
+        base_dir = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
+        ui_path = os.path.join(base_dir, "cleo_ui.html")
     if os.path.exists(ui_path):
         with open(ui_path, "r", encoding="utf-8") as f:
             content = f.read()

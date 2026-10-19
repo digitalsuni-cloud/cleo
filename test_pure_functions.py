@@ -4034,7 +4034,191 @@ def test_ebs_volume_types_routing_and_active_cloud_precedence():
     assert "AZURE" not in res_llm
 
 
+def test_daily_view_continuation_dimensional_spend():
+    import json
+    from unittest.mock import MagicMock
+    import cleo_query
+    import cleo_agent
+
+    # 1. Verify time parsing for "daily view" phrase
+    t_ctx = cleo_query.parse_query_time_context("give me the daily view for the above data")
+    assert t_ctx["timeframe_days"] == 30
+    assert "from" in t_ctx["daily_range"] and "to" in t_ctx["daily_range"]
+
+    # 2. Verify continuation detection inherits dimensional context and timeframe
+    messages = [
+        {"role": "user", "content": "EBS volume types"},
+        {"role": "assistant", "content": "| Cloud Provider | EBS Volume Type | Total Cost |\n|:---|:---|:---|\n| AWS | `gp3` | $125,000.50 |\n| AWS | `gp2` | $45,000.25 |"},
+        {"role": "user", "content": "give me the daily view for the above data"}
+    ]
+    cont_ctx = cleo_query._detect_contextual_continuation(messages)
+    assert cont_ctx["is_continuation"] is True
+    assert cont_ctx["inherited_dim"] == "volume_type"
+    assert cont_ctx["inherited_timeframe_days"] == 30
+
+    # 3. Verify deterministic understanding forces new data fetch (not pure reformat)
+    u_det = cleo_query._deterministic_understand_query(messages)
+    assert u_det["intent"] == "fetch_data"
+    assert u_det["is_new_data_fetch"] is True
+    assert u_det["timeframe_days"] == 30
+    assert u_det["target_dimension"] in ("volume_type", "product_volumeType")
+    assert "volume_type" in u_det["breakdowns"]
+
+    # 4. End-to-end agent query execution & rendering
+    agent = cleo_agent.AIClient("direct", {}, [])
+    mock_mcp = MagicMock()
+    mock_mcp.call_tool.return_value = {
+        "content": [{
+            "type": "text",
+            "text": json.dumps({
+                "csv": "day,dimension,val\n2026-10-18,gp3,4000.00\n2026-10-18,gp2,1500.00\n2026-10-17,gp3,3950.00\n2026-10-17,gp2,1480.00"
+            })
+        }]
+    }
+
+    res = agent.generate(messages, mcp=mock_mcp)
+    assert "Daily Spend History" in res
+    assert "gp3" in res
+    assert "gp2" in res
+    assert "Daily Total Spend" in res
+    assert "DoD Variance" in res
+    assert "Top EBS Volume Type Overall Breakdown" in res
+    assert "Executive Summary" in res
+
+    # Verify MCP query parameters
+    mcp_calls = [c for c in mock_mcp.call_tool.call_args_list if c[0][0] == "execute_datasource_query"]
+    assert len(mcp_calls) >= 1
+    query_input = mcp_calls[0][0][1]["queryInput"]
+    assert query_input["dataGranularity"] == "DAILY"
+    sql = query_input["sqlStatement"]
+    assert "timeInterval_Day AS day" in sql
+    assert "product_volumeType" in sql
+    assert "AWS_CUR" in sql
+
+
+def test_ota_code_loader_and_dynamic_ui(tmp_path, monkeypatch):
+    import sys
+    import os
+    import importlib.machinery
+    import cleo_server
+
+    orig_sys_path = list(sys.path)
+    orig_meta_path = list(sys.meta_path)
+    orig_cleo_src_dir = cleo_server._cleo_src_dir
+
+    try:
+        # 1. Test CLEO_DEV_SRC mounts directory into sys.path[0] and moves PathFinder to sys.meta_path[0]
+        test_src = tmp_path / "dev_src"
+        test_src.mkdir()
+        (test_src / "module_ota.py").write_text("OTA_VAL = 42\n", encoding="utf-8")
+        (test_src / "cleo_ui.html").write_text("<html><head></head><body><!-- OTA TEST UI --></body></html>", encoding="utf-8")
+
+        monkeypatch.setenv("CLEO_DEV_SRC", str(test_src))
+        monkeypatch.delenv("CLEO_NO_OTA", raising=False)
+        monkeypatch.delenv("CLEO_OTA_SYNC", raising=False)
+        monkeypatch.delenv("CLEO_FORCE_OTA", raising=False)
+
+        cleo_server._cleo_src_dir = None
+        cleo_server._init_ota_code_loader()
+
+        assert cleo_server._cleo_src_dir == str(test_src)
+        assert sys.path[0] == str(test_src)
+        assert sys.meta_path[0] is importlib.machinery.PathFinder
+
+        # 2. Test serve_gui uses cleo_ui.html from _cleo_src_dir
+        resp = cleo_server.serve_gui()
+        assert "<!-- OTA TEST UI -->" in resp.body.decode("utf-8")
+
+        # 3. Test CLEO_NO_OTA skips the loader
+        cleo_server._cleo_src_dir = None
+        monkeypatch.setenv("CLEO_NO_OTA", "1")
+        cleo_server._init_ota_code_loader()
+        assert cleo_server._cleo_src_dir is None
+
+        # 4. Test syntax check fallback when code in sync dir has syntax errors
+        broken_src = tmp_path / "broken_src"
+        broken_src.mkdir()
+        (broken_src / "cleo_agent.py").write_text("def broken(:\n    pass\n", encoding="utf-8")
+        monkeypatch.delenv("CLEO_NO_OTA", raising=False)
+        monkeypatch.delenv("CLEO_DEV_SRC", raising=False)
+        monkeypatch.setenv("CLEO_OTA_SYNC", "1")
+        monkeypatch.setattr(cleo_server, "_sync_ota_repository", lambda d: None)
+        monkeypatch.setattr(os.path, "expanduser", lambda p: str(broken_src) if p == "~/.cleo/src" else os.path.expanduser(p))
+
+        cleo_server._cleo_src_dir = None
+        cleo_server._init_ota_code_loader()
+        # Should reject broken_src because syntax check failed
+        assert cleo_server._cleo_src_dir is None
+
+    finally:
+        sys.path[:] = orig_sys_path
+        sys.meta_path[:] = orig_meta_path
+        cleo_server._cleo_src_dir = orig_cleo_src_dir
+
+
+def test_ai_model_continuation_daily_view():
+    import json
+    from unittest.mock import MagicMock
+    import cleo_query
+    import cleo_agent
+
+    msgs = [
+        {"role": "user", "content": "Show AI spend by foundation model across all clouds"},
+        {
+            "role": "assistant",
+            "content": (
+                "### 📊 CloudHealth Spend Analysis: Multi-Cloud Cost by AI Model — Last 30 Days Trend\n\n"
+                "| Cloud Provider | AI Model | Cost (Last 30 Days Trend) | % of Total |\n"
+                "|:---|:---|:---|:---|\n"
+                "| Google Cloud | `Claude Opus 5` | $66,214.74 | 21.0% |\n"
+                "| Google Cloud | `Gemini 2.5 Flash` | $58,064.19 | 18.4% |\n\n"
+                "💡 *Live FinOps data from `MULTICLOUD_AI_COST_AND_USAGE` via CloudHealth FlexReports.*"
+            )
+        },
+        {"role": "user", "content": "give me the above data in daily view for last 7 days with bar chart"}
+    ]
+
+    cont_ctx = cleo_query._detect_contextual_continuation(msgs)
+    assert cont_ctx["is_continuation"] is True
+    assert cont_ctx["prior_query_type"] == "ai_model_breakdown"
+    assert cont_ctx["inherited_dim"] == "model"
+    assert cont_ctx["target_dataset"] == "MULTICLOUD_AI_COST_AND_USAGE"
+    assert cont_ctx["inherited_timeframe_days"] == 7
+
+    u_det = cleo_query._deterministic_understand_query(msgs)
+    assert u_det["target_dataset"] == "MULTICLOUD_AI_COST_AND_USAGE"
+    assert u_det["target_dimension"] == "Model"
+    assert u_det["timeframe_days"] == 7
+    assert u_det["cloud"] == "all"
+    assert "bar" in u_det["chart_types"]
+
+    # End-to-end agent execution
+    agent = cleo_agent.AIClient("direct", {}, [])
+    mock_mcp = MagicMock()
+    mock_mcp.call_tool.return_value = {
+        "content": [{
+            "type": "text",
+            "text": json.dumps({
+                "csv": "day,provider,dimension,val\n2026-10-18,Google Cloud,Claude Opus 5,2000.0\n2026-10-18,Google Cloud,Gemini 2.5 Flash,1500.0\n2026-10-17,Google Cloud,Claude Opus 5,1900.0\n2026-10-17,Google Cloud,Gemini 2.5 Flash,1400.0"
+            })
+        }]
+    }
+
+    resp = agent.generate(msgs, mcp=mock_mcp)
+    assert "Daily Spend History" in resp
+    assert "Claude Opus 5" in resp
+    assert "Gemini 2.5 Flash" in resp
+    assert "MULTICLOUD_AI_COST_AND_USAGE" in resp
+    assert "Daily Total Spend" in resp
+
+    mcp_calls = [c for c in mock_mcp.call_tool.call_args_list if c[0][0] == "execute_datasource_query"]
+    assert len(mcp_calls) >= 1
+    q_input = mcp_calls[0][0][1]["queryInput"]
+    assert "MULTICLOUD_AI_COST_AND_USAGE" in q_input["sqlStatement"]
+    assert "Model" in q_input["sqlStatement"]
+    assert q_input["dataGranularity"] == "DAILY"
+
+
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main(["-v", __file__]))
-

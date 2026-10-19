@@ -1501,7 +1501,7 @@ class AIClient:
             "   - For AI / Foundation Models: target_dimension='Model', breakdowns=['model'] (set service=null unless Bedrock is explicitly named)\n"
             "   - For Multi-Cloud / Top Services: target_dimension='ServiceName', breakdowns=['service']\n"
             "   - CRITICAL: NEVER default to 'region' or 'location' unless the user explicitly requested region or location! Only include 'region' if user explicitly asked to break down by region.\n"
-            "6. REFORMAT ONLY: is_new_data_fetch is false and intent is 'reformat_previous' ONLY when the user asks purely to re-render the immediately preceding table into a different chart format (e.g. 'show that as a pie chart', 'give me the waterfall chart for the above') without requesting new data or changing service. NEVER classify requests to break down, group, slice, or split by a new dimension (e.g. 'break down the above data again by Account Names', 'group by account', 'split by instance type') as reformat_previous! Those require new data or new aggregation, so set intent='fetch_data' and is_new_data_fetch=true.\n"
+            "6. REFORMAT ONLY: is_new_data_fetch is false and intent is 'reformat_previous' ONLY when the user asks purely to re-render the immediately preceding table into a different chart format (e.g. 'show that as a pie chart', 'give me the waterfall chart for the above') without requesting new data or changing service. NEVER classify requests to break down, group, slice, or split by a new dimension (e.g. 'break down the above data again by Account Names', 'group by account', 'split by instance type') or requests for daily/time granularity (e.g. 'give me the daily view for the above data', 'show daily breakdown', 'by day', 'day by day') as reformat_previous! The previous table only has aggregated totals and does not contain daily data, so requests for daily view require new data fetch with intent='fetch_data' and is_new_data_fetch=true.\n"
             "7. UNSUPPORTED CAPABILITY: Set intent to 'unsupported_capability' and is_new_data_fetch to false if user asks for tenant users, user accounts, IAM users, passwords, or identity management in the tenant (CloudHealth MCP does not manage user accounts).\n"
             "8. NEGATIVE CONSTRAINTS & FORMATTING: Set 'include_chart'=false if the user says 'without chart', 'no chart', 'without mom chart', 'table only', 'only table', 'skip chart', 'do not chart'. Set 'include_mom'=false if user says 'without mom', 'no mom', 'without mom chart', 'without variance', 'no variance'. Default both to true when not excluded. When user asks for a waterfall chart, variance chart, or bridge chart (including typos like 'waterfal'), set chart_types=['waterfall'].\n"
             "9. CONVERSATIONAL CONTINUATION & COMPARATIVE QUERIES ('similar data for X', 'same for Y', 'what about Z'):\n"
@@ -1698,6 +1698,21 @@ class AIClient:
                             "unable to", "no previous", "no data was provided", "similar", "simillar", "same", "than 50", "more than", "impact cost"
                         ]):
                             parsed["corrected_query"] = cont_ctx.get("expanded_query") or last_msg
+
+                    is_daily_req = any(w in low for w in [
+                        "daily view", "daily breakdown", "daily trend", "day by day", "by day",
+                        "each day", "per day", "daily spend", "daily cost", "show daily",
+                        "daily table", "daily data", "daily", "by date", "date by date"
+                    ])
+                    if is_daily_req:
+                        parsed["intent"] = "fetch_data"
+                        parsed["is_new_data_fetch"] = True
+                        if not parsed.get("timeframe_days"):
+                            parsed["timeframe_days"] = det_info.get("timeframe_days") or cont_ctx.get("inherited_timeframe_days") or 30
+                        if not parsed.get("target_dimension") and det_info.get("target_dimension"):
+                            parsed["target_dimension"] = det_info.get("target_dimension")
+                        if not bdowns and det_info.get("breakdowns"):
+                            bdowns = list(det_info.get("breakdowns"))
 
                     thresh_from_msg = extract_cost_threshold(last_msg)
                     min_cost_val = parsed.get("min_cost") if parsed.get("min_cost") is not None else (det_info.get("min_cost") or thresh_from_msg.get("min"))
@@ -2420,6 +2435,11 @@ class AIClient:
         # but it comes from an LLM call (or a deterministic fallback) that can misjudge it, so
         # also require the CURRENT message itself not contain an explicit new timeframe or
         # provider — a redundant, always-on safety net independent of that classification.
+        is_daily_req = any(w in low for w in [
+            "daily view", "daily breakdown", "daily trend", "day by day", "by day",
+            "each day", "per day", "daily spend", "daily cost", "show daily",
+            "daily table", "daily data", "daily", "by date", "date by date"
+        ])
         is_explicit_above = any(w in low for w in ["above data", "above table", "previous data", "previous table", "for the above", "for above", "the above"])
         is_breakdown_requested = not is_explicit_above and (any(w in low for w in [
             "break down", "breakdown", "by account", "by subaccount", "by region", "by service",
@@ -2431,9 +2451,9 @@ class AIClient:
             w in low for w in ["azure", "aws", "gcp", "last month", "this month", "last year",
                                 "this year", "last quarter", "this quarter", "q1", "q2", "q3", "q4"]
         )
-        is_pure_reformat = (intent_info.get("intent") == "reformat_previous" or is_chart_transform) and not intent_info.get("is_new_data_fetch") and not has_new_scope_signal and not is_breakdown_requested
-        is_hist_qa = (intent_info.get("intent") == "history_qa" or is_data_qa_followup) and not intent_info.get("is_new_data_fetch") and not has_new_scope_signal and not is_breakdown_requested
-        if is_breakdown_requested and not intent_info.get("is_new_data_fetch"):
+        is_pure_reformat = not is_daily_req and (intent_info.get("intent") == "reformat_previous" or is_chart_transform) and not intent_info.get("is_new_data_fetch") and not has_new_scope_signal and not is_breakdown_requested
+        is_hist_qa = not is_daily_req and (intent_info.get("intent") == "history_qa" or is_data_qa_followup) and not intent_info.get("is_new_data_fetch") and not has_new_scope_signal and not is_breakdown_requested
+        if (is_breakdown_requested or is_daily_req) and not intent_info.get("is_new_data_fetch"):
             intent_info["is_new_data_fetch"] = True
             intent_info["intent"] = "fetch_data"
 
@@ -11176,7 +11196,15 @@ class AIClient:
                     )
                     has_two_comp_months = bool(comp_months and len(comp_months) >= 2)
 
-                    is_multi_month_dim = not is_specific and not has_two_comp_months and (
+                    is_daily_dim = (
+                        svc_granularity == "DAILY"
+                        or bool(time_ctx.get("timeframe_days"))
+                        or bool(time_ctx.get("daily_range"))
+                        or bool(intent_info.get("timeframe_days"))
+                        or any(w in low for w in ["daily", "by day", "day by day", "each day", "day-over-day", "day over day", "daily view", "daily trend", "daily breakdown", "daily spend"])
+                    )
+
+                    is_multi_month_dim = not is_daily_dim and not is_specific and not has_two_comp_months and (
                         bool(req_months and req_months > 1)
                         or has_multi_month_kw
                         or any(w in low for w in ["monthly", "by month", "each month", "month over month", "over time", "trend"])
@@ -11215,6 +11243,14 @@ class AIClient:
                         ds_cols = [c.get("name") for c in cache.get(q_ds, {}).get("columns", [])]
                         has_prov_col = any(c.lower() in ("provider", "providername") for c in ds_cols)
                         has_time_col = any(c.lower() in (time_col.lower(), "month", "timeinterval_month") for c in ds_cols)
+
+                        day_col_candidates = [c for c in ds_cols if c.lower() in ("timeinterval_day", "day", "date", "chargeperiodstart")]
+                        day_col_name = day_col_candidates[0] if day_col_candidates else "timeInterval_Day"
+                        has_day_col = bool(day_col_candidates) or q_ds in (
+                            "AWS_CUR", "AZURE_COST_USAGE", "AWS_EC2_COST_AND_USAGE", "AWS_RDS_COST_AND_USAGE",
+                            "MULTICLOUD_FOCUS_COST_AND_USAGE", "MULTICLOUD_AI_COST_AND_USAGE",
+                            "AWS_AI_COST_AND_USAGE", "AZURE_AI_COST_AND_USAGE", "GCP_AI_COST_AND_USAGE"
+                        )
 
                         where_clauses = []
                         if has_prov_col:
@@ -11267,7 +11303,27 @@ class AIClient:
 
                         where_str = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
 
-                        if (is_multi_month_dim or has_two_comp_months) and has_time_col:
+                        if is_daily_dim and has_day_col:
+                            if has_prov_col:
+                                dim_sql = (
+                                    f"SELECT {day_col_name} AS day, {prov_col} AS provider, {col_expr} AS dimension, "
+                                    f"SUM({q_metric}) AS val "
+                                    f"FROM {q_ds} "
+                                    f"{where_str} "
+                                    f"GROUP BY {day_col_name}, {prov_col}, {col_expr} "
+                                    f"ORDER BY day ASC, val DESC"
+                                )
+                            else:
+                                dim_sql = (
+                                    f"SELECT {day_col_name} AS day, {col_expr} AS dimension, "
+                                    f"SUM({q_metric}) AS val "
+                                    f"FROM {q_ds} "
+                                    f"{where_str} "
+                                    f"GROUP BY {day_col_name}, {col_expr} "
+                                    f"ORDER BY day ASC, val DESC"
+                                )
+                            q_limit = 5000
+                        elif (is_multi_month_dim or has_two_comp_months) and has_time_col:
                             if has_prov_col:
                                 dim_sql = (
                                     f"SELECT {time_col} AS month, {prov_col} AS provider, {col_expr} AS dimension, "
@@ -11310,7 +11366,12 @@ class AIClient:
 
                         cur_granularity = svc_granularity
                         cur_time_range = svc_time_range
-                        if has_two_comp_months:
+                        if is_daily_dim and has_day_col:
+                            cur_granularity = "DAILY"
+                            if not cur_time_range or not (isinstance(cur_time_range, dict) and (cur_time_range.get("qualifier") == "DAY" or "from" in cur_time_range)):
+                                t_days = time_ctx.get("timeframe_days") or intent_info.get("timeframe_days") or 30
+                                cur_time_range = {"last": t_days, "qualifier": "DAY"}
+                        elif has_two_comp_months:
                             cur_granularity = "MONTHLY"
                             cur_time_range = {"from": min(comp_months[:2]), "to": max(comp_months[:2])}
                         elif q_ds == "AZURE_COST_USAGE":
@@ -11321,7 +11382,7 @@ class AIClient:
                                     cur_time_range = {"from": target_ym, "to": target_ym}
                                 else:
                                     cur_time_range = {"last": 3, "qualifier": "MONTH"}
-                            elif isinstance(cur_time_range, dict) and cur_time_range.get("qualifier") == "DAY":
+                            elif isinstance(cur_time_range, dict) and cur_time_range.get("qualifier") == "DAY" and not is_daily_dim:
                                 cur_granularity = "MONTHLY"
                                 cur_time_range = {"last": 3, "qualifier": "MONTH"}
                         elif not cur_time_range:
@@ -11380,9 +11441,10 @@ class AIClient:
                                 if not prov:
                                     prov = q_prov
                                 m_val = str(r.get("month") or "").strip()
+                                d_day = str(r.get("day") or r.get("date") or r.get("timeInterval_Day") or "").strip()
 
                                 if v > 0:
-                                    clean_rows.append({"month": m_val, "provider": prov, "dimension": d_val, "val": v})
+                                    clean_rows.append({"month": m_val, "day": d_day, "provider": prov, "dimension": d_val, "val": v})
 
                         except Exception as e:
                             logger.warning(f"[{dim_label} Query on {q_ds}] {e}")
@@ -11685,6 +11747,164 @@ class AIClient:
                             f"{hist_table}\n"
                             f"{dim_table}"
                             f"{chart_md}\n\n"
+                            f"💡 *Live FinOps data from `{dataset}` via CloudHealth FlexReports.*"
+                        )
+
+                    elif is_daily_dim and clean_rows and any(r.get("day") for r in clean_rows):
+                        all_days = sorted(list(set(r["day"] for r in clean_rows if r.get("day"))))
+                        day_totals = defaultdict(float)
+                        day_dim_totals = defaultdict(lambda: defaultdict(float))
+                        dim_totals = defaultdict(float)
+                        dim_prov = {}
+
+                        for r in clean_rows:
+                            dy = r.get("day")
+                            if not dy:
+                                continue
+                            d = r["dimension"]
+                            v = r["val"]
+                            day_totals[dy] += v
+                            day_dim_totals[dy][d] += v
+                            dim_totals[d] += v
+                            dim_prov[d] = r["provider"]
+
+                        grand_total = sum(dim_totals.values())
+                        scope_disp = cloud_target.upper() if cloud_target != "all" else "Multi-Cloud"
+                        unit_str = matched_dim.get("unit", "$")
+                        val_fmt = (lambda x: f"${x:,.2f}") if is_cost else (lambda x: f"{x:,.2f} {unit_str}")
+                        num_days_active = len(all_days)
+                        avg_daily = (grand_total / num_days_active) if num_days_active else 0.0
+
+                        peak_day, peak_val = max(day_totals.items(), key=lambda x: x[1]) if day_totals else ("", 0.0)
+
+                        sorted_dims = sorted(dim_totals.items(), key=lambda x: x[1], reverse=True)
+                        top_cols = [d for d, _ in sorted_dims[:5]]
+                        other_cols = [d for d, _ in sorted_dims[5:]]
+                        has_other_col = bool(other_cols)
+
+                        header_cols = ["Date"] + [f"`{c}`" for c in top_cols]
+                        if has_other_col:
+                            header_cols.append(f"Other {dim_label}s")
+                        header_cols.extend(["Daily Total Spend", "DoD Variance"])
+
+                        sep_cols = [":---"] + [":---"] * len(top_cols)
+                        if has_other_col:
+                            sep_cols.append(":---")
+                        sep_cols.extend([":---", ":---"])
+
+                        day_table_rows = []
+                        for dy in reversed(all_days):
+                            row_vals = [dy]
+                            for c in top_cols:
+                                c_v = day_dim_totals[dy].get(c, 0.0)
+                                row_vals.append(val_fmt(c_v) if c_v > 0 else "—")
+
+                            if has_other_col:
+                                oth_v = sum(day_dim_totals[dy].get(oc, 0.0) for oc in other_cols)
+                                row_vals.append(val_fmt(oth_v) if oth_v > 0 else "—")
+
+                            tot_d = day_totals[dy]
+                            row_vals.append(f"**{val_fmt(tot_d)}**")
+
+                            orig_idx = all_days.index(dy)
+                            if orig_idx > 0:
+                                prev_dy = all_days[orig_idx - 1]
+                                prev_tot = day_totals[prev_dy]
+                                diff = tot_d - prev_tot
+                                pct = (diff / prev_tot * 100) if prev_tot > 0 else 0.0
+                                sign = "+" if diff > 0 else ("-" if diff < 0 else "")
+                                icon = "🔺" if diff > 0 else "🔻"
+                                dod_str = f"{sign}${abs(diff):,.2f} ({pct:+.1f}%) {icon}" if is_cost else f"{sign}{abs(diff):,.2f} ({pct:+.1f}%)"
+                            else:
+                                dod_str = "—"
+                            row_vals.append(dod_str)
+
+                            day_table_rows.append(f"| {' | '.join(row_vals)} |")
+
+                        tot_row_vals = ["**Total**"]
+                        for c in top_cols:
+                            tot_row_vals.append(f"**{val_fmt(dim_totals[c])}**")
+                        if has_other_col:
+                            tot_oth = sum(dim_totals[oc] for oc in other_cols)
+                            tot_row_vals.append(f"**{val_fmt(tot_oth)}**")
+                        tot_row_vals.extend([f"**{val_fmt(grand_total)}**", "—"])
+
+                        hist_table = (
+                            f"#### 📅 Daily Spend History ({svc_scope_label})\n\n"
+                            f"| {' | '.join(header_cols)} |\n"
+                            f"| {' | '.join(sep_cols)} |\n"
+                            f"{chr(10).join(day_table_rows)}\n"
+                            f"| {' | '.join(tot_row_vals)} |\n"
+                        )
+
+                        dim_tuples = _apply_row_filters([(dim_prov.get(d, scope_disp), d, v) for d, v in sorted_dims])
+                        top_dims_table_rows = []
+                        for p, d, v in dim_tuples[:limit]:
+                            pct = (v / grand_total * 100) if grand_total else 0.0
+                            d_avg = v / num_days_active if num_days_active else 0.0
+                            avg_str = f"{val_fmt(d_avg)}/day"
+                            top_dims_table_rows.append(
+                                f"| {p} | `{d}` | {val_fmt(v)} | {pct:.1f}% | {avg_str} |"
+                            )
+
+                        dim_table = (
+                            f"#### ☁️ Top {dim_label} Overall Breakdown ({svc_scope_label})\n\n"
+                            f"| Cloud Provider | {dim_label} | Total Cost ({svc_scope_label}) | % of Total | Daily Average |\n"
+                            f"|:---|:---|:---|:---|:---|\n"
+                            f"{chr(10).join(top_dims_table_rows)}\n\n"
+                            f"| **Total** | | **{val_fmt(grand_total)}** | **100.0%** | **{val_fmt(avg_daily)}/day** |"
+                        )
+
+                        chart_md = ""
+                        if not is_no_chart_requested(low):
+                            req_chart = "bar" if "bar" in low else ("area" if ("area" in low or (intent_info and "area" in intent_info.get("chart_types", []))) else "line")
+                            chart_md = _build_time_category_stacked_chart(
+                                f"{scope_disp} Daily Spend by {dim_label} — {svc_scope_label}",
+                                clean_rows,
+                                time_col="day",
+                                cat_col="dimension",
+                                cost_col="val",
+                                time_format="day",
+                                max_cats=10,
+                                unit="Cost ($)" if is_cost else unit_str,
+                                exclude_other=is_exclude_other,
+                                chart_type=req_chart
+                            )
+                            if chart_md:
+                                chart_md = f"\n\n{chart_md}"
+
+                        insight_md = ""
+                        if self.engine != "direct" and not is_no_insights_requested(low):
+                            try:
+                                top_3_summary = ", ".join([f"{d} (${v:,.2f}, {v/grand_total*100:.1f}%)" for d, v in sorted_dims[:3]])
+                                sys_msg = {
+                                    "role": "system",
+                                    "content": (
+                                        "You are Cleo, an expert FinOps AI. Analyze this daily cloud spend breakdown by dimension. "
+                                        "Provide 2 concise, actionable FinOps insights explaining the dominant cost drivers, daily run-rate stability, and recommendations."
+                                    )
+                                }
+                                user_msg = {"role": "user", "content": f"User query: {last_msg}\n\nTop {dim_label} drivers: {top_3_summary}\nTotal Spend ({svc_scope_label}): ${grand_total:,.2f}\nDaily Average: ${avg_daily:,.2f}/day\nPeak Day: {peak_day} (${peak_val:,.2f})"}
+                                llm_ans, _ = self._call_active_llm([sys_msg, user_msg])
+                                if llm_ans:
+                                    insight_md = f"\n\n**💡 FinOps Insights:**\n{_sanitize_finops_bullet_titles(llm_ans)}"
+                            except Exception as e:
+                                logger.debug(f"[LLM Commentary] {e}")
+
+                        exec_summary = (
+                            f"> 💡 **Executive Summary**: Total {scope_disp} {dim_label} spend across **{svc_scope_label}** is **{val_fmt(grand_total)}** "
+                            f"across **{num_days_active} active days**, averaging **{val_fmt(avg_daily)}/day**. "
+                            f"Peak spend occurred on **{peak_day}** (**{val_fmt(peak_val)}**).\n\n"
+                        )
+
+                        return (
+                            f"### 📊 CloudHealth Spend Analysis: {scope_disp} Cost by {dim_label} — {svc_scope_label}\n\n"
+                            f"{partial_notice}"
+                            f"{exec_summary}"
+                            f"{hist_table}\n"
+                            f"{dim_table}"
+                            f"{chart_md}"
+                            f"{insight_md}\n\n"
                             f"💡 *Live FinOps data from `{dataset}` via CloudHealth FlexReports.*"
                         )
 

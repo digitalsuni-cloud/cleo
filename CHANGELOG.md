@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.0.0 — 2026-10-19
+
+**Major release introducing Over-The-Air (OTA) Dynamic Code Loading, enhanced multi-cloud datasets, and conversational continuity.**
+
+### 🔄 Over-The-Air (OTA) Dynamic Code Loading
+- **Zero-Rebuild Continuous Delivery**: Tauri sidecar dynamically checks and syncs the latest code from GitHub into `~/.cleo/src` on startup.
+- **Dynamic Importer Precedence**: Reorders `sys.meta_path` so local/synced updates take precedence over frozen bundle modules while seamlessly falling back if offline.
+- **Dynamic Web UI Serving**: `/newChat` and GUI endpoints serve the latest `cleo_ui.html` live from the OTA source folder.
+
+### 💰 FinOps & Multi-Cloud Datasets
+- **EBS Volume Type & Daily Drilldowns**: Added deep dimension support for `product_volumeType` with automatic daily granularity when exploring storage historical trends.
+- **Expanded Datasets**: Integrated K8S, RDS, Data Transfer, Databricks, Datacenter, and native billing export datasets with automatic provider-priority routing.
+- **Conversational Contextual Continuation**: Intelligent intent detection preserves query dimensions and timeframes across conversational turns.
+
+### 🎨 UI & UX Improvements
+- **Regenerate Icon Fix**: Corrected distorted arrowhead on assistant message action buttons with clean Lucide circular geometry.
+
 ## v1.0.0 — 2026-10-18
 
 **First stable release of Cleo — Autonomous Multi-Cloud FinOps Copilot.**

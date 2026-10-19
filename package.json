@@ -1,6 +1,6 @@
 {
   "name": "cleo",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Cleo — Autonomous Multi-Cloud FinOps Copilot",
   "private": true,
   "scripts": {
