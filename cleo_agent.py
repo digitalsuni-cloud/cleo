@@ -463,6 +463,22 @@ def find_dataset_for_specific_column(requested_dim_or_col: str, cloud: Optional[
         "MULTICLOUD_COMMITMENT_SAVINGS",
         "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
         "WASTE_OPPORTUNITY",
+        "AWS_K8S_COST",
+        "AZURE_K8S_COST",
+        "K8S_CONTAINERS_USAGE",
+        "K8S_NODES_USAGE",
+        "AWS_RDS_COST_AND_USAGE",
+        "AWS_DATA_TRANSFER_COST_AND_USAGE",
+        "AWS_DATABRICKS_USAGE",
+        "AZURE_DATABRICKS_COST_AND_USAGE",
+        "DATACENTER_SERVER_COST_AND_USAGE",
+        "GCP_BILLING_EXPORT",
+        "ALICLOUD_INSTANCE_BILL",
+        "AZURE_EA",
+        "CLOUDHEALTH_CONSUMPTION_BREAKDOWN",
+        "AWS_COST_ANOMALY",
+        "AZURE_COST_ANOMALY",
+        "GCP_COST_ANOMALY",
         "MULTICLOUD_OPERATIONAL_EMISSIONS",
         "MULTICLOUD_FOCUS_COST_AND_USAGE",
     ]
@@ -591,6 +607,32 @@ def find_dataset_for_specific_column(requested_dim_or_col: str, cloud: Optional[
             metric_col = "ProjectedMonthlyCost"
         elif ds_name == "MULTICLOUD_OPERATIONAL_EMISSIONS":
             metric_col = "Carbon"
+        elif ds_name in ("AWS_K8S_COST", "AZURE_K8S_COST"):
+            metric_col = "ApportionedCostUsed"
+        elif ds_name == "K8S_CONTAINERS_USAGE":
+            metric_col = "SumOfCpuResourcesRequested"
+        elif ds_name == "K8S_NODES_USAGE":
+            metric_col = "AllocatableCpu"
+        elif ds_name == "AWS_RDS_COST_AND_USAGE":
+            metric_col = "RDSTotalCost"
+        elif ds_name == "AWS_DATA_TRANSFER_COST_AND_USAGE":
+            metric_col = "BilledCost"
+        elif ds_name == "AWS_DATABRICKS_USAGE":
+            metric_col = "total_price"
+        elif ds_name == "AZURE_DATABRICKS_COST_AND_USAGE":
+            metric_col = "AmortizedCostInBillingCurrency"
+        elif ds_name == "DATACENTER_SERVER_COST_AND_USAGE":
+            metric_col = "Total_Cost"
+        elif ds_name == "GCP_BILLING_EXPORT":
+            metric_col = "Cost"
+        elif ds_name == "ALICLOUD_INSTANCE_BILL":
+            metric_col = "PaymentAmount"
+        elif ds_name == "AZURE_EA":
+            metric_col = "azure_Cost"
+        elif ds_name == "CLOUDHEALTH_CONSUMPTION_BREAKDOWN":
+            metric_col = "ConfiguredUsageAtPartner"
+        elif "ANOMALY" in ds_name:
+            metric_col = "CostImpact"
         else:
             metric_col = "ActualCostInUsd"
 
@@ -888,6 +930,13 @@ def build_system_prompt(tools: list[dict], engine_label: str = None) -> str:
         "   - MULTICLOUD_COMMITMENT_SAVINGS: Multi-cloud commitment savings, reservations, and savings plans dataset. Key columns: Provider, Commitment_Plan, Service, Month, Commitment_Savings, Commitment_Covered_On_Demand_Cost, Commitment_Used_Cost, Commitment_Purchase_Cost, On_Demand_Equivalent_Cost, Negotiated_Discount, Billing_Account_Name, Billing_Account_Id.\n"
         "   - MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS: Multi-cloud compute and database rightsizing optimization dataset. Key columns: Provider, Service, Region, Potential_Savings, Current_Cost, Potential_Cost, Billing_Account, SubAccount_Name.\n"
         "   - WASTE_OPPORTUNITY: CloudHealth identified infrastructure waste and cleanup opportunities (idle VMs, unattached EBS/disks, orphaned snapshots/IPs). Key columns: Provider, Region, CloudAccountId, ProjectedMonthlyCost.\n"
+        "   - AWS_K8S_COST / AZURE_K8S_COST: Kubernetes container cost allocation datasets. Key columns: ClusterName, NamespaceName, WorkloadName, WorkloadType, ContainerName, CloudAccountName, ApportionedCostUsed, ApportionedCostRequested, timeInterval_Month.\n"
+        "   - K8S_CONTAINERS_USAGE / K8S_NODES_USAGE: Kubernetes container and node capacity/utilization datasets. Key columns: ClusterName, NamespaceName, WorkloadName, ContainerName, SumOfCpuResourcesRequested, AverageMemoryUsed, MaxCpuUsed, AllocatableCpu, Allocatablememory.\n"
+        "   - AWS_RDS_COST_AND_USAGE: Managed relational database cost and usage dataset. Key columns: InstanceType, Region, MultiAZ, SubAccount, BillingAccount, Month, RDSTotalCost, ComputeCost, StorageCost, Instances.\n"
+        "   - AWS_DATA_TRANSFER_COST_AND_USAGE: Multi-region network egress and data transfer dataset. Key columns: FromLocation, ToLocation, TransferType, SubAccount, Month, BilledCost, ConsumedQuantity.\n"
+        "   - AWS_DATABRICKS_USAGE / AZURE_DATABRICKS_COST_AND_USAGE: Databricks lakehouse analytics usage. Key columns: workspace_id, sku_name, usage_type, total_price (AWS) / ProductName, MeterSubCategory, ResourceGroup, AmortizedCostInBillingCurrency, Quantity (Azure).\n"
+        "   - DATACENTER_SERVER_COST_AND_USAGE: Hybrid and on-premises physical/virtual server cost dataset. Key columns: DataCenter_Name, Host_Name, Server_Name, Operating_System, Total_Cost, Machines.\n"
+        "   - GCP_BILLING_EXPORT / ALICLOUD_INSTANCE_BILL / AZURE_EA: Native cloud provider billing exports and enterprise agreement accounts.\n"
         "2. FLEXREPORT SQL QUERY RULES:\n"
         "   - NEVER use 'SELECT *' — always specify explicit column names.\n"
         "   - Every selected column or aggregated measure MUST have an alias (e.g. 'SUM(Usage) AS cost').\n"
@@ -994,7 +1043,8 @@ def build_system_prompt(tools: list[dict], engine_label: str = None) -> str:
         "8. When user asks about AI model specs, token rates, per-token pricing, or comparing LLMs (e.g. Claude 3.7 vs GPT-4o, DeepSeek, Gemini token rates), Cleo has live access to real-time AI token economics and context specs via get_live_model_specs.\n"
         "9. When user asks for public cloud retail/list prices or Azure rate cards (e.g. Standard_D4s_v5 in eastus, spot rates, 1-yr reservation list prices), Cleo has live access to official Azure Retail Prices API rates via get_live_cloud_pricing.\n"
         "10. When user asks for current FinOps industry trends, FOCUS specification updates, or real-world cloud cost news, Cleo has live web search access via search_finops_web.\n"
-        "11. When user asks about rightsizing, downsizing recommendations, or potential savings from rightsizing, query 'MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS'. When user asks about cloud waste, zombie resources, or waste opportunities, query 'WASTE_OPPORTUNITY'. When user asks about commitment savings, savings plans, or reservations across clouds, query 'MULTICLOUD_COMMITMENT_SAVINGS'.\n\n"
+        "11. When user asks about rightsizing, downsizing recommendations, or potential savings from rightsizing, query 'MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS'. When user asks about cloud waste, zombie resources, or waste opportunities, query 'WASTE_OPPORTUNITY'. When user asks about commitment savings, savings plans, or reservations across clouds, query 'MULTICLOUD_COMMITMENT_SAVINGS'.\n"
+        "12. When user asks about Kubernetes or container costs/workloads/namespaces, query 'AWS_K8S_COST' or 'AZURE_K8S_COST' (or 'K8S_CONTAINERS_USAGE' / 'K8S_NODES_USAGE' for capacity/utilization). When user asks about AWS RDS databases, query 'AWS_RDS_COST_AND_USAGE'. When user asks about network transfer/egress, query 'AWS_DATA_TRANSFER_COST_AND_USAGE'. When user asks about Databricks, query 'AWS_DATABRICKS_USAGE' or 'AZURE_DATABRICKS_COST_AND_USAGE'. When user asks about on-premises servers, query 'DATACENTER_SERVER_COST_AND_USAGE'. When user asks about Alibaba Cloud, query 'ALICLOUD_INSTANCE_BILL'.\n\n"
         "CONVERSATIONAL MEMORY & MULTI-TURN CONTEXT:\n"
         "- You maintain full conversational memory across all turns in this session.\n"
         "- When the user asks about prior queries, results, or context (e.g. 'which month was I asking for?', 'who spent the most?', 'summarize the table', 'why?'), ALWAYS use the conversation history to answer directly, accurately, and concisely.\n"
@@ -2565,10 +2615,17 @@ class AIClient:
         # extract the dataset name and delegate to the LLM with it injected.
         _KNOWN_DATASETS = [
             "AWS_EC2_COST_AND_USAGE", "AWS_CUR", "MULTICLOUD_FOCUS_COST_AND_USAGE",
-            "CLOUDHEALTH_CONSUMPTION_BREAKDOWN", "AWS_COST_ANOMALY", "AZURE_COST_ANOMALY",
-            "AWS_FOCUS_COST_AND_USAGE", "AZURE_FOCUS_COST_AND_USAGE",
+            "CLOUDHEALTH_CONSUMPTION_BREAKDOWN", "AWS_COST_ANOMALY", "AZURE_COST_ANOMALY", "GCP_COST_ANOMALY",
+            "AWS_FOCUS_COST_AND_USAGE", "AZURE_FOCUS_COST_AND_USAGE", "GCP_FOCUS_COST_AND_USAGE",
             "DX_PRICING_AWS_EC2", "DX_PRICING_AWS_ECS", "AWS_ASSET_INVENTORY",
             "MULTICLOUD_COMMITMENT_SAVINGS", "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS", "WASTE_OPPORTUNITY",
+            "AWS_K8S_COST", "AZURE_K8S_COST", "K8S_CONTAINERS_USAGE", "K8S_NODES_USAGE",
+            "AWS_RDS_COST_AND_USAGE", "AWS_DATA_TRANSFER_COST_AND_USAGE",
+            "AWS_DATABRICKS_USAGE", "AZURE_DATABRICKS_COST_AND_USAGE",
+            "DATACENTER_SERVER_COST_AND_USAGE", "GCP_BILLING_EXPORT", "ALICLOUD_INSTANCE_BILL", "AZURE_EA",
+            "MULTICLOUD_OPERATIONAL_EMISSIONS", "UNIFIED_AI_TOKENOMICS", "MULTICLOUD_AI_COST_AND_USAGE",
+            "AWS_AI_COST_AND_USAGE", "AZURE_AI_COST_AND_USAGE", "GCP_AI_COST_AND_USAGE",
+            "AWS_COST_HISTORY", "AZURE_COST_HISTORY", "GCP_COST_HISTORY",
         ]
         # Also match colloquial forms: "ec2 instance dataset", "ec2 cost and usage"
         _COLLOQUIAL_DATASET_MAP = {
@@ -2592,6 +2649,29 @@ class AIClient:
             "waste opportunity dataset": "WASTE_OPPORTUNITY",
             "waste dataset": "WASTE_OPPORTUNITY",
             "waste opportunities": "WASTE_OPPORTUNITY",
+            "k8s cost": "AWS_K8S_COST",
+            "aws k8s cost": "AWS_K8S_COST",
+            "azure k8s cost": "AZURE_K8S_COST",
+            "kubernetes cost": "AWS_K8S_COST",
+            "k8s container usage": "K8S_CONTAINERS_USAGE",
+            "k8s containers dataset": "K8S_CONTAINERS_USAGE",
+            "k8s node usage": "K8S_NODES_USAGE",
+            "k8s nodes dataset": "K8S_NODES_USAGE",
+            "rds cost and usage": "AWS_RDS_COST_AND_USAGE",
+            "rds dataset": "AWS_RDS_COST_AND_USAGE",
+            "data transfer dataset": "AWS_DATA_TRANSFER_COST_AND_USAGE",
+            "data transfer cost": "AWS_DATA_TRANSFER_COST_AND_USAGE",
+            "databricks usage": "AWS_DATABRICKS_USAGE",
+            "databricks dataset": "AWS_DATABRICKS_USAGE",
+            "azure databricks dataset": "AZURE_DATABRICKS_COST_AND_USAGE",
+            "datacenter servers": "DATACENTER_SERVER_COST_AND_USAGE",
+            "datacenter dataset": "DATACENTER_SERVER_COST_AND_USAGE",
+            "on prem dataset": "DATACENTER_SERVER_COST_AND_USAGE",
+            "gcp billing export": "GCP_BILLING_EXPORT",
+            "gcp billing dataset": "GCP_BILLING_EXPORT",
+            "alicloud bill": "ALICLOUD_INSTANCE_BILL",
+            "alicloud dataset": "ALICLOUD_INSTANCE_BILL",
+            "azure ea dataset": "AZURE_EA",
         }
         _explicit_dataset = None
         for ds in _KNOWN_DATASETS:
