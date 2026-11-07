@@ -19,10 +19,10 @@
 
 | Architecture | Platform | File to Download | Notes |
 | :---: | :--- | :--- | :--- |
-| ![macOS](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/macos.svg) | **macOS (Apple Silicon)** | [Cleo_2.0.0_arm64.dmg](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_2.0.0_arm64.dmg) | M1/M2/M3/M4 Macs · Native `.dmg` installer |
-| ![Windows](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/windows.svg) | **Windows (x64)** | [Cleo_2.0.0_x64.exe](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_2.0.0_x64.exe) | Universal / Portable `.exe` · No install required |
-| ![Linux App](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/linux-app.svg) | **Linux (x64)** | [Cleo_2.0.0_amd64.AppImage](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_2.0.0_amd64.AppImage) | Portable Linux AppImage |
-| ![Linux Deb](https://raw.githubusercontent.com/digitalsuni-cloud/cpb-ch/main/public/badges/linux-deb.svg) | **Linux (x64)** | [Cleo_2.0.0_amd64.deb](https://github.com/digitalsuni-cloud/cleo/releases/latest/download/Cleo_2.0.0_amd64.deb) | Ubuntu / Debian package |
+| ![macOS](https://raw.githubusercontent.com/sunil-cht/cpb-ch/main/public/badges/macos.svg) | **macOS (Apple Silicon)** | [Cleo_2.0.0_arm64.dmg](https://github.com/sunil-cht/cleo/releases/latest/download/Cleo_2.0.0_arm64.dmg) | M1/M2/M3/M4 Macs · Native `.dmg` installer |
+| ![Windows](https://raw.githubusercontent.com/sunil-cht/cpb-ch/main/public/badges/windows.svg) | **Windows (x64)** | [Cleo_2.0.0_x64.exe](https://github.com/sunil-cht/cleo/releases/latest/download/Cleo_2.0.0_x64.exe) | Universal / Portable `.exe` · No install required |
+| ![Linux App](https://raw.githubusercontent.com/sunil-cht/cpb-ch/main/public/badges/linux-app.svg) | **Linux (x64)** | [Cleo_2.0.0_amd64.AppImage](https://github.com/sunil-cht/cleo/releases/latest/download/Cleo_2.0.0_amd64.AppImage) | Portable Linux AppImage |
+| ![Linux Deb](https://raw.githubusercontent.com/sunil-cht/cpb-ch/main/public/badges/linux-deb.svg) | **Linux (x64)** | [Cleo_2.0.0_amd64.deb](https://github.com/sunil-cht/cleo/releases/latest/download/Cleo_2.0.0_amd64.deb) | Ubuntu / Debian package |
 
 > **macOS Gatekeeper Note:** If macOS displays an unsigned app prompt on first run, open your Terminal and run:
 > ```bash
@@ -39,7 +39,7 @@ If you are developing Cleo, deploying on a headless Linux server, or running in 
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/digitalsuni-cloud/cleo.git
+git clone https://github.com/sunil-cht/cleo.git
 cd cleo
 
 # 2. Start using the one-click launcher for your platform:
@@ -207,7 +207,7 @@ The **Cleo Desktop App** or standard launcher (`./run.sh` / `run.bat`) is the re
 ### Start with Docker
 
 ```bash
-git clone https://github.com/digitalsuni-cloud/cleo.git
+git clone https://github.com/sunil-cht/cleo.git
 cd cleo
 docker compose up
 ```
@@ -248,7 +248,7 @@ To skip the update check entirely, use `--no-update` or set `CLEO_NO_UPDATE=1`.
 To manually update from the terminal at any time using `curl`:
 ```bash
 # In your Cleo root directory:
-curl -sL https://github.com/digitalsuni-cloud/cleo/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1
+curl -sL https://github.com/sunil-cht/cleo/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1
 ```
 
 To manually check for updates via the API:

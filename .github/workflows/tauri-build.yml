@@ -269,7 +269,7 @@ jobs:
 
           tag = os.environ.get("TAG", "v1.0.0")
           version = tag.lstrip("v")
-          repo = os.environ.get("REPO", "digitalsuni-cloud/cleo")
+          repo = os.environ.get("REPO", "sunil-cht/cleo")
           base_url = f"https://github.com/{repo}/releases/download/{tag}"
 
           notes = f"## Cleo {tag}\n\n"

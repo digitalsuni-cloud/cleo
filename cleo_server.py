@@ -411,7 +411,7 @@ def _sync_ota_repository(src_dir: str):
     Uses shallow git clone/pull if git is available, otherwise falls back to GitHub archive download.
     Guaranteed not to crash or hang startup if offline.
     """
-    repo_slug = os.environ.get("CLEO_GITHUB_REPO", "digitalsuni-cloud/cleo")
+    repo_slug = os.environ.get("CLEO_GITHUB_REPO", "sunil-cht/cleo")
     branch = os.environ.get("CLEO_GITHUB_BRANCH", "main")
 
     if not re.match(r'^[a-zA-Z0-9_\-\.]+/[a-zA-Z0-9_\-\.]+$', repo_slug):
@@ -3278,7 +3278,7 @@ def delete_memory_entry(entry_id: str):
 # ponytail: git verify-tag requires gpg on PATH; if absent the update is blocked
 #           with a clear error — no silent trust downgrade.
 
-CLEO_GITHUB_REPO = os.environ.get("CLEO_GITHUB_REPO", "digitalsuni-cloud/cleo")
+CLEO_GITHUB_REPO = os.environ.get("CLEO_GITHUB_REPO", "sunil-cht/cleo")
 _CLEO_ROOT       = os.path.dirname(os.path.abspath(__file__))
 CLEO_VERSION     = "2.0.0"
 try:
