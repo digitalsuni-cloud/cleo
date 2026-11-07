@@ -1,4 +1,4 @@
-<h1><img src="docs/cleo-icon.svg" width="38" height="38" alt="Cleo" align="middle" /> Cleo — Cloud Efficiency Optimizer <code>BETA</code></h1>
+<h1><img src="docs/cleo-icon.svg" width="36" height="36" style="vertical-align: middle;" alt="Cleo" align="middle" /> Cleo — Cloud Efficiency Optimizer <code>BETA</code></h1>
 
 **Cleo** is your AI assistant for cloud cost intelligence. Ask questions about your AWS, Azure, and GCP spend in plain English and get live answers straight from CloudHealth — no dashboards, no SQL, no manual reports.
 
@@ -8,34 +8,9 @@
 
 ---
 
-## 🚀 Quickstart: Desktop Application (Recommended)
+## 🚀 Quickstart: One-Click Launchers
 
-**Cleo is packaged as a native desktop application with a bundled standalone Python runtime.**
-* **Zero Python setup required:** You do **not** need Python, `pip`, `venv`, Node.js, or Rust installed on your computer.
-* **All packages included:** The PyInstaller sidecar bundles the entire FinOps intelligence engine, FastAPI server, CloudHealth OAuth handler, interactive charting workbench, and AI model connectors.
-* **Native desktop experience:** Fast, responsive Dark glassmorphism UI with custom dock/desktop icons, offline cache, and real-time streaming.
-
-### ⬇️ Download Cleo Desktop
-
-| Architecture | Platform | File to Download | Notes |
-| :---: | :--- | :--- | :--- |
-| ![macOS](docs/badges/macos.svg) | **macOS (Apple Silicon)** | [Cleo_2.0.0_arm64.dmg](https://gitlab.com/digitalsuni/cleo/-/releases/v2.0.0/downloads/Cleo_2.0.0_arm64.dmg) | Apple Silicon · Native `.dmg` installer |
-| ![Windows](docs/badges/windows.svg) | **Windows (x64)** | [Cleo_2.0.0_x64.exe](https://gitlab.com/digitalsuni/cleo/-/releases) | Universal / Portable `.exe` · No install required |
-| ![Linux App](docs/badges/linux-app.svg) | **Linux (x64)** | [Cleo_2.0.0_amd64.AppImage](https://gitlab.com/digitalsuni/cleo/-/releases) | Portable Linux AppImage |
-| ![Linux Deb](docs/badges/linux-deb.svg) | **Linux (x64)** | [Cleo_2.0.0_amd64.deb](https://gitlab.com/digitalsuni/cleo/-/releases) | Ubuntu / Debian package |
-
-> **macOS Gatekeeper Note:** If macOS displays an unsigned app prompt on first run, open your Terminal and run:
-> ```bash
-> xattr -rd com.apple.quarantine "/Applications/Cleo.app"
-> ```
-
----
-
-## 💻 Developer & Server Setup (Optional)
-
-If you are developing Cleo, deploying on a headless Linux server, or running in Docker:
-
-### Option A — One-Click Launchers (From Source)
+Run Cleo immediately on your machine without manual configuration:
 
 ```bash
 # 1. Clone the repository
@@ -44,17 +19,71 @@ cd cleo
 
 # 2. Start using the one-click launcher for your platform:
 ./run.sh              # macOS & Linux (or ./run)
-run.bat               # Windows (File Explorer or Command Prompt)
+run.bat               # Windows (Command Prompt or double-click)
 .\run.ps1             # Windows PowerShell
 ```
 
 Cleo's launcher automatically:
-- Locates Python 3.11+
-- Verifies signed GPG release tags (`cleo-release.asc`)
 - Provisions an isolated virtual environment (`.venv/`) and installs dependencies
-- Launches the server and opens your browser to **http://127.0.0.1:8080**
+- Launches the local FastAPI server and FinOps intelligence engine
+- Opens your browser to **http://127.0.0.1:8080**
 
-### Option B — Manual Python Command
+---
+
+## 🖥️ Build Your Own Desktop App (Tauri)
+
+You can compile Cleo into a native standalone desktop application for macOS, Windows, or Linux using **Tauri 2**. The build scripts bundle both the desktop interface and the standalone Python backend sidecar so the app runs self-contained with zero runtime dependencies.
+
+### Prerequisites
+* **Node.js**: v18+ ([nodejs.org](https://nodejs.org/))
+* **Rust**: Latest stable (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
+* **Python**: 3.10+ with `pip` (used by PyInstaller to compile the backend sidecar)
+
+### Build Commands
+
+####  macOS (Apple Silicon / Intel)
+```bash
+./build-release.sh
+```
+* Produces: `release/Tauri/Cleo_<version>_arm64.dmg` (or x64) and `Cleo.app`
+* *macOS Gatekeeper Note:* If macOS displays an unsigned app prompt on first run:
+  ```bash
+  xattr -rd com.apple.quarantine "/Applications/Cleo.app"
+  ```
+
+#### 🪟 Windows (x64)
+```cmd
+build-release.bat
+```
+* Produces: `release\Tauri\Cleo_<version>_x64.exe` (Portable executable, no installer needed)
+
+#### 🐧 Linux (Ubuntu / Debian / Fedora)
+Install system WebKit development headers first:
+```bash
+sudo apt update && sudo apt install -y \
+  libwebkit2gtk-4.1-dev build-essential curl wget file \
+  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+```
+Then run:
+```bash
+./build-release.sh
+```
+* Produces: `release/Tauri/Cleo_<version>_amd64.AppImage` and `Cleo_<version>_amd64.deb`
+
+### Development Mode (with Live Reload)
+To develop and run the desktop app locally with live hot-reloading:
+```bash
+npm install
+npm run tauri:dev
+```
+
+---
+
+## 💻 Developer & Server Setup (Optional)
+
+If you are developing Cleo, deploying on a headless Linux server, or running in Docker:
+
+### Option A — Manual Python Command
 
 ```bash
 python3 -m venv .venv
