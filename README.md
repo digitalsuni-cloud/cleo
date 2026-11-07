@@ -1,4 +1,4 @@
-<h1><img src="docs/cleo-icon.svg" width="50" height="50" alt="Cleo" align="top" /> Cleo — Cloud Efficiency Optimizer <code>BETA</code></h1>
+<h1><img src="docs/cleo-icon.svg" width="38" height="38" alt="Cleo" align="middle" /> Cleo — Cloud Efficiency Optimizer <code>BETA</code></h1>
 
 **Cleo** is your AI assistant for cloud cost intelligence. Ask questions about your AWS, Azure, and GCP spend in plain English and get live answers straight from CloudHealth — no dashboards, no SQL, no manual reports.
 
@@ -19,9 +19,10 @@
 
 | Architecture | Platform | File to Download | Notes |
 | :---: | :--- | :--- | :--- |
-|  | **macOS (Apple Silicon)** | [Cleo_2.0.0_arm64.dmg](https://gitlab.com/digitalsuni/cleo/-/releases/v2.0.0/downloads/Cleo_2.0.0_arm64.dmg) | M1/M2/M3/M4 Macs · Native `.dmg` installer |
-| 🪟 | **Windows (x64)** | [Cleo Releases](https://gitlab.com/digitalsuni/cleo/-/releases) | Universal / Portable `.exe` · No install required |
-| 🐧 | **Linux (x64)** | [Cleo Releases](https://gitlab.com/digitalsuni/cleo/-/releases) | Portable Linux AppImage & DEB package |
+| ![macOS](docs/badges/macos.svg) | **macOS (Apple Silicon)** | [Cleo_2.0.0_arm64.dmg](https://gitlab.com/digitalsuni/cleo/-/releases/v2.0.0/downloads/Cleo_2.0.0_arm64.dmg) | M1/M2/M3/M4 Macs · Native `.dmg` installer |
+| ![Windows](docs/badges/windows.svg) | **Windows (x64)** | [Cleo_2.0.0_x64.exe](https://gitlab.com/digitalsuni/cleo/-/releases) | Universal / Portable `.exe` · No install required |
+| ![Linux App](docs/badges/linux-app.svg) | **Linux (x64)** | [Cleo_2.0.0_amd64.AppImage](https://gitlab.com/digitalsuni/cleo/-/releases) | Portable Linux AppImage |
+| ![Linux Deb](docs/badges/linux-deb.svg) | **Linux (x64)** | [Cleo_2.0.0_amd64.deb](https://gitlab.com/digitalsuni/cleo/-/releases) | Ubuntu / Debian package |
 
 > **macOS Gatekeeper Note:** If macOS displays an unsigned app prompt on first run, open your Terminal and run:
 > ```bash

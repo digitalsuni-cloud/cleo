@@ -69,9 +69,10 @@
 
 | Architecture | Platform | File to Download | SHA-256 Checksum |
 | :---: | :--- | :--- | :--- |
-|  | Apple Silicon (ARM64) | [Cleo_2.0.0_arm64.dmg](https://gitlab.com/digitalsuni/cleo/-/releases/v2.0.0/downloads/Cleo_2.0.0_arm64.dmg) | `549105a8bb9ac41670698f80fe1ef3a64b62eb0c4129ab2b4b34d45af2feae83` |
-| 🪟 | Universal / Portable | [Cleo Releases](https://gitlab.com/digitalsuni/cleo/-/releases) | *Windows build* |
-| 🐧 | Linux x64 | [Cleo Releases](https://gitlab.com/digitalsuni/cleo/-/releases) | *Linux AppImage & DEB* |
+| ![macOS](docs/badges/macos.svg) | Apple Silicon (ARM64) | [Cleo_2.0.0_arm64.dmg](https://gitlab.com/digitalsuni/cleo/-/releases/v2.0.0/downloads/Cleo_2.0.0_arm64.dmg) | `549105a8bb9ac41670698f80fe1ef3a64b62eb0c4129ab2b4b34d45af2feae83` |
+| ![Windows](docs/badges/windows.svg) | Universal / Portable | [Cleo Releases](https://gitlab.com/digitalsuni/cleo/-/releases) | *Windows build* |
+| ![Linux App](docs/badges/linux-app.svg) | Linux x64 (AppImage) | [Cleo Releases](https://gitlab.com/digitalsuni/cleo/-/releases) | *Linux AppImage* |
+| ![Linux Deb](docs/badges/linux-deb.svg) | Linux x64 (DEB) | [Cleo Releases](https://gitlab.com/digitalsuni/cleo/-/releases) | *Debian / Ubuntu DEB* |
 
 ## 🛠 macOS Installation Note
 This application is built for internal use and is unsigned. If you see an error saying the app is "damaged" or cannot be opened, run this command in your Terminal:
