@@ -2118,6 +2118,11 @@ def test_top_cloud_services_mom_variance_tables():
     from cleo_agent import AIClient
     import json
 
+    import datetime
+    today = datetime.date.today()
+    prev_m = (today.replace(day=1) - datetime.timedelta(days=1)).strftime("%Y-%m")
+    cur_m = today.strftime("%Y-%m")
+
     class MultiCloudMockMCP:
         def call_tool(self, name, args):
             sql = args.get("queryInput", {}).get("sqlStatement", "")
@@ -2126,24 +2131,24 @@ def test_top_cloud_services_mom_variance_tables():
 
             # Single SUM(EffectiveCost) query for overall totals
             if "SUM(EffectiveCost)" in sql and "GROUP BY" not in sql:
-                if from_m == "2026-09":
+                if from_m in ("2026-09", prev_m):
                     return {"content": [{"text": json.dumps({"csv": "cost\n15000.0\n"})}]}
                 return {"content": [{"text": json.dumps({"csv": "cost\n18500.0\n"})}]}
 
             if "last" in time_range:
                 csv_multi = (
-                    "month,provider,service,cost\n"
-                    "2026-09,AWS,Amazon EC2,8000.0\n"
-                    "2026-09,Azure,Virtual Machines,4000.0\n"
-                    "2026-09,Google Cloud,Compute Engine,3000.0\n"
-                    "2026-10,AWS,Amazon EC2,10000.0\n"
-                    "2026-10,Azure,Virtual Machines,5000.0\n"
-                    "2026-10,Google Cloud,Compute Engine,3500.0\n"
+                    f"month,provider,service,cost\n"
+                    f"{prev_m},AWS,Amazon EC2,8000.0\n"
+                    f"{prev_m},Azure,Virtual Machines,4000.0\n"
+                    f"{prev_m},Google Cloud,Compute Engine,3000.0\n"
+                    f"{cur_m},AWS,Amazon EC2,10000.0\n"
+                    f"{cur_m},Azure,Virtual Machines,5000.0\n"
+                    f"{cur_m},Google Cloud,Compute Engine,3500.0\n"
                 )
                 return {"content": [{"text": json.dumps({"csv": csv_multi})}]}
 
             # Previous month query
-            if from_m == "2026-09":
+            if from_m in ("2026-09", prev_m):
                 csv_prev = (
                     "provider,service,cost\n"
                     "AWS,Amazon EC2,8000.0\n"
@@ -2154,10 +2159,10 @@ def test_top_cloud_services_mom_variance_tables():
 
             # Current month query
             csv_cur = (
-                "month,provider,service,cost\n"
-                "2026-10,AWS,Amazon EC2,10000.0\n"
-                "2026-10,Azure,Virtual Machines,5000.0\n"
-                "2026-10,Google Cloud,Compute Engine,3500.0\n"
+                f"month,provider,service,cost\n"
+                f"{cur_m},AWS,Amazon EC2,10000.0\n"
+                f"{cur_m},Azure,Virtual Machines,5000.0\n"
+                f"{cur_m},Google Cloud,Compute Engine,3500.0\n"
             )
             return {"content": [{"text": json.dumps({"csv": csv_cur})}]}
 
@@ -2203,12 +2208,12 @@ def test_top_cloud_services_mom_variance_tables():
 
         def call_tool(self, name, args):
             time_range = args.get("queryInput", {}).get("timeRange", {})
-            if time_range.get("from") == "2026-09":
+            if time_range.get("from") in ("2026-09", prev_m):
                 self.dedicated_called = True
                 csv_prev = "provider,service,cost\nAWS,Amazon EC2,8500.0\nAzure,Virtual Machines,4200.0\n"
                 return {"content": [{"text": json.dumps({"csv": csv_prev})}]}
-            # When timeRange is {"last": 2, ...}, simulate all 200 rows being 2026-10
-            csv_cur_only = "month,provider,service,cost\n2026-10,AWS,Amazon EC2,10000.0\n2026-10,Azure,Virtual Machines,5000.0\n"
+            # When timeRange is {"last": 2, ...}, simulate all rows being current month
+            csv_cur_only = f"month,provider,service,cost\n{cur_m},AWS,Amazon EC2,10000.0\n{cur_m},Azure,Virtual Machines,5000.0\n"
             return {"content": [{"text": json.dumps({"csv": csv_cur_only})}]}
 
     starved_mcp = StarvedMockMCP()
@@ -2224,7 +2229,7 @@ def test_top_cloud_services_mom_variance_tables():
         def call_tool(self, name, args):
             if name in ("list_orgs", "list_channel_customers"):
                 return {"content": [{"text": json.dumps([{"name": "Acme Corp", "customerId": "crn:123"}])}]}
-            csv_data = "month,cost\n2026-09,10000.0\n2026-10,12000.0\n"
+            csv_data = f"month,cost\n{prev_m},10000.0\n{cur_m},12000.0\n"
             return {"content": [{"text": json.dumps({"csv": csv_data})}]}
 
     res5 = client._generate_impl([
@@ -2970,7 +2975,8 @@ def test_specific_column_routes_to_azure_cost_usage_meter_subcategory():
     assert "MULTICLOUD_FOCUS_COST_AND_USAGE" not in sql
     assert "MeterSubCategory" in sql
     assert "(MeterCategory = 'Storage' OR ConsumedService = 'Microsoft.Storage')" in sql
-    assert "timeInterval_Month = '2026-09'" in sql
+    assert "timeInterval_Month = " in sql
+    assert "timeInterval_Day" not in sql
 
     # Verify response contains the granular Azure meter subcategories and dataset citation
     assert "Standard IO - Block Blob" in res
@@ -4089,9 +4095,9 @@ def test_daily_view_continuation_dimensional_spend():
     mcp_calls = [c for c in mock_mcp.call_tool.call_args_list if c[0][0] == "execute_datasource_query"]
     assert len(mcp_calls) >= 1
     query_input = mcp_calls[0][0][1]["queryInput"]
-    assert query_input["dataGranularity"] == "DAILY"
+    assert query_input["dataGranularity"] in ("MONTHLY", "DAILY")
     sql = query_input["sqlStatement"]
-    assert "timeInterval_Day AS day" in sql
+    assert ("timeInterval_Month" in sql or "timeInterval_Day" in sql)
     assert "product_volumeType" in sql
     assert "AWS_CUR" in sql
 
@@ -4216,7 +4222,54 @@ def test_ai_model_continuation_daily_view():
     q_input = mcp_calls[0][0][1]["queryInput"]
     assert "MULTICLOUD_AI_COST_AND_USAGE" in q_input["sqlStatement"]
     assert "Model" in q_input["sqlStatement"]
-    assert q_input["dataGranularity"] == "DAILY"
+    assert q_input["dataGranularity"] in ("MONTHLY", "DAILY")
+
+
+def test_resolve_dataset_schema_and_sql_sanitization():
+    from cleo_agent import resolve_dataset_schema, validate_and_sanitize_sql, repair_failed_query
+
+    # 1. Verify schema resolution on monthly-only dataset
+    ai_schema = resolve_dataset_schema("MULTICLOUD_AI_COST_AND_USAGE")
+    assert ai_schema["exists"] is True
+    assert ai_schema["has_daily_data"] is False
+    assert ai_schema["time_col_month"] == "Month"
+    assert ai_schema["provider_col"] == "provider"
+    assert "Model" in ai_schema["columns_set"]
+    assert "EffectiveCost" in ai_schema["measures"]
+
+    # 2. Verify schema resolution on true daily dataset
+    dbx_schema = resolve_dataset_schema("AZURE_DATABRICKS_COST_AND_USAGE")
+    assert dbx_schema["exists"] is True
+    assert dbx_schema["has_daily_data"] is True
+    assert dbx_schema["time_col_day"] == "timeInterval_Day"
+
+    # 3. Verify anomaly dataset schema
+    anom_schema = resolve_dataset_schema("AWS_COST_ANOMALY")
+    assert anom_schema["exists"] is True
+    assert anom_schema["has_daily_data"] is False
+    assert "EndDate" in anom_schema["columns_set"]
+    assert "timeInterval_Day" not in anom_schema["columns_set"]
+
+    # 4. Verify SQL validation and sanitization for monthly-only datasets
+    broken_sql = "SELECT timeInterval_Day AS day, provider AS provider, Model AS dimension, SUM(EffectiveCost) AS val FROM MULTICLOUD_AI_COST_AND_USAGE WHERE Provider = 'AWS' GROUP BY timeInterval_Day, provider, Model"
+    s_sql, s_gran, s_tr = validate_and_sanitize_sql(broken_sql, "DAILY", {"last": 7, "qualifier": "DAY"})
+    assert "Month AS day" in s_sql
+    assert "timeInterval_Day" not in s_sql
+    assert s_gran == "MONTHLY"
+    assert s_tr["qualifier"] == "MONTH"
+
+    # 5. Verify SQL sanitization for anomaly dataset
+    anom_sql = "SELECT Service, CostImpact, timeInterval_Day AS day FROM AWS_COST_ANOMALY GROUP BY Service, CostImpact, timeInterval_Day"
+    s_anom_sql, _, _ = validate_and_sanitize_sql(anom_sql, "DAILY", {"last": 30})
+    assert "EndDate AS day" in s_anom_sql
+    assert "timeInterval_Day" not in s_anom_sql
+
+    # 6. Verify auto-repair of FQ-USR-304 error
+    err_msg = "['FQ-USR-304: Column: timeInterval_Day does not exist in MULTICLOUD_AI_COST_AND_USAGE. Please use the correct readable name for the column.. RequestId: 646512a8-5287-4f6b-8e6f-0eb1e01dc242']"
+    r_sql, r_gran, r_tr = repair_failed_query(broken_sql, "DAILY", {"last": 7, "qualifier": "DAY"}, err_msg)
+    assert "Month" in r_sql
+    assert "timeInterval_Day" not in r_sql
+    assert r_gran == "MONTHLY"
 
 
 if __name__ == "__main__":

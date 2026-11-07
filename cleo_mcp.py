@@ -391,10 +391,26 @@ class MCPClient:
         call_args = dict(args)
         if name == "execute_datasource_query":
             q_in = call_args.get("queryInput")
-            if isinstance(q_in, dict) and "channelCustomerId" in q_in:
-                crn_val = q_in.pop("channelCustomerId")
-                if "orgId" not in call_args and crn_val:
-                    call_args["orgId"] = crn_val
+            if isinstance(q_in, dict):
+                if "channelCustomerId" in q_in:
+                    crn_val = q_in.pop("channelCustomerId")
+                    if "orgId" not in call_args and crn_val:
+                        call_args["orgId"] = crn_val
+                # Pre-flight query validation & sanitization
+                if "sqlStatement" in q_in:
+                    try:
+                        from cleo_agent import validate_and_sanitize_sql
+                        s_sql, s_gran, s_tr = validate_and_sanitize_sql(
+                            q_in["sqlStatement"],
+                            q_in.get("dataGranularity", "MONTHLY"),
+                            q_in.get("timeRange")
+                        )
+                        q_in["sqlStatement"] = s_sql
+                        q_in["dataGranularity"] = s_gran
+                        if s_tr is not None:
+                            q_in["timeRange"] = s_tr
+                    except Exception as e:
+                        logger.debug(f"[MCP Pre-Flight] Skipped: {e}")
             if "channelCustomerId" in call_args:
                 crn_val = call_args.pop("channelCustomerId")
                 if "orgId" not in call_args and crn_val:
@@ -536,6 +552,27 @@ class MCPClient:
                     # Transient query error detected (e.g. FQ-USR error)
                     if name == "execute_datasource_query":
                         logger.debug(f"[Datasource Error] {txt[:160]}")
+                        if "FQ-USR-304" in txt and not call_args.get("_is_repaired"):
+                            try:
+                                from cleo_agent import repair_failed_query
+                                q_in = call_args.get("queryInput", {})
+                                rep_sql, rep_gran, rep_tr = repair_failed_query(
+                                    q_in.get("sqlStatement", ""),
+                                    q_in.get("dataGranularity", "MONTHLY"),
+                                    q_in.get("timeRange"),
+                                    txt
+                                )
+                                logger.info(f"🔄 [MCP Auto-Repair] FQ-USR-304 detected. Retrying with repaired query: {rep_sql} ({rep_gran})")
+                                retry_args = dict(call_args)
+                                retry_args["_is_repaired"] = True
+                                retry_args["queryInput"] = dict(q_in)
+                                retry_args["queryInput"]["sqlStatement"] = rep_sql
+                                retry_args["queryInput"]["dataGranularity"] = rep_gran
+                                if rep_tr is not None:
+                                    retry_args["queryInput"]["timeRange"] = rep_tr
+                                return self.call_tool(name, retry_args)
+                            except Exception as auto_err:
+                                logger.warning(f"⚠️ [MCP Auto-Repair Failed] {auto_err}")
 
         if not is_err:
             now_ym = datetime.date.today().strftime("%Y-%m")

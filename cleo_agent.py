@@ -259,7 +259,7 @@ CURATED_DATASET_SPECS = {
         "priority_dimensions": ["Provider", "Commitment_Plan", "Service", "Month", "Billing_Account_Name", "Billing_Account_Id"]
     },
     "MULTICLOUD_OPERATIONAL_EMISSIONS": {
-        "priority_measures": ["Carbon", "Power", "PhonesCharged", "KmsDriven", "TreeSeedlings", "UsageMinutes", "vCPUHours", "AverageCPU"],
+        "priority_measures": ["Carbon", "Power", "PhonesCharged", "KmsDriven", "UsageMinutes", "vCPUHours", "AverageCPU"],
         "priority_dimensions": ["ProviderName", "ServiceName", "ResourceName", "ResourceId", "InstanceType", "Region", "Country", "SubAccountId", "timeInterval_Month"]
     },
     "UNIFIED_AI_TOKENOMICS": {
@@ -284,15 +284,15 @@ CURATED_DATASET_SPECS = {
     },
     "AWS_COST_ANOMALY": {
         "priority_measures": ["CostImpact", "Cost"],
-        "priority_dimensions": ["Service", "Region", "AccountID", "organization##accountname", "Status", "Marketplace", "timeInterval_Day", "EndDate", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
+        "priority_dimensions": ["Service", "Region", "AccountID", "Status", "Marketplace", "EndDate", "Duration_Days", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
     },
     "AZURE_COST_ANOMALY": {
         "priority_measures": ["CostImpact", "Cost"],
-        "priority_dimensions": ["Service", "Region", "SubscriptionID", "SubscriptionName", "Status", "Marketplace", "timeInterval_Day", "EndDate", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
+        "priority_dimensions": ["Service", "Region", "SubscriptionID", "SubscriptionName", "Status", "Marketplace", "EndDate", "Duration_Days", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
     },
     "GCP_COST_ANOMALY": {
         "priority_measures": ["CostImpact", "Cost"],
-        "priority_dimensions": ["CloudProduct", "Region", "ProjectID", "ProjectName", "Status", "timeInterval_Day", "EndDate", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
+        "priority_dimensions": ["CloudProduct", "Region", "ProjectID", "ProjectName", "Status", "EndDate", "Duration_Days", "CostImpactPercentage", "CostImpactType", "timeInterval_Month"]
     },
     "AWS_EC2_COST_AND_USAGE": {
         "priority_measures": ["Billed_Cost", "Effective_Cost", "Amortized_Cost", "Instance_Cost", "Compute_Cost", "Instance_Hours", "Instances", "VCPUs"],
@@ -388,6 +388,159 @@ if os.path.exists(DATASOURCES_METADATA_CACHE_FILE):
             merge_live_metadata_into_curated_specs(_init_meta)
     except Exception:
         pass
+
+def resolve_dataset_schema(dataset_name: str, live_metadata: dict = None) -> dict:
+    """
+    Resolves the verified schema for a CloudHealth dataset from live metadata cache.
+    Guarantees queries use actual readable column names and valid data granularity (DAILY vs MONTHLY).
+    """
+    cache = live_metadata if live_metadata is not None else (get_cached_datasource_metadata() or {})
+    ds_info = cache.get(dataset_name) or {}
+    cols = ds_info.get("columns", [])
+    col_names = [c["name"] for c in cols if isinstance(c, dict) and "name" in c]
+
+    # Fallback to CURATED_DATASET_SPECS if dataset not yet in cache
+    if not col_names and dataset_name in CURATED_DATASET_SPECS:
+        spec = CURATED_DATASET_SPECS[dataset_name]
+        col_names = list(spec.get("priority_dimensions", [])) + list(spec.get("priority_measures", []))
+
+    cols_set = set(col_names)
+    cols_lower = {c.lower(): c for c in col_names}
+
+    measures = [c["name"] for c in cols if isinstance(c, dict) and (c.get("type") == "MEASURE" or str(c.get("dataType", "")).upper() in ("NUMBER", "FLOAT", "INTEGER", "DOUBLE"))]
+    if not measures and dataset_name in CURATED_DATASET_SPECS:
+        measures = CURATED_DATASET_SPECS[dataset_name].get("priority_measures", [])
+
+    dimensions = [c["name"] for c in cols if isinstance(c, dict) and c.get("type") != "MEASURE" and c["name"] not in measures]
+    if not dimensions and dataset_name in CURATED_DATASET_SPECS:
+        dimensions = CURATED_DATASET_SPECS[dataset_name].get("priority_dimensions", [])
+
+    # True daily columns (only datasets with actual daily data, e.g. AZURE_DATABRICKS_COST_AND_USAGE, AWS_DATABRICKS_USAGE)
+    day_candidates = [c for c in col_names if c.lower() in ("timeinterval_day", "day", "usage_date")]
+    has_daily_data = len(day_candidates) > 0
+    time_col_day = day_candidates[0] if has_daily_data else None
+
+    # Month columns
+    month_candidates = [c for c in col_names if c.lower() in ("month", "timeinterval_month", "usage_month", "usagemonth", "billingperiod")]
+    time_col_month = month_candidates[0] if month_candidates else ("Month" if "Month" in cols_set else ("timeInterval_Month" if "timeInterval_Month" in cols_set else None))
+
+    # Provider column
+    prov_candidates = [c for c in col_names if c.lower() in ("provider", "providername", "cloud")]
+    provider_col = prov_candidates[0] if prov_candidates else None
+
+    # Default cost measure
+    default_cost_measure = "EffectiveCost"
+    for cand_m in ["EffectiveCost", "effective_cost", "BilledCost", "CostImpact", "Cost", "lineItem_UnblendedCost", "AmortizedCost", "ActualCostInBillingCurrency", "ActualCostInUsd", "total_price"]:
+        if cand_m in cols_set:
+            default_cost_measure = cand_m
+            break
+
+    return {
+        "dataset": dataset_name,
+        "exists": bool(col_names),
+        "columns": col_names,
+        "columns_set": cols_set,
+        "columns_lower": cols_lower,
+        "measures": measures,
+        "dimensions": dimensions,
+        "has_daily_data": has_daily_data,
+        "time_col_day": time_col_day,
+        "time_col_month": time_col_month,
+        "provider_col": provider_col,
+        "default_cost_measure": default_cost_measure
+    }
+
+def validate_and_sanitize_sql(sql: str, data_granularity: str = "MONTHLY", time_range: dict = None) -> tuple[str, str, dict]:
+    """
+    Pre-flight validator and sanitizer for CloudHealth SQL queries.
+    Catches invalid column assumptions (e.g. timeInterval_Day on monthly-only datasets)
+    and rewrites them against the real schema before executing.
+    """
+    m = re.search(r"\bFROM\s+([A-Za-z0-9_]+)", sql, re.IGNORECASE)
+    if not m:
+        return sql, data_granularity, time_range
+
+    ds_name = m.group(1)
+    schema = resolve_dataset_schema(ds_name)
+    if not schema["exists"]:
+        return sql, data_granularity, time_range
+
+    sanitized_sql = sql
+    sanitized_gran = data_granularity
+    sanitized_tr = dict(time_range) if isinstance(time_range, dict) else time_range
+
+    # 1. Anomaly datasets: replace timeInterval_Day with EndDate
+    if ds_name in ("AWS_COST_ANOMALY", "AZURE_COST_ANOMALY", "GCP_COST_ANOMALY"):
+        sanitized_sql = re.sub(r"\btimeInterval_Day\s+AS\s+day\b", "EndDate AS day", sanitized_sql, flags=re.IGNORECASE)
+        sanitized_sql = re.sub(r"\btimeInterval_Day\b", "EndDate", sanitized_sql, flags=re.IGNORECASE)
+
+    # 2. Daily vs Monthly check
+    elif not schema["has_daily_data"]:
+        target_month_col = schema["time_col_month"] or "Month"
+        if re.search(r"\btimeInterval_Day\b", sanitized_sql, re.IGNORECASE):
+            sanitized_sql = re.sub(r"\btimeInterval_Day\b", target_month_col, sanitized_sql, flags=re.IGNORECASE)
+        if re.search(r"\bChargePeriodStart\b", sanitized_sql, re.IGNORECASE) and "ChargePeriodStart" not in schema["columns_set"]:
+            sanitized_sql = re.sub(r"\bChargePeriodStart\b", target_month_col, sanitized_sql, flags=re.IGNORECASE)
+
+        if str(sanitized_gran).upper() == "DAILY":
+            sanitized_gran = "MONTHLY"
+
+        if isinstance(sanitized_tr, dict) and sanitized_tr.get("qualifier") == "DAY":
+            sanitized_tr = {"last": 3, "qualifier": "MONTH"}
+
+    # 3. Provider casing check
+    if schema["provider_col"]:
+        actual_p = schema["provider_col"]
+        if actual_p == "provider" and re.search(r"\bProvider\s*=", sanitized_sql):
+            sanitized_sql = re.sub(r"\bProvider\b", "provider", sanitized_sql)
+        elif actual_p == "Provider" and re.search(r"\bprovider\s*=", sanitized_sql):
+            sanitized_sql = re.sub(r"\bprovider\b", "Provider", sanitized_sql)
+
+    return sanitized_sql, sanitized_gran, sanitized_tr
+
+def repair_failed_query(sql: str, data_granularity: str, time_range: dict, error_msg: Any, dataset_name: str = None) -> tuple[str, str, dict]:
+    """
+    Auto-repairs SQL queries that failed with CloudHealth schema errors like FQ-USR-304.
+    """
+    err_str = str(error_msg)
+    col_m = re.search(r"Column:\s*([A-Za-z0-9_#]+)\s*does not exist in\s*([A-Za-z0-9_]+)", err_str)
+    missing_col = col_m.group(1) if col_m else None
+    target_ds = col_m.group(2) if col_m else dataset_name
+
+    if not target_ds:
+        m = re.search(r"\bFROM\s+([A-Za-z0-9_]+)", sql, re.IGNORECASE)
+        if m:
+            target_ds = m.group(1)
+
+    if not target_ds:
+        return sql, data_granularity, time_range
+
+    schema = resolve_dataset_schema(target_ds)
+    if not schema["exists"]:
+        return sql, data_granularity, time_range
+
+    repaired_sql = sql
+    repaired_gran = data_granularity
+    repaired_tr = dict(time_range) if isinstance(time_range, dict) else time_range
+
+    if missing_col:
+        m_lower = missing_col.lower()
+        if m_lower in ("timeinterval_day", "day", "date", "chargeperiodstart"):
+            if schema["has_daily_data"]:
+                rep_col = schema["time_col_day"]
+            else:
+                rep_col = schema["time_col_month"] or "Month"
+                repaired_gran = "MONTHLY"
+                if isinstance(repaired_tr, dict) and repaired_tr.get("qualifier") == "DAY":
+                    repaired_tr = {"last": 3, "qualifier": "MONTH"}
+            repaired_sql = re.sub(rf"\b{re.escape(missing_col)}\b", rep_col, repaired_sql)
+        elif m_lower in schema["columns_lower"]:
+            correct_col = schema["columns_lower"][m_lower]
+            repaired_sql = re.sub(rf"\b{re.escape(missing_col)}\b", correct_col, repaired_sql)
+
+    repaired_sql, repaired_gran, repaired_tr = validate_and_sanitize_sql(repaired_sql, repaired_gran, repaired_tr)
+    return repaired_sql, repaired_gran, repaired_tr
+
 
 def find_dataset_for_specific_column(requested_dim_or_col: str, cloud: Optional[str] = None) -> Optional[dict]:
     """
@@ -667,6 +820,7 @@ def build_llm_schema_context() -> str:
             continue
         disp = ds_info.get("displayName") or key
         cols = ds_info["columns"]
+        col_names = [c["name"] for c in cols if isinstance(c, dict) and "name" in c]
         actual_measures = {c["name"] for c in cols if c.get("type") == "MEASURE"}
         actual_dims = {c["name"] for c in cols if c.get("type") != "MEASURE"}
 
@@ -684,13 +838,25 @@ def build_llm_schema_context() -> str:
                 ])
             ][:12]
 
+        # Resolve verified granularity & time column
+        day_candidates = [c for c in col_names if c.lower() in ("timeinterval_day", "day", "usage_date")]
+        month_candidates = [c for c in col_names if c.lower() in ("month", "timeinterval_month", "usage_month", "usagemonth", "billingperiod")]
+        has_daily = len(day_candidates) > 0
+        gran_tag = "DAILY & MONTHLY" if has_daily else "MONTHLY ONLY"
+        t_col = day_candidates[0] if has_daily else (month_candidates[0] if month_candidates else ("Month" if "Month" in col_names else "timeInterval_Month"))
+        prov_candidates = [c for c in col_names if c.lower() in ("provider", "providername", "cloud")]
+        p_col = prov_candidates[0] if prov_candidates else None
+
         def _col_label(c_name: str) -> str:
             info = COLUMN_SYNONYMS.get(c_name)
             if info and info.get("label"):
                 return f"{c_name} ({info['label']})"
             return c_name
 
-        lines.append(f"- `{key}` ({disp}):")
+        lines.append(f"- `{key}` ({disp}) [{gran_tag}]:")
+        lines.append(f"  * Granularity & Time: {gran_tag} (Grouping Column: `{t_col}`)")
+        if p_col:
+            lines.append(f"  * Provider Column: `{p_col}` (exact casing)")
         if measures:
             lines.append(f"  * Measures (Metrics): {', '.join(_col_label(m) for m in measures)}")
         if dims:
@@ -2725,24 +2891,41 @@ class AIClient:
                     break
 
         if _explicit_dataset and mcp:
-            # Extract grouping/dimension hint from query
+            # Read verified dataset schema directly from cache/metadata
+            ds_schema = resolve_dataset_schema(_explicit_dataset)
+            ds_cols = ds_schema.get("columns", [])
+            ds_measures = ds_schema.get("measures", [])
+            ds_dims = ds_schema.get("dimensions", [])
+            has_daily = ds_schema.get("has_daily_data", False)
+            t_col = ds_schema.get("time_col_day") if has_daily else ds_schema.get("time_col_month")
+
+            # Extract grouping/dimension hint from query matched against verified columns
             _dim_hints = {
                 "instancetype": "instanceType", "instance type": "instanceType",
                 "instance_type": "instanceType", "region": "region",
                 "service": "ServiceName", "account": "lineItem_UsageAccountId",
                 "month": "timeInterval_Month", "usagetype": "lineItem_UsageType",
+                "model": "Model", "provider": "provider"
             }
             _group_col = None
             for hint, col in _dim_hints.items():
                 if hint in low:
-                    _group_col = col
+                    matched_col = ds_schema["columns_lower"].get(col.lower()) if ds_schema.get("columns_lower") else col
+                    _group_col = matched_col or col
                     break
 
-            # Delegate to LLM with explicit dataset + grouping injected into context
-            ds_hint = f"\n\nUser explicitly asked to query dataset: **{_explicit_dataset}**."
+            gran_instruction = "DAILY and MONTHLY" if has_daily else "MONTHLY ONLY (Do NOT query timeInterval_Day; use Month or timeInterval_Month)"
+            ds_hint = (
+                f"\n\nUser explicitly asked to query dataset: **{_explicit_dataset}**.\n"
+                f"Verified Telemetry Schema:\n"
+                f"- Granularity: {gran_instruction}\n"
+                f"- Time Column: `{t_col}`\n"
+                f"- Available Measures: {', '.join(ds_measures[:6])}\n"
+                f"- Available Dimensions: {', '.join(ds_dims[:12])}\n"
+            )
             if _group_col:
                 ds_hint += f" Group by: `{_group_col}`."
-            ds_hint += " Build and execute an appropriate `execute_datasource_query` SQL query against this dataset."
+            ds_hint += " Build and execute an appropriate `execute_datasource_query` SQL query using ONLY columns from the verified schema."
             messages_with_hint = list(messages)
             messages_with_hint.append({"role": "user", "content": ds_hint})
             # Fall through to LLM with augmented context below
@@ -3774,7 +3957,7 @@ class AIClient:
                         f"SELECT {svc_col} AS service, CostImpact AS cost_impact, "
                         f"CostImpactPercentage AS impact_pct, CostImpactType AS impact_type, "
                         f"Status AS status, Duration_Days AS duration_days, Region AS region, "
-                        f"{acc_col} AS account_id{acc_name_select}{mp_select}, timeInterval_Day AS day, timeInterval_Month AS month "
+                        f"{acc_col} AS account_id{acc_name_select}{mp_select}, EndDate AS day, timeInterval_Month AS month "
                         f"FROM {ds} "
                         f"{where_sql}"
                         f"ORDER BY CostImpact DESC"
@@ -3820,7 +4003,7 @@ class AIClient:
                                 f"SELECT {svc_col} AS service, CostImpact AS cost_impact, "
                                 f"CostImpactPercentage AS impact_pct, CostImpactType AS impact_type, "
                                 f"Status AS status, Duration_Days AS duration_days, Region AS region, "
-                                f"{acc_col} AS account_id{acc_name_select}{mp_select}, timeInterval_Day AS day, timeInterval_Month AS month "
+                                f"{acc_col} AS account_id{acc_name_select}{mp_select}, EndDate AS day, timeInterval_Month AS month "
                                 f"FROM {ds} "
                                 f"WHERE {' AND '.join(fb_where)} "
                                 f"ORDER BY CostImpact DESC"
@@ -3864,7 +4047,7 @@ class AIClient:
                                 f"SELECT {svc_col} AS service, CostImpact AS cost_impact, "
                                 f"CostImpactPercentage AS impact_pct, CostImpactType AS impact_type, "
                                 f"Status AS status, Duration_Days AS duration_days, Region AS region, "
-                                f"{acc_col} AS account_id{acc_name_select}{mp_select}, timeInterval_Day AS day, timeInterval_Month AS month "
+                                f"{acc_col} AS account_id{acc_name_select}{mp_select}, EndDate AS day, timeInterval_Month AS month "
                                 f"FROM {ds} "
                                 f"{fb2_where_sql}"
                                 f"ORDER BY CostImpact DESC"
@@ -4187,12 +4370,6 @@ class AIClient:
                         f"{cur_where} "
                         f"GROUP BY timeInterval_Month ORDER BY month ASC"
                     )
-                    sql_daily = (
-                        f"SELECT TimeInterval_Day AS day, COUNT(DISTINCT lineItem_ResourceId) AS unique_instances, "
-                        f"SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR "
-                        f"{cur_where} "
-                        f"GROUP BY TimeInterval_Day ORDER BY day DESC"
-                    )
                     sql_regional = (
                         f"SELECT product_region AS region, COUNT(DISTINCT lineItem_ResourceId) AS unique_instances, "
                         f"SUM(lineItem_UnblendedCost) AS cost FROM AWS_CUR "
@@ -4207,12 +4384,6 @@ class AIClient:
                         f"WHERE {prov_filter}{focus_filter} "
                         f"GROUP BY Month ORDER BY month ASC"
                     )
-                    sql_daily = (
-                        f"SELECT ChargePeriodStart AS day, COUNT(DISTINCT ResourceId) AS unique_instances, "
-                        f"SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
-                        f"WHERE {prov_filter}{focus_filter} "
-                        f"GROUP BY ChargePeriodStart ORDER BY day DESC"
-                    )
                     sql_regional = (
                         f"SELECT RegionId AS region, COUNT(DISTINCT ResourceId) AS unique_instances, "
                         f"SUM(EffectiveCost) AS cost FROM MULTICLOUD_FOCUS_COST_AND_USAGE "
@@ -4220,12 +4391,11 @@ class AIClient:
                         f"GROUP BY RegionId ORDER BY unique_instances DESC"
                     )
 
-                with ThreadPoolExecutor(max_workers=3) as executor:
+                with ThreadPoolExecutor(max_workers=2) as executor:
                     f_m = executor.submit(_run_unique_query, sql_monthly, "MONTHLY", svc_time_range)
-                    f_d = executor.submit(_run_unique_query, sql_daily, "DAILY", daily_time_range)
                     f_r = executor.submit(_run_unique_query, sql_regional, "MONTHLY", svc_time_range)
                     monthly_rows_raw = f_m.result()
-                    daily_rows_raw = f_d.result()
+                    daily_rows_raw = []
                     regional_rows_raw = f_r.result()
 
                 monthly_data = []
@@ -5317,9 +5487,9 @@ class AIClient:
                             )
 
                     elif svc_pcode == "AmazonS3":
-                        time_col = "timeInterval_Day" if num_days > 0 else "timeInterval_Month"
-                        s3_tr = {"last": num_days, "qualifier": "DAY"} if num_days > 0 else {"last": min(num_months, 12), "qualifier": "MONTH"}
-                        s3_gran = "DAILY" if num_days > 0 else "MONTHLY"
+                        time_col = "timeInterval_Month"
+                        s3_tr = {"last": min(num_months or 3, 12), "qualifier": "MONTH"}
+                        s3_gran = "MONTHLY"
 
                         s3_sql = (
                             f"SELECT {time_col} AS time_val, lineItem_UsageType AS usage_type, lineItem_Operation AS operation, "
@@ -5558,9 +5728,9 @@ class AIClient:
                             )
 
                     else:
-                        time_col = "timeInterval_Day" if num_days > 0 else "timeInterval_Month"
-                        other_tr = {"last": num_days, "qualifier": "DAY"} if num_days > 0 else {"last": min(num_months, 12), "qualifier": "MONTH"}
-                        other_gran = "DAILY" if num_days > 0 else "MONTHLY"
+                        time_col = "timeInterval_Month"
+                        other_tr = {"last": min(num_months or 3, 12), "qualifier": "MONTH"}
+                        other_gran = "MONTHLY"
 
                         if svc_prov == "aws":
                             if svc_pcode in ("AmazonEC2_EBS", "EBS"):
@@ -5764,20 +5934,20 @@ class AIClient:
                     "SUM(Quantity) AS SUM_Quantity, "
                     "MeterCategory AS MeterCategory, "
                     "MeterSubCategory AS MeterSubCategory, "
-                    "timeInterval_Day AS Day, "
+                    "timeInterval_Month AS Month, "
                     "AdditionalInfo AS AdditionalInfo, "
                     "ResourceId AS ResourceId, "
                     "MetricType AS MetricType "
                     "FROM AZURE_COST_USAGE "
                     "WHERE ((MeterCategory IN ('Virtual Machines Licenses')) OR (MeterCategory LIKE '%Virtual Machine Licenses%')) "
                     "AND (MetricType IN ('Actual')) "
-                    "GROUP BY ResourceName, MeterCategory, MeterSubCategory, timeInterval_Day, AdditionalInfo, ResourceId, MetricType"
+                    "GROUP BY ResourceName, MeterCategory, MeterSubCategory, timeInterval_Month, AdditionalInfo, ResourceId, MetricType"
                 )
                 q_input = {
                     "sqlStatement": sql,
                     "needBackLinkingForTags": True,
-                    "dataGranularity": "DAILY",
-                    "timeRange": {"last": 30},
+                    "dataGranularity": "MONTHLY",
+                    "timeRange": {"last": 1, "qualifier": "MONTH", "excludeCurrent": False},
                     "limit": -1
                 }
                 if named_customer_crn:
@@ -7109,38 +7279,26 @@ class AIClient:
                     wants_engine_type = has_engine_kw
                     wants_instance_type = True
 
+                rds_sql = (
+                    "SELECT Month AS month, InstanceType AS instance_type, "
+                    "SUM(BilledCost) AS cost, SUM(Instances) AS instances, "
+                    "SUM(ComputeCost) AS compute_cost, SUM(StorageCost) AS storage_cost, "
+                    "SUM(GP2StorageCost) AS gp2_cost, SUM(GP3StorageCost) AS gp3_cost "
+                    "FROM AWS_RDS_COST_AND_USAGE "
+                    "GROUP BY Month, InstanceType "
+                    "ORDER BY month ASC, cost DESC"
+                )
+                rds_tr = {"last": max(num_months, 1), "qualifier": "MONTH"}
+                rds_gran = "MONTHLY"
                 if num_days > 0:
-                    rds_sql = (
-                        "SELECT TimeInterval_Day AS day, InstanceType AS instance_type, "
-                        "SUM(BilledCost) AS cost, SUM(Instances) AS instances, "
-                        "SUM(ComputeCost) AS compute_cost, SUM(StorageCost) AS storage_cost, "
-                        "SUM(GP2StorageCost) AS gp2_cost, SUM(GP3StorageCost) AS gp3_cost "
-                        "FROM AWS_RDS_COST_AND_USAGE "
-                        "GROUP BY TimeInterval_Day, InstanceType "
-                        "ORDER BY day ASC, cost DESC"
-                    )
-                    rds_tr = {"last": num_days, "qualifier": "DAY"}
-                    rds_gran = "DAILY"
-                    period_label = f"Last {num_days} Days Trend"
+                    period_label = f"Last {max(num_months, 1)} Months Trend"
+                elif is_ytd:
+                    period_label = f"Year-to-Date (YTD {datetime.date.today().year})"
+                elif is_qtd:
+                    curr_q = ((datetime.date.today().month - 1) // 3) + 1
+                    period_label = f"Quarter-to-Date (QTD Q{curr_q} {datetime.date.today().year})"
                 else:
-                    rds_sql = (
-                        "SELECT Month AS month, InstanceType AS instance_type, "
-                        "SUM(BilledCost) AS cost, SUM(Instances) AS instances, "
-                        "SUM(ComputeCost) AS compute_cost, SUM(StorageCost) AS storage_cost, "
-                        "SUM(GP2StorageCost) AS gp2_cost, SUM(GP3StorageCost) AS gp3_cost "
-                        "FROM AWS_RDS_COST_AND_USAGE "
-                        "GROUP BY Month, InstanceType "
-                        "ORDER BY month ASC, cost DESC"
-                    )
-                    rds_tr = {"last": num_months, "qualifier": "MONTH"}
-                    rds_gran = "MONTHLY"
-                    if is_ytd:
-                        period_label = f"Year-to-Date (YTD {datetime.date.today().year})"
-                    elif is_qtd:
-                        curr_q = ((datetime.date.today().month - 1) // 3) + 1
-                        period_label = f"Quarter-to-Date (QTD Q{curr_q} {datetime.date.today().year})"
-                    else:
-                        period_label = f"Last {num_months} Months"
+                    period_label = f"Last {num_months} Months"
 
                 rds_q_params = {
                     "queryInput": {
@@ -7506,63 +7664,36 @@ class AIClient:
                 tenant_suffix = " (Tenant)" if any(w in low for w in ["tenant"]) else ""
                 cust_label = named_customer or (f"All Accounts{tenant_suffix}" if tenant_suffix else "All Accounts")
 
-                if num_days > 0:
-                    ec2_sql = (
-                        "SELECT TimeInterval_Day AS day, product_InstanceType AS instance_type, "
-                        "SUM(Instance_Cost) AS cost, SUM(Compute_Cost) AS compute_cost, "
-                        "SUM(Instance_Hours) AS hours, SUM(Instances) AS instances, SUM(VCPUs) AS vcpus "
-                        "FROM AWS_EC2_COST_AND_USAGE "
-                        "WHERE product_InstanceType IS NOT NULL AND product_InstanceType != '' AND product_InstanceType != 'Unknown' "
-                        "GROUP BY TimeInterval_Day, product_InstanceType "
-                        "ORDER BY day ASC"
-                    )
-                    today = datetime.date.today()
-                    yesterday = today - datetime.timedelta(days=1)
-                    if num_days > 14:
-                        # CloudHealth FlexReports limits datasource queries to 1,000 rows.
-                        # For daily instance queries (~60 instance types), 15+ days easily exceeds 1,000 rows.
-                        # Chunk into slices of at most 14 days so each chunk safely fits under the 1,000-row cap.
-                        query_time_ranges = []
-                        curr_end = yesterday
-                        total_rem = num_days
-                        while total_rem > 0:
-                            chunk_len = min(14, total_rem)
-                            curr_start = curr_end - datetime.timedelta(days=chunk_len - 1)
-                            query_time_ranges.insert(0, {"from": str(curr_start), "to": str(curr_end)})
-                            curr_end = curr_start - datetime.timedelta(days=1)
-                            total_rem -= chunk_len
-                    else:
-                        start_d = today - datetime.timedelta(days=num_days)
-                        query_time_ranges = [{"from": str(start_d), "to": str(yesterday)}]
+                target_m_filter = f"AND Month = '{target_ym}' " if (is_specific and target_ym) else ""
+                ec2_sql = (
+                    "SELECT Month AS month, product_InstanceType AS instance_type, "
+                    "SUM(Billed_Cost) AS cost, SUM(Instance_Hours) AS hours, "
+                    "SUM(Instances) AS instances, SUM(VCPUs) AS vcpus "
+                    "FROM AWS_EC2_COST_AND_USAGE "
+                    "WHERE product_InstanceType IS NOT NULL AND product_InstanceType != '' AND product_InstanceType != 'Unknown' "
+                    f"{target_m_filter}"
+                    "GROUP BY Month, product_InstanceType "
+                    "ORDER BY month DESC, cost DESC"
+                )
+                if is_specific and target_ym:
+                    query_time_ranges = [{"from": target_ym, "to": target_ym}]
+                elif is_ytd:
+                    curr_m = datetime.date.today().month
+                    query_time_ranges = [{"last": curr_m, "qualifier": "MONTH"}]
+                elif is_qtd:
+                    curr_m = ((datetime.date.today().month - 1) % 3) + 1
+                    query_time_ranges = [{"last": curr_m, "qualifier": "MONTH"}]
+                elif num_days > 0:
+                    query_time_ranges = [{"last": max(int(num_days / 30), 1), "qualifier": "MONTH"}]
                 else:
-                    target_m_filter = f"AND Month = '{target_ym}' " if (is_specific and target_ym) else ""
-                    ec2_sql = (
-                        "SELECT Month AS month, product_InstanceType AS instance_type, "
-                        "SUM(Billed_Cost) AS cost, SUM(Instance_Hours) AS hours, "
-                        "SUM(Instances) AS instances, SUM(VCPUs) AS vcpus "
-                        "FROM AWS_EC2_COST_AND_USAGE "
-                        "WHERE product_InstanceType IS NOT NULL AND product_InstanceType != '' AND product_InstanceType != 'Unknown' "
-                        f"{target_m_filter}"
-                        "GROUP BY Month, product_InstanceType "
-                        "ORDER BY month DESC, cost DESC"
-                    )
-                    if is_specific and target_ym:
-                        query_time_ranges = [{"from": target_ym, "to": target_ym}]
-                    elif is_ytd:
-                        curr_m = datetime.date.today().month
-                        query_time_ranges = [{"last": curr_m, "qualifier": "MONTH"}]
-                    elif is_qtd:
-                        curr_m = ((datetime.date.today().month - 1) % 3) + 1
-                        query_time_ranges = [{"last": curr_m, "qualifier": "MONTH"}]
-                    else:
-                        query_time_ranges = [{"last": 8, "qualifier": "MONTH"}]
+                    query_time_ranges = [{"last": 8, "qualifier": "MONTH"}]
 
                 def _fetch_ec2_chunk(tr):
                     ec2_q_params = {
                         "queryInput": {
                             "sqlStatement": ec2_sql,
-                            "dataGranularity": "DAILY" if num_days > 0 else "MONTHLY",
-                            "limit": -1 if num_days > 0 else 500,
+                            "dataGranularity": "MONTHLY",
+                            "limit": 1000,
                             "timeRange": tr
                         },
                         "requestInfo": {"sourceType": "API", "caller": "mcp"}
@@ -8064,34 +8195,26 @@ class AIClient:
                 num_days = 0 if (is_ytd or is_qtd) else (intent_info.get("timeframe_days") or (int(m_days.group(1) or m_days.group(2)) if m_days else (30 if is_trend_query else 0)))
                 m_months = re.search(r'(?:last|past|trailing|for)\s+(\d{1,2})\s*months?\b|\b(\d{1,2})\s*(?:months?|m)\b', low)
                 num_months = datetime.date.today().month if is_ytd else (((datetime.date.today().month - 1) % 3) + 1 if is_qtd else (intent_info.get("timeframe_months") or (int(m_months.group(1) or m_months.group(2)) if m_months else 0)))
-                time_col = "timeInterval_Day" if num_days > 0 else "timeInterval_Month"
-                t_format = "day" if num_days > 0 else ("quarter" if "quarter" in low else "month")
+                time_col = "timeInterval_Month" if major_svc_prov == "aws" else "Month"
+                t_format = "month" if (num_days == 0 and "quarter" not in low) else ("quarter" if "quarter" in low else "month")
+                svc_granularity = "MONTHLY"
 
-                if num_days > 0:
-                    d_start = cal["d15_start"] if num_days <= 15 else (datetime.date.today() - datetime.timedelta(days=num_days)).strftime("%Y-%m-%d")
-                    svc_time_range = {"from": d_start, "to": yesterday_str}
-                    svc_granularity = "DAILY"
-                    svc_period_label = f"Trailing {num_days} Days: {d_start} to {yesterday_str}"
-                elif is_ytd:
+                if is_ytd:
                     svc_time_range = {"last": min(num_months, 12), "qualifier": "MONTH"}
-                    svc_granularity = "MONTHLY"
                     svc_period_label = f"Year-To-Date (YTD {datetime.date.today().year})"
                 elif is_qtd:
                     q_num = ((datetime.date.today().month - 1) // 3) + 1
                     svc_time_range = {"last": min(num_months, 12), "qualifier": "MONTH"}
-                    svc_granularity = "MONTHLY"
                     svc_period_label = f"Q{q_num} QTD ({datetime.date.today().year})"
-                elif num_months > 1:
-                    svc_time_range = {"last": min(num_months, 12), "qualifier": "MONTH"}
-                    svc_granularity = "MONTHLY"
-                    svc_period_label = f"Last {min(num_months, 12)} Months"
+                elif num_months > 1 or num_days > 0:
+                    effective_m = max(num_months, int(num_days / 30) if num_days > 0 else 3)
+                    svc_time_range = {"last": min(effective_m, 12), "qualifier": "MONTH"}
+                    svc_period_label = f"Last {min(effective_m, 12)} Months"
                 elif is_specific and target_ym != last_ym:
                     svc_time_range = {"from": target_ym, "to": target_ym}
-                    svc_granularity = "MONTHLY"
                     svc_period_label = target_label
                 else:
                     svc_time_range = {"last": 1, "qualifier": "MONTH", "excludeCurrent": False}
-                    svc_granularity = "MONTHLY"
                     svc_period_label = f"Current Month ({current_ym})"
 
                 cust_label = named_customer or "All Accounts"
@@ -11196,12 +11319,13 @@ class AIClient:
                     )
                     has_two_comp_months = bool(comp_months and len(comp_months) >= 2)
 
+                    has_explicit_daily_kw = any(w in low for w in ["daily", "by day", "day by day", "each day", "day-over-day", "day over day", "daily view", "daily trend", "daily breakdown", "daily spend"])
                     is_daily_dim = (
-                        svc_granularity == "DAILY"
-                        or bool(time_ctx.get("timeframe_days"))
-                        or bool(time_ctx.get("daily_range"))
-                        or bool(intent_info.get("timeframe_days"))
-                        or any(w in low for w in ["daily", "by day", "day by day", "each day", "day-over-day", "day over day", "daily view", "daily trend", "daily breakdown", "daily spend"])
+                        has_explicit_daily_kw
+                        or (not is_specific and (
+                            svc_granularity == "DAILY"
+                            or bool(time_ctx.get("daily_range"))
+                        ))
                     )
 
                     is_multi_month_dim = not is_daily_dim and not is_specific and not has_two_comp_months and (
@@ -11240,17 +11364,16 @@ class AIClient:
                     all_months = []
 
                     for q_ds, q_metric, q_prov in datasets_to_query:
-                        ds_cols = [c.get("name") for c in cache.get(q_ds, {}).get("columns", [])]
-                        has_prov_col = any(c.lower() in ("provider", "providername") for c in ds_cols)
-                        has_time_col = any(c.lower() in (time_col.lower(), "month", "timeinterval_month") for c in ds_cols)
+                        ds_schema = resolve_dataset_schema(q_ds, live_metadata=cache)
+                        ds_cols = ds_schema["columns"]
+                        has_prov_col = bool(ds_schema["provider_col"])
+                        if has_prov_col:
+                            prov_col = ds_schema["provider_col"]
+                        has_time_col = bool(ds_schema["time_col_month"])
+                        time_col = ds_schema["time_col_month"] or "Month"
 
-                        day_col_candidates = [c for c in ds_cols if c.lower() in ("timeinterval_day", "day", "date", "chargeperiodstart")]
-                        day_col_name = day_col_candidates[0] if day_col_candidates else "timeInterval_Day"
-                        has_day_col = bool(day_col_candidates) or q_ds in (
-                            "AWS_CUR", "AZURE_COST_USAGE", "AWS_EC2_COST_AND_USAGE", "AWS_RDS_COST_AND_USAGE",
-                            "MULTICLOUD_FOCUS_COST_AND_USAGE", "MULTICLOUD_AI_COST_AND_USAGE",
-                            "AWS_AI_COST_AND_USAGE", "AZURE_AI_COST_AND_USAGE", "GCP_AI_COST_AND_USAGE"
-                        )
+                        has_day_col = ds_schema["has_daily_data"]
+                        day_col_name = ds_schema["time_col_day"] or "timeInterval_Day"
 
                         where_clauses = []
                         if has_prov_col:
@@ -11393,6 +11516,8 @@ class AIClient:
                             else:
                                 cur_time_range = {"last": 1, "qualifier": "MONTH", "excludeCurrent": False}
 
+                        dim_sql, cur_granularity, cur_time_range = validate_and_sanitize_sql(dim_sql, cur_granularity, cur_time_range)
+
                         try:
                             res = mcp.call_tool("execute_datasource_query", {
                                 "queryInput": {
@@ -11406,14 +11531,15 @@ class AIClient:
                             res_text = (res.get("content") or [{}])[0].get("text", "")
                             res_json = json.loads(res_text) if res_text.startswith("{") else {}
                             if "error" in res_json:
-                                logger.warning(f"[{dim_label} Query Error] Query on {q_ds} returned error: {res_json['error']}. Retrying once...")
-                                time.sleep(1.0)
+                                logger.warning(f"[{dim_label} Query Error] Query on {q_ds} returned error: {res_json['error']}. Repairing query...")
+                                rep_sql, rep_gran, rep_tr = repair_failed_query(dim_sql, cur_granularity, cur_time_range, res_json['error'], q_ds)
+                                time.sleep(0.5)
                                 res = mcp.call_tool("execute_datasource_query", {
                                     "queryInput": {
-                                        "sqlStatement": dim_sql,
-                                        "dataGranularity": cur_granularity,
+                                        "sqlStatement": rep_sql,
+                                        "dataGranularity": rep_gran,
                                         "limit": 200,
-                                        "timeRange": cur_time_range
+                                        "timeRange": rep_tr
                                     },
                                     "requestInfo": {"sourceType": "API", "caller": "mcp"}
                                 })
