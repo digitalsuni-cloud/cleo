@@ -19,7 +19,7 @@
 
 | Architecture | Platform | File to Download | Notes |
 | :---: | :--- | :--- | :--- |
-| ![macOS](docs/badges/macos.svg) | **macOS (Apple Silicon)** | [Cleo_2.0.0_arm64.dmg](https://gitlab.com/digitalsuni/cleo/-/releases/v2.0.0/downloads/Cleo_2.0.0_arm64.dmg) | M1/M2/M3/M4 Macs · Native `.dmg` installer |
+| ![macOS](docs/badges/macos.svg) | **macOS (Apple Silicon)** | [Cleo_2.0.0_arm64.dmg](https://gitlab.com/digitalsuni/cleo/-/releases/v2.0.0/downloads/Cleo_2.0.0_arm64.dmg) | Apple Silicon · Native `.dmg` installer |
 | ![Windows](docs/badges/windows.svg) | **Windows (x64)** | [Cleo_2.0.0_x64.exe](https://gitlab.com/digitalsuni/cleo/-/releases) | Universal / Portable `.exe` · No install required |
 | ![Linux App](docs/badges/linux-app.svg) | **Linux (x64)** | [Cleo_2.0.0_amd64.AppImage](https://gitlab.com/digitalsuni/cleo/-/releases) | Portable Linux AppImage |
 | ![Linux Deb](docs/badges/linux-deb.svg) | **Linux (x64)** | [Cleo_2.0.0_amd64.deb](https://gitlab.com/digitalsuni/cleo/-/releases) | Ubuntu / Debian package |
