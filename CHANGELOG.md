@@ -5,7 +5,7 @@
 **Major release introducing Over-The-Air (OTA) Dynamic Code Loading, enhanced multi-cloud datasets, and conversational continuity.**
 
 ### 🔄 Over-The-Air (OTA) Dynamic Code Loading
-- **Zero-Rebuild Continuous Delivery**: Tauri sidecar dynamically checks and syncs the latest code from GitHub into `~/.cleo/src` on startup.
+- **Zero-Rebuild Continuous Delivery**: Tauri sidecar dynamically checks and syncs the latest code from GitLab into `~/.cleo/src` on startup.
 - **Dynamic Importer Precedence**: Reorders `sys.meta_path` so local/synced updates take precedence over frozen bundle modules while seamlessly falling back if offline.
 - **Dynamic Web UI Serving**: `/newChat` and GUI endpoints serve the latest `cleo_ui.html` live from the OTA source folder.
 
@@ -69,11 +69,9 @@
 
 | Architecture | Platform | File to Download | SHA-256 Checksum |
 | :---: | :--- | :--- | :--- |
-| ![macOS](https://raw.githubusercontent.com/sunil-cht/cpb-ch/main/public/badges/macos.svg) | Apple Silicon (ARM64) | [Cleo_1.0.0_arm64.dmg](https://github.com/sunil-cht/cleo/releases/download/v1.0.0/Cleo_1.0.0_arm64.dmg) | `9782d612ce3ca04e676dbd918cc4b17ff0f1c2513bf05823fbd2c3070fa14d6f` |
-| ![Linux App](https://raw.githubusercontent.com/sunil-cht/cpb-ch/main/public/badges/linux-app.svg) | Linux x64 (AppImage) | [Cleo_1.0.0_amd64.AppImage](https://github.com/sunil-cht/cleo/releases/download/v1.0.0/Cleo_1.0.0_amd64.AppImage) | *Automated via GitHub Actions* |
-| ![Linux Deb](https://raw.githubusercontent.com/sunil-cht/cpb-ch/main/public/badges/linux-deb.svg) | Linux x64 (DEB) | [Cleo_1.0.0_amd64.deb](https://github.com/sunil-cht/cleo/releases/download/v1.0.0/Cleo_1.0.0_amd64.deb) | *Automated via GitHub Actions* |
-| ![Windows](https://raw.githubusercontent.com/sunil-cht/cpb-ch/main/public/badges/windows.svg) | Universal / Portable | [Cleo_1.0.0_x64.exe](https://github.com/sunil-cht/cleo/releases/download/v1.0.0/Cleo_1.0.0_x64.exe) | *Automated via GitHub Actions* |
-| 📄 | Checksums Manifest | [SHA256SUMS.txt](https://github.com/sunil-cht/cleo/releases/download/v1.0.0/SHA256SUMS.txt) | *Complete checksum manifest* |
+|  | Apple Silicon (ARM64) | [Cleo_2.0.0_arm64.dmg](https://gitlab.com/digitalsuni/cleo/-/releases/v2.0.0/downloads/Cleo_2.0.0_arm64.dmg) | `549105a8bb9ac41670698f80fe1ef3a64b62eb0c4129ab2b4b34d45af2feae83` |
+| 🪟 | Universal / Portable | [Cleo Releases](https://gitlab.com/digitalsuni/cleo/-/releases) | *Windows build* |
+| 🐧 | Linux x64 | [Cleo Releases](https://gitlab.com/digitalsuni/cleo/-/releases) | *Linux AppImage & DEB* |
 
 ## 🛠 macOS Installation Note
 This application is built for internal use and is unsigned. If you see an error saying the app is "damaged" or cannot be opened, run this command in your Terminal:
@@ -84,8 +82,7 @@ xattr -rd com.apple.quarantine "/Applications/Cleo.app"
 
 ## 🔐 Cryptographic Verification
 Releases and tags are signed with Cleo's release signing key:
-- **Public Key**: [`cleo-release.asc`](https://raw.githubusercontent.com/sunil-cht/cleo/main/cleo-release.asc)
+- **Public Key**: [`cleo-release.asc`](https://gitlab.com/digitalsuni/cleo/-/raw/main/cleo-release.asc)
 - **Key Fingerprint**: `3DB3 0B75 4E26 A1D0 C4B0  308A D8C9 20CB EA46 CBF6`
-- **Verify Tag**: `git verify-tag v1.0.0`
-- **Verify Download**: `sha256sum -c SHA256SUMS.txt`
+- **Verify Tag**: `git verify-tag v2.0.0`
 

@@ -42,15 +42,12 @@ remove_*.py
 test_*.py
 test*.py
 *test*.py
-!test_streaming.py
-!test_area_chart_integration.py
-!test_crypto.py
-!test_optimization.py
 conftest.py
 tests/
 update_compare.py
 scratch/
 local_tests/
+*.gs
 
 # OS & Local editor/agent files
 .DS_Store

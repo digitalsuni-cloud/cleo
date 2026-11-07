@@ -4137,7 +4137,7 @@
   <div id="update-banner" role="alert">
     <span class="update-msg" id="update-banner-msg">🚀 A new version of Cleo is available.</span>
     <div class="update-actions">
-      <button onclick="applyUpdate()" title="Pull latest code from GitHub">Update now</button>
+      <button onclick="applyUpdate()" title="Pull latest code from GitLab">Update now</button>
       <button class="dismiss-btn" onclick="document.getElementById('update-banner').classList.remove('visible')" title="Dismiss">Dismiss</button>
     </div>
   </div>
@@ -11111,7 +11111,7 @@
     async function applyUpdate() {
       const banner = document.getElementById('update-banner');
       const msg = document.getElementById('update-banner-msg');
-      msg.textContent = '⏳ Pulling update from GitHub…';
+      msg.textContent = '⏳ Pulling update from GitLab…';
       try {
         const r = await fetch('/api/update/apply', { method: 'POST' });
         const data = await r.json();
