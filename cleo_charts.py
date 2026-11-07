@@ -449,7 +449,7 @@ def _clean_chart_title(title: str) -> str:
 def _chart_block(chart_type: str, title: str, labels: list, values: list = None,
                  datasets: list = None, value_label: str = "Cost ($)",
                  horizontal: bool = False, stacked: bool = True,
-                 max_labels: int = None) -> str:
+                 max_labels: int = None, x_label: str = None) -> str:
     """
     Emit a fenced chart code-block for the UI to render via Chart.js.
     Supports single-dataset or multi-dataset stacked bar charts, waterfall charts, etc.
@@ -468,6 +468,8 @@ def _chart_block(chart_type: str, title: str, labels: list, values: list = None,
         "stacked": stacked,
         "horizontal": horizontal
     }
+    if x_label:
+        spec["x_label"] = x_label
     if datasets:
         clean_ds = []
         for ds in datasets:
@@ -562,7 +564,8 @@ def _build_time_category_stacked_chart(
                 "data": other_d
             })
 
-    return _chart_block(chart_type, title, labels, datasets=datasets, value_label=unit, stacked=True)
+    x_lbl = "Day" if time_format in ("day", "daily") else ("Quarter" if time_format == "quarter" else "Month")
+    return _chart_block(chart_type, title, labels, datasets=datasets, value_label=unit, stacked=True, x_label=x_lbl)
 
 
 def split_thinking_and_response(text: str) -> tuple[str, str]:

@@ -7802,13 +7802,13 @@
     function _isCostMetricLabel(label) {
       return /cost|spend|\$/i.test(label || '');
     }
-    // No explicit x-axis label is passed from the server today, so infer one from the shape of
-    // the labels themselves (month/quarter/day strings vs. plain category names).
+    // Infer x-axis label from explicit spec or shape of the labels (month/quarter/day strings vs category names).
     function _inferXAxisLabel(labels) {
-      const sample = String((labels && labels[0]) || '');
+      const sample = String((labels && labels[0]) || '').trim();
       if (!sample) return '';
       if (/^Q[1-4]\b/i.test(sample)) return 'Quarter';
       if (/^\d{4}-\d{2}-\d{2}/.test(sample)) return 'Day';
+      if (/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}$/i.test(sample)) return 'Day';
       if (/^\d{4}-\d{2}\b/.test(sample) || /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(sample)) return 'Month';
       return 'Category';
     }

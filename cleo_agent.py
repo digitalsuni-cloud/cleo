@@ -5924,7 +5924,7 @@ class AIClient:
                     svc_scope_label = f"Last {min(req_months, 12)} Months"
                     svc_granularity = "MONTHLY"
                 else:
-                    svc_scope_label = "Last 30 Days Trend"
+                    svc_scope_label = f"MoM Trend ({last_ym} vs {current_ym} MTD)"
                     svc_time_range = {"from": last_ym, "to": current_ym}
                     svc_granularity = "MONTHLY"
 
@@ -10474,8 +10474,8 @@ class AIClient:
                     svc_scope_label = f"Q{q} {yr}"
                     svc_granularity = "MONTHLY"
                 else:
-                    # User rule: "use last 30days trend for such requests by default unless I ask for the specific time window"
-                    svc_scope_label = "Last 30 Days Trend"
+                    # Multi-month trend default for requests without a specific time window
+                    svc_scope_label = f"MoM Trend ({last_ym} vs {current_ym} MTD)"
                     svc_time_range = {"from": last_ym, "to": current_ym}
                     svc_granularity = "MONTHLY"
 
@@ -11322,10 +11322,10 @@ class AIClient:
                     has_explicit_daily_kw = any(w in low for w in ["daily", "by day", "day by day", "each day", "day-over-day", "day over day", "daily view", "daily trend", "daily breakdown", "daily spend"])
                     is_daily_dim = (
                         has_explicit_daily_kw
-                        or (not is_specific and (
-                            svc_granularity == "DAILY"
-                            or bool(time_ctx.get("daily_range"))
-                        ))
+                        or svc_granularity == "DAILY"
+                        or bool(time_ctx.get("daily_range"))
+                        or bool(time_ctx.get("timeframe_days"))
+                        or bool(intent_info.get("timeframe_days"))
                     )
 
                     is_multi_month_dim = not is_daily_dim and not is_specific and not has_two_comp_months and (
@@ -11446,7 +11446,7 @@ class AIClient:
                                     f"ORDER BY day ASC, val DESC"
                                 )
                             q_limit = 5000
-                        elif (is_multi_month_dim or has_two_comp_months) and has_time_col:
+                        elif (is_multi_month_dim or has_two_comp_months or (is_daily_dim and not has_day_col)) and has_time_col:
                             if has_prov_col:
                                 dim_sql = (
                                     f"SELECT {time_col} AS month, {prov_col} AS provider, {col_expr} AS dimension, "
@@ -11494,6 +11494,10 @@ class AIClient:
                             if not cur_time_range or not (isinstance(cur_time_range, dict) and (cur_time_range.get("qualifier") == "DAY" or "from" in cur_time_range)):
                                 t_days = time_ctx.get("timeframe_days") or intent_info.get("timeframe_days") or 30
                                 cur_time_range = {"last": t_days, "qualifier": "DAY"}
+                        elif is_daily_dim and not has_day_col:
+                            cur_granularity = "MONTHLY"
+                            if isinstance(cur_time_range, dict) and (cur_time_range.get("qualifier") == "DAY" or ("from" in cur_time_range and len(str(cur_time_range.get("from", ""))) > 7)):
+                                cur_time_range = {"from": last_ym, "to": current_ym}
                         elif has_two_comp_months:
                             cur_granularity = "MONTHLY"
                             cur_time_range = {"from": min(comp_months[:2]), "to": max(comp_months[:2])}
@@ -11782,7 +11786,7 @@ class AIClient:
                             f"💡 *Live FinOps data from `{dataset}` via CloudHealth FlexReports.*"
                         )
 
-                    elif is_multi_month_dim and len(all_months) > 1 and clean_rows:
+                    elif (is_multi_month_dim or (is_daily_dim and not any(r.get("day") for r in clean_rows))) and len(all_months) > 1 and clean_rows:
                         # Multi-month dimensional analysis: Show Monthly Spend History + Overall Breakdown + Stacked Bar Chart
                         month_totals = defaultdict(float)
                         month_dim_totals = defaultdict(lambda: defaultdict(float))
@@ -11802,6 +11806,17 @@ class AIClient:
                         scope_disp = cloud_target.upper() if cloud_target != "all" else "Multi-Cloud"
                         unit_str = matched_dim.get("unit", "$")
                         val_fmt = (lambda x: f"${x:,.2f}") if is_cost else (lambda x: f"{x:,.2f} {unit_str}")
+
+                        # Format scope label cleanly for monthly display
+                        if any(w in svc_scope_label.lower() for w in ["days", "day", "daily"]):
+                            display_scope_label = f"MoM Trend ({all_months[0]} vs {all_months[-1]} MTD)" if len(all_months) == 2 else f"Last {len(all_months)} Months ({all_months[0]} – {all_months[-1]})"
+                            granularity_notice = (
+                                f"> ℹ️ **Granularity Notice**: Daily breakdown is not supported for `{dataset}` in CloudHealth FlexReports "
+                                f"(standard reporting is aggregated at monthly granularity). Displaying Month-over-Month spend history instead.\n\n"
+                            )
+                        else:
+                            display_scope_label = svc_scope_label
+                            granularity_notice = ""
 
                         # 1. Monthly History Table (displayed recent first)
                         month_table_rows = []
@@ -11825,7 +11840,7 @@ class AIClient:
                             )
 
                         hist_table = (
-                            f"#### 📅 Monthly Spend History ({svc_scope_label})\n\n"
+                            f"#### 📅 Monthly Spend History ({display_scope_label})\n\n"
                             f"| Month | Total Spend | MoM Change | Top {dim_label} (% of Month) |\n"
                             f"|:---|:---|:---|:---|\n"
                             f"{chr(10).join(month_table_rows)}\n"
@@ -11842,8 +11857,8 @@ class AIClient:
                             )
 
                         dim_table = (
-                            f"#### ☁️ Top {dim_label} Breakdown ({svc_scope_label})\n\n"
-                            f"| Cloud Provider | {dim_label} | Total Cost ({svc_scope_label}) | % of Total |\n"
+                            f"#### ☁️ Top {dim_label} Breakdown ({display_scope_label})\n\n"
+                            f"| Cloud Provider | {dim_label} | Total Cost ({display_scope_label}) | % of Total |\n"
                             f"|:---|:---|:---|:---|\n"
                             f"{chr(10).join(top_dims_table_rows)}\n\n"
                             f"| **Total** | | **{val_fmt(grand_total)}** | **100.0%** |"
@@ -11853,7 +11868,7 @@ class AIClient:
                         if not is_no_chart_requested(low):
                             req_chart = "area" if ("area" in low or (intent_info and "area" in intent_info.get("chart_types", []))) else "bar"
                             chart_md = _build_time_category_stacked_chart(
-                                f"{scope_disp} Spend by {dim_label} & Month — {svc_scope_label}",
+                                f"{scope_disp} Spend by {dim_label} & Month — {display_scope_label}",
                                 clean_rows,
                                 time_col="month",
                                 cat_col="dimension",
@@ -11868,7 +11883,8 @@ class AIClient:
                                 chart_md = f"\n\n{chart_md}"
 
                         return (
-                            f"### 📊 CloudHealth Spend Analysis: {scope_disp} Cost by {dim_label} — {svc_scope_label}\n\n"
+                            f"### 📊 CloudHealth Spend Analysis: {scope_disp} Cost by {dim_label} — {display_scope_label}\n\n"
+                            f"{granularity_notice}"
                             f"{partial_notice}"
                             f"{hist_table}\n"
                             f"{dim_table}"
