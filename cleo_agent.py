@@ -11496,8 +11496,7 @@ class AIClient:
                                 cur_time_range = {"last": t_days, "qualifier": "DAY"}
                         elif is_daily_dim and not has_day_col:
                             cur_granularity = "MONTHLY"
-                            if isinstance(cur_time_range, dict) and (cur_time_range.get("qualifier") == "DAY" or ("from" in cur_time_range and len(str(cur_time_range.get("from", ""))) > 7)):
-                                cur_time_range = {"from": last_ym, "to": current_ym}
+                            cur_time_range = {"from": last_ym, "to": current_ym}
                         elif has_two_comp_months:
                             cur_granularity = "MONTHLY"
                             cur_time_range = {"from": min(comp_months[:2]), "to": max(comp_months[:2])}
@@ -11579,8 +11578,7 @@ class AIClient:
                         except Exception as e:
                             logger.warning(f"[{dim_label} Query on {q_ds}] {e}")
 
-                    if is_multi_month_dim or has_two_comp_months:
-                        all_months = sorted(list(set(r["month"] for r in clean_rows if r["month"])))
+                    all_months = sorted(list(set(r["month"] for r in clean_rows if r.get("month"))))
 
                     if has_two_comp_months and clean_rows:
                         # ── Dedicated 2-Month Comparative Breakdown (e.g. August 2026 vs September 2026) ──
@@ -11808,7 +11806,7 @@ class AIClient:
                         val_fmt = (lambda x: f"${x:,.2f}") if is_cost else (lambda x: f"{x:,.2f} {unit_str}")
 
                         # Format scope label cleanly for monthly display
-                        if any(w in svc_scope_label.lower() for w in ["days", "day", "daily"]):
+                        if is_daily_dim or any(w in svc_scope_label.lower() for w in ["days", "day", "daily"]):
                             display_scope_label = f"MoM Trend ({all_months[0]} vs {all_months[-1]} MTD)" if len(all_months) == 2 else f"Last {len(all_months)} Months ({all_months[0]} – {all_months[-1]})"
                             granularity_notice = (
                                 f"> ℹ️ **Granularity Notice**: Daily breakdown is not supported for `{dataset}` in CloudHealth FlexReports "
