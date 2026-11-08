@@ -4713,12 +4713,12 @@
           <span class="modal-subtitle">Interactive analytics workbench · Customize chart type, axes, and dimensions</span>
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
-          <button class="cleo-chart-action-btn" id="chart-modal-reset-btn" onclick="resetChartFilters()" title="Reset all series to visible" style="display: none; padding: 5px 10px; font-size: 0.74rem;">
+          <button class="cleo-chart-action-btn" id="chart-modal-reset-btn" onclick="resetModalChartToDefault()" title="Reset chart to default view" style="display: inline-flex; padding: 5px 10px; font-size: 0.74rem;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
               <path d="M3 3v5h5"></path>
             </svg>
-            <span>Show All</span>
+            <span>Reset</span>
           </button>
           <button class="cleo-chart-action-btn" id="chart-modal-curve-btn" onclick="toggleModalChartCurve()" title="Toggle curve style (Smooth / Sharp)" style="display: none; padding: 5px 10px; font-size: 0.74rem;">
             <span id="chart-modal-curve-icon" style="display: inline-flex; align-items: center;"></span>
@@ -7708,47 +7708,13 @@
 
     function updateResetButtonVisibility(chart) {
       const resetBtn = document.getElementById('chart-modal-reset-btn');
-      if (!resetBtn || chart !== _expandedChartInstance) return;
-      const chartType = chart.config?.type || chart.config?._config?.type || chart.type;
-      const isPie = ['pie', 'doughnut'].includes(chartType);
-      let hasHidden = false;
-      if (isPie) {
-        const total = chart.data.labels ? chart.data.labels.length : 0;
-        hasHidden = Array.from({length: total}, (_, i) => i).some(i => !chart.getDataVisibility(i));
-      } else {
-        hasHidden = (chart.data.datasets || []).some((_, i) => !chart.isDatasetVisible(i));
-      }
-      const hasModalHidden = typeof _modalState !== 'undefined' && _modalState.hiddenItems && _modalState.hiddenItems.size > 0;
-      resetBtn.style.display = (hasHidden || hasModalHidden) ? 'inline-flex' : 'none';
-      if (typeof syncModalDimBadgeAndCheckboxes === 'function') {
-        syncModalDimBadgeAndCheckboxes();
-      }
+      if (resetBtn) resetBtn.style.display = 'inline-flex';
     }
 
     function resetChartFilters() {
-      if (typeof _modalState !== 'undefined' && _modalState.originalConfig) {
-        _modalState.hiddenItems.clear();
-        if (_expandedChartInstance) {
-          const ci = _expandedChartInstance;
-          const chartType = ci.config?.type || ci.config?._config?.type || ci.type;
-          const isPie = ['pie', 'doughnut'].includes(chartType);
-          if (isPie) {
-            const total = ci.data.labels ? ci.data.labels.length : 0;
-            for (let i = 0; i < total; i++) {
-              if (!ci.getDataVisibility(i)) ci.toggleDataVisibility(i);
-            }
-          } else {
-            (ci.data.datasets || []).forEach((_, i) => ci.setDatasetVisibility(i, true));
-          }
-          ci.update();
-        }
-        if (typeof syncModalDimBadgeAndCheckboxes === 'function') {
-          syncModalDimBadgeAndCheckboxes();
-        }
-        if (typeof renderModalChart === 'function') {
-          renderModalChart();
-          return;
-        }
+      if (typeof resetModalChartToDefault === 'function') {
+        resetModalChartToDefault();
+        return;
       }
       if (!_expandedChartInstance) return;
       const ci = _expandedChartInstance;
@@ -7763,11 +7729,6 @@
         (ci.data.datasets || []).forEach((_, i) => ci.setDatasetVisibility(i, true));
       }
       ci.update();
-      const resetBtn = document.getElementById('chart-modal-reset-btn');
-      if (resetBtn) resetBtn.style.display = 'none';
-      if (typeof syncModalDimBadgeAndCheckboxes === 'function') {
-        syncModalDimBadgeAndCheckboxes();
-      }
     }
 
     function _formatAxisNumber(v, withCurrency, isPercent) {
@@ -8154,7 +8115,7 @@
         isNeg = true;
         s = s.slice(1).trim();
       }
-      s = s.replace(/[$€£,]/g, '').replace(/\bhrs?\b/i, '').replace(/%/g, '').trim();
+      s = s.replace(/(?:\/|\bper\s+)(?:day|daily|mo|month|monthly|hr|hour|hourly|yr|year|d|m|h|y)\b/gi, '').replace(/[$€£¥,]/g, '').replace(/\bhrs?\b/gi, '').replace(/%/g, '').trim();
       const n = parseFloat(s);
       if (isNaN(n)) return 0;
       return isNeg ? -n : n;
@@ -8205,6 +8166,18 @@
                    .replace(/\b(spend|cost|vms?|instances?|hours?|hrs?|usage|\$|%)\b/gi, '')
                    .replace(/\s+/g, ' ')
                    .replace(/^[&-_ ]+|[&-_ ]+$/g, '') || String(header || '');
+    }
+
+    function _formatDateLabel(dStr) {
+      if (!dStr) return '';
+      const m = String(dStr).match(/^\d{4}-(\d{2})-(\d{2})$/);
+      if (m) {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const mo = parseInt(m[1], 10) - 1;
+        const da = parseInt(m[2], 10);
+        return `${months[mo] || m[1]} ${da}`;
+      }
+      return String(dStr);
     }
 
     function _formatCategoryTitle(v) {
@@ -8264,6 +8237,106 @@
           }
         });
         if (!rawRows.length) return;
+
+        // Check if table is a pivoted time-series table (e.g. Date | Model 1 | Model 2 | ... | Daily Total Spend | DoD Variance)
+        const isTimeHeader = /^(?:date|day|timestamp|period)$/i.test(rawHeaders[0] || '');
+        const isTimeRowCells = rawRows.slice(0, 3).length > 0 && rawRows.slice(0, 3).every(r => /^\d{4}-\d{2}-\d{2}$|^[a-z]{3}\s+\d{1,2}$/i.test((r[0] || '').trim()));
+        const isDateCol0 = isTimeHeader || isTimeRowCells;
+        const totalColIdx = rawHeaders.findIndex((h, idx) => idx > 0 && /total.*(spend|cost)|\b(daily\s+total|total\s+spend|total\s+cost)\b/i.test(h));
+
+        if (isDateCol0 && totalColIdx > 1) {
+          const intermediateCols = rawHeaders.slice(1, totalColIdx);
+          const sampleRow = rawRows.find(r => _parseNumericValue(r[totalColIdx]) > 0);
+          let sumMatchesTotal = false;
+          if (sampleRow) {
+            const sumVals = intermediateCols.reduce((acc, _, i) => acc + _parseNumericValue(sampleRow[1 + i]), 0);
+            const totVal = _parseNumericValue(sampleRow[totalColIdx]);
+            sumMatchesTotal = totVal > 0 && Math.abs(sumVals - totVal) <= Math.max(1.0, totVal * 0.05);
+          }
+
+          if (intermediateCols.length >= 2 && (rawHeaders.some(h => /^other\s+/i.test(h)) || sumMatchesTotal || (chartConfig?.data?.datasets && chartConfig.data.datasets.some(ds => intermediateCols.includes(ds.label))))) {
+            let categoryDimName = '';
+            const otherColHeader = intermediateCols.find(h => /^other\s+/i.test(h));
+            if (otherColHeader) {
+              categoryDimName = otherColHeader.replace(/^other\s+/i, '').replace(/s$/i, '').trim();
+            }
+            if (!categoryDimName && chartConfig?.title) {
+              const m = chartConfig.title.match(/\bby\s+([^—–\(\)]+?)(?:\s+[—–]|\s*\(|$)/i);
+              if (m) categoryDimName = m[1].trim();
+            }
+            if (!categoryDimName && heading) {
+              const m = heading.match(/\bby\s+([^—–\(\)]+?)(?:\s+[—–]|\s*\(|$)/i);
+              if (m) categoryDimName = m[1].trim();
+            }
+            if (!categoryDimName) {
+              categoryDimName = 'AI Model';
+            }
+
+            const categoryCols = intermediateCols.map((h, i) => ({ colIdx: 1 + i, header: h }));
+            const dateDistinct = Array.from(new Set(rawRows.map(r => (r[0] || '').trim()).filter(Boolean)));
+            const dateCol = {
+              colIdx: 0,
+              header: rawHeaders[0] || 'Date',
+              distinctVals: dateDistinct,
+              distinctCount: dateDistinct.length
+            };
+            const categoryDim = {
+              header: categoryDimName,
+              distinctVals: categoryCols.map(c => c.header),
+              distinctCount: categoryCols.length
+            };
+            const totalMetric = {
+              id: 'total_spend',
+              name: rawHeaders[totalColIdx] || 'Daily Total Spend',
+              isCost: true,
+              isPercent: false,
+              colIdx: totalColIdx
+            };
+            const varianceColIdx = rawHeaders.findIndex((h, idx) => idx > totalColIdx && /dod|variance|change|delta/i.test(h));
+            const varianceMetric = varianceColIdx !== -1 ? {
+              id: 'dod_variance',
+              name: rawHeaders[varianceColIdx] || 'DoD Variance',
+              isCost: true,
+              isMoM: true,
+              colIdx: varianceColIdx
+            } : null;
+
+            const availableMetrics = [totalMetric];
+            if (varianceMetric) availableMetrics.push(varianceMetric);
+            categoryCols.forEach(c => {
+              availableMetrics.push({
+                id: `col_${c.colIdx}`,
+                name: c.header,
+                isCost: true,
+                isPercent: false,
+                colIdx: c.colIdx
+              });
+            });
+
+            views.push({
+              id: `table_${tIdx}`,
+              title: heading || `Daily Spend History by ${categoryDimName}`,
+              dimName: categoryDimName,
+              isPivoted: true,
+              categoryDimName,
+              categoryCols,
+              dateCol,
+              categoryDim,
+              totalCol: totalMetric,
+              varianceCol: varianceMetric,
+              dimCols: [dateCol, categoryDim],
+              monthCols: [],
+              metricCols: [],
+              primaryDim: categoryDim,
+              availableDims: [dateCol.header, categoryDimName],
+              availableMetrics,
+              rawHeaders,
+              rawRows,
+              metrics: availableMetrics
+            });
+            return;
+          }
+        }
 
         let indexCol = -1;
         const monthCols = [];
@@ -8461,18 +8534,47 @@
         }];
       }
 
-      if (discoveredViews.length === 0) {
-        allViews.push({
-          id: 'view_default',
-          title: cleanChartTitle(config.title) || 'Chart Overview',
-          isDefault: true,
-          dimCols: [],
-          monthCols: [],
-          metricCols: [],
-          primaryDim: null,
-          availableDims: [],
-          availableMetrics: defaultMetrics,
-          metrics: defaultMetrics
+      const hasMultiDs = (config.data?.datasets?.length || 0) > 1;
+      if (hasMultiDs && config.data?.datasets) {
+        config.data.datasets.forEach((ds, idx) => {
+          if (ds.label && !defaultMetrics.some(m => m.name === ds.label || m.id === `ds_${idx}`)) {
+            defaultMetrics.push({
+              id: `ds_${idx}`,
+              name: ds.label,
+              isCost: _isCostMetricLabel(config.rawSpec?.value_label || 'Cost'),
+              isPercent: false,
+              colIdx: -1
+            });
+          }
+        });
+      }
+      const catNameMatch = (config.title || '').match(/\bby\s+([^—–\(\)&]+?)(?:\s+(?:&|and)\s+[^—–\(\)]+)?(?:\s+[—–]|\s*\(|$)/i);
+      const derivedCatDim = catNameMatch ? catNameMatch[1].trim() : 'AI Model';
+      const isDateFirstLabel = config.data?.labels?.[0] && /^\d{4}-\d{2}|^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(String(config.data.labels[0]));
+      const derivedXDim = config.rawSpec?.x_label || config.options?.scales?.x?.title?.text || (isDateFirstLabel ? 'Month' : 'Date');
+      const chartAvDims = hasMultiDs ? [derivedXDim, derivedCatDim] : [derivedXDim];
+
+      const chartDefaultView = {
+        id: 'view_default',
+        title: cleanChartTitle(config.title) || 'Chart Overview',
+        isDefault: true,
+        dimCols: [],
+        monthCols: [],
+        metricCols: [],
+        primaryDim: null,
+        availableDims: chartAvDims,
+        categoryDimName: derivedCatDim,
+        availableMetrics: defaultMetrics,
+        metrics: defaultMetrics
+      };
+
+      if (discoveredViews.length === 0 || (hasMultiDs && !discoveredViews[0]?.isPivoted)) {
+        allViews.push(chartDefaultView);
+        discoveredViews.forEach((v, idx) => {
+          allViews.push({
+            ...v,
+            title: v.title || `Table ${idx + 1}`
+          });
         });
       } else {
         discoveredViews.forEach((v, idx) => {
@@ -8488,19 +8590,35 @@
       const currentView = allViews[0];
 
       _modalState.filters = {};
-      if (currentView?.monthCols?.length > 0) {
-        _modalState.filters['Month'] = new Set(currentView.monthCols.map(m => m.header));
-      }
-      if (currentView?.dimCols?.length > 0) {
-        currentView.dimCols.forEach(d => {
-          _modalState.filters[d.header] = new Set(d.distinctVals);
-        });
+      if (currentView?.isPivoted) {
+        if (currentView.dateCol) {
+          _modalState.filters[currentView.dateCol.header] = new Set(currentView.dateCol.distinctVals);
+        }
+        if (currentView.categoryDim) {
+          _modalState.filters[currentView.categoryDim.header] = new Set(currentView.categoryDim.distinctVals);
+        }
+      } else {
+        if (currentView?.monthCols?.length > 0) {
+          _modalState.filters['Month'] = new Set(currentView.monthCols.map(m => m.header));
+        }
+        if (currentView?.dimCols?.length > 0) {
+          currentView.dimCols.forEach(d => {
+            _modalState.filters[d.header] = new Set(d.distinctVals);
+          });
+        }
       }
 
       const avDims = currentView?.availableDims || [];
-      if (currentView?.monthCols?.length > 0) {
+      if (currentView?.isPivoted) {
+        _modalState.activeXDim = currentView.dateCol?.header || 'Date';
+        _modalState.activeCatDim = currentView.categoryDimName || 'Category';
+      } else if (currentView?.monthCols?.length > 0) {
         _modalState.activeXDim = 'Month';
         _modalState.activeCatDim = currentView.dimCols?.[0]?.header || 'None';
+      } else if (currentView?.isDefault) {
+        const hasMultiDs = (config.data?.datasets?.length || 0) > 1;
+        _modalState.activeXDim = currentView.availableDims?.[0] || 'Date';
+        _modalState.activeCatDim = hasMultiDs ? (currentView.availableDims?.[1] || 'Category') : 'None';
       } else {
         _modalState.activeXDim = avDims[0] || 'Category';
         _modalState.activeCatDim = avDims.length > 1 ? avDims[1] : 'None';
@@ -8541,6 +8659,21 @@
       _modalState.tension = config.data?.datasets?.[0]?.tension ?? ((localStorage.getItem('cleo_chart_curve') || 'smooth') === 'sharp' ? 0 : 0.35);
       _modalState.usePreviewChart = true;  // show original chart on open; cleared on first user toolbar change
 
+      // Snapshot default state for Reset button & waterfall metric transitions
+      _modalState.initialActiveType = _modalState.activeType;
+      _modalState.initialIsStacked = _modalState.isStacked;
+      _modalState.initialIsHorizontal = _modalState.isHorizontal;
+      _modalState.initialXDim = _modalState.activeXDim;
+      _modalState.initialCatDim = _modalState.activeCatDim;
+      _modalState.initialMetricId = _modalState.activeMetricId;
+      _modalState.initialViewIndex = 0;
+      _modalState.initialTension = _modalState.tension;
+      _modalState.prevNonWaterfallType = _modalState.activeType !== 'waterfall' ? _modalState.activeType : (isLine ? 'line' : 'stacked_bar');
+      _modalState.prevStacked = _modalState.isStacked;
+
+      const resetBtn = document.getElementById('chart-modal-reset-btn');
+      if (resetBtn) resetBtn.style.display = 'inline-flex';
+
       modal.style.display = 'flex';
 
       applyActiveViewAndMetric();
@@ -8565,17 +8698,29 @@
       if (!currentView) return;
 
       _modalState.filters = {};
-      if (currentView?.monthCols?.length > 0) {
-        _modalState.filters['Month'] = new Set(currentView.monthCols.map(m => m.header));
-      }
-      if (currentView?.dimCols?.length > 0) {
-        currentView.dimCols.forEach(d => {
-          _modalState.filters[d.header] = new Set(d.distinctVals);
-        });
+      if (currentView?.isPivoted) {
+        if (currentView.dateCol) {
+          _modalState.filters[currentView.dateCol.header] = new Set(currentView.dateCol.distinctVals);
+        }
+        if (currentView.categoryDim) {
+          _modalState.filters[currentView.categoryDim.header] = new Set(currentView.categoryDim.distinctVals);
+        }
+      } else {
+        if (currentView?.monthCols?.length > 0) {
+          _modalState.filters['Month'] = new Set(currentView.monthCols.map(m => m.header));
+        }
+        if (currentView?.dimCols?.length > 0) {
+          currentView.dimCols.forEach(d => {
+            _modalState.filters[d.header] = new Set(d.distinctVals);
+          });
+        }
       }
 
       const avDims = currentView?.availableDims || [];
-      if (currentView?.monthCols?.length > 0) {
+      if (currentView?.isPivoted) {
+        _modalState.activeXDim = currentView.dateCol?.header || 'Date';
+        _modalState.activeCatDim = currentView.categoryDimName || 'Category';
+      } else if (currentView?.monthCols?.length > 0) {
         _modalState.activeXDim = 'Month';
         _modalState.activeCatDim = currentView.dimCols?.[0]?.header || 'None';
       } else {
@@ -8601,10 +8746,16 @@
     function onModalCategoryChange(val) {
       _modalState.usePreviewChart = false;
       _modalState.activeCatDim = val;
-      if (val !== 'None' && _modalState.activeXDim === val) {
-        const currentView = _modalState.tableViews[_modalState.activeViewIndex];
-        const remaining = (currentView?.availableDims || []).filter(d => d !== val);
-        _modalState.activeXDim = remaining[0] || 'Category';
+      const currentView = _modalState.tableViews[_modalState.activeViewIndex];
+      if (val !== 'None') {
+        const activeMetric = (currentView?.availableMetrics || []).find(m => m.id === _modalState.activeMetricId);
+        if (activeMetric && activeMetric.colIdx !== undefined && activeMetric.colIdx !== currentView?.totalCol?.colIdx && !activeMetric.isMoM) {
+          _modalState.activeMetricId = currentView?.totalCol?.id || currentView?.availableMetrics?.[0]?.id || 'total_spend';
+        }
+        if (_modalState.activeXDim === val) {
+          const remaining = (currentView?.availableDims || []).filter(d => d !== val);
+          _modalState.activeXDim = remaining[0] || 'Category';
+        }
       }
       applyActiveViewAndMetric();
     }
@@ -8618,9 +8769,26 @@
       _modalState.activeMetricId = metricId;
       const currentView = _modalState.tableViews[_modalState.activeViewIndex];
       const activeMetric = (currentView?.availableMetrics || []).find(m => m.id === metricId);
-      if (metricId === 'mom_change' || (activeMetric && activeMetric.isMoM)) {
+      const isMoM = metricId === 'mom_change' || metricId === 'dod_variance' || Boolean(activeMetric && (activeMetric.isMoM || /mom|dod|variance|change|delta/i.test(activeMetric.name)));
+      if (isMoM) {
+        if (_modalState.activeType !== 'waterfall') {
+          _modalState.prevNonWaterfallType = _modalState.activeType;
+          _modalState.prevStacked = _modalState.isStacked;
+        }
         _modalState.activeType = 'waterfall';
         _modalState.isStacked = false;
+      } else if (_modalState.activeType === 'waterfall') {
+        const restoredType = _modalState.prevNonWaterfallType || _modalState.initialActiveType || (_modalState.originalConfig?.type === 'line' ? 'line' : 'stacked_bar');
+        _modalState.activeType = restoredType;
+        if (_modalState.prevStacked !== undefined) {
+          _modalState.isStacked = _modalState.prevStacked;
+        } else {
+          _modalState.isStacked = ['stacked_bar', 'area', 'horizontal_bar'].includes(restoredType);
+        }
+      }
+      // If user selected an individual category column (e.g. Claude Opus 5.5), automatically isolate it (Category = None)
+      if (activeMetric && activeMetric.colIdx !== undefined && activeMetric.colIdx !== currentView?.totalCol?.colIdx && !isMoM) {
+        _modalState.activeCatDim = 'None';
       }
       applyActiveViewAndMetric();
     }
@@ -8638,6 +8806,10 @@
     function onModalChartTypeChange(newVal) {
       _modalState.usePreviewChart = false;
       _modalState.activeType = newVal;
+      if (newVal !== 'waterfall') {
+        _modalState.prevNonWaterfallType = newVal;
+        _modalState.prevStacked = ['stacked_bar', 'area', 'horizontal_bar'].includes(newVal);
+      }
       const currentView = _modalState.tableViews[_modalState.activeViewIndex];
       const avDims = currentView?.availableDims || [];
       if (newVal === 'stacked_bar') {
@@ -8659,7 +8831,7 @@
         _modalState.isStacked = false;
         _modalState.isHorizontal = false;
         if (!_modalState.activeCatDim || _modalState.activeCatDim === 'None') {
-          _modalState.activeCatDim = currentView?.dimCols?.[0]?.header || avDims[0] || 'Category';
+          _modalState.activeCatDim = currentView?.isPivoted ? currentView.categoryDimName : (currentView?.dimCols?.[0]?.header || avDims[0] || 'Category');
         }
       } else if (newVal === 'waterfall') {
         _modalState.isStacked = false;
@@ -8668,6 +8840,59 @@
       syncModalToolbarUI();
       buildModalDimensionControls();
       renderModalChart();
+    }
+
+    function resetModalChartToDefault() {
+      if (!_modalState.originalConfig) return;
+      _modalState.activeViewIndex = _modalState.initialViewIndex || 0;
+      const currentView = _modalState.tableViews[_modalState.activeViewIndex];
+
+      _modalState.activeType = _modalState.initialActiveType || (_modalState.originalConfig.type === 'line' ? 'line' : 'stacked_bar');
+      _modalState.isStacked = _modalState.initialIsStacked !== undefined ? _modalState.initialIsStacked : true;
+      _modalState.isHorizontal = _modalState.initialIsHorizontal || false;
+      _modalState.isTransposed = false;
+      _modalState.tension = _modalState.initialTension !== undefined ? _modalState.initialTension : 0.35;
+      _modalState.hiddenItems.clear();
+      _modalState.usePreviewChart = true;
+
+      _modalState.filters = {};
+      if (currentView?.isPivoted) {
+        if (currentView.dateCol) {
+          _modalState.filters[currentView.dateCol.header] = new Set(currentView.dateCol.distinctVals);
+        }
+        if (currentView.categoryDim) {
+          _modalState.filters[currentView.categoryDim.header] = new Set(currentView.categoryDim.distinctVals);
+        }
+      } else {
+        if (currentView?.monthCols?.length > 0) {
+          _modalState.filters['Month'] = new Set(currentView.monthCols.map(m => m.header));
+        }
+        if (currentView?.dimCols?.length > 0) {
+          currentView.dimCols.forEach(d => {
+            _modalState.filters[d.header] = new Set(d.distinctVals);
+          });
+        }
+      }
+
+      _modalState.activeXDim = _modalState.initialXDim || (currentView?.isPivoted ? currentView.dateCol?.header : (currentView?.monthCols?.length ? 'Month' : (currentView?.availableDims?.[0] || 'Category')));
+      _modalState.activeCatDim = _modalState.initialCatDim || (currentView?.isPivoted ? currentView.categoryDimName : (currentView?.dimCols?.[0]?.header || 'None'));
+      _modalState.activeMetricId = _modalState.initialMetricId || (currentView?.availableMetrics?.[0]?.id || null);
+      _modalState.percentAggregation = 'avg';
+
+      if (_expandedChartInstance) {
+        const chartType = _expandedChartInstance.config?.type || _expandedChartInstance.config?._config?.type || _expandedChartInstance.type;
+        const isPie = ['pie', 'doughnut'].includes(chartType);
+        if (isPie) {
+          const total = _expandedChartInstance.data.labels ? _expandedChartInstance.data.labels.length : 0;
+          for (let i = 0; i < total; i++) {
+            if (!_expandedChartInstance.getDataVisibility(i)) _expandedChartInstance.toggleDataVisibility(i);
+          }
+        } else if (_expandedChartInstance.data?.datasets) {
+          _expandedChartInstance.data.datasets.forEach((_, i) => _expandedChartInstance.setDatasetVisibility(i, true));
+        }
+      }
+
+      applyActiveViewAndMetric();
     }
 
     function toggleModalChartTranspose() {
@@ -9028,15 +9253,28 @@
             _modalState.filters[d.header] = new Set(d.distinctVals);
           }
 
-          d.distinctVals.forEach(val => {
+          d.distinctVals.forEach((val, i) => {
             const isChecked = _modalState.filters[d.header].has(val);
             const itemEl = document.createElement('label');
             itemEl.className = 'chart-modal-dim-item';
+            let extraDot = '';
+            let extraBadge = '';
+            if (currentView.isPivoted && d.header === currentView.categoryDimName) {
+              const color = _CHART_PALETTE[i % _CHART_PALETTE.length];
+              extraDot = `<span class="chart-modal-dim-color-dot" style="background: ${color};"></span>`;
+              const colObj = currentView.categoryCols?.find(c => c.header === val);
+              if (colObj) {
+                const sumVal = (currentView.rawRows || []).reduce((acc, r) => acc + _parseNumericValue(r[colObj.colIdx]), 0);
+                extraBadge = `<span class="chart-modal-dim-val-badge">${_formatMetricBadge(sumVal, true, false)}</span>`;
+              }
+            }
             itemEl.innerHTML = `
               <div style="display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
                 <input type="checkbox" class="chart-modal-dim-check" data-section="${escapeAttr(d.header)}" data-val="${escapeAttr(val)}" ${isChecked ? 'checked' : ''}>
+                ${extraDot}
                 <span style="overflow: hidden; text-overflow: ellipsis;" title="${escapeAttr(val)}">${escapeHtml(val)}</span>
               </div>
+              ${extraBadge}
             `;
             const chk = itemEl.querySelector('input');
             chk.onchange = () => toggleFilterItem(d.header, val, chk.checked);
@@ -9077,7 +9315,10 @@
           totalPossible += currentView.monthCols.length;
           totalSelected += (_modalState.filters['Month']?.size || currentView.monthCols.length);
         }
-        if (currentView.dimCols?.length > 0) {
+        if (currentView.isPivoted && currentView.categoryDim) {
+          totalPossible = currentView.categoryDim.distinctVals.length;
+          totalSelected = (_modalState.filters[currentView.categoryDim.header]?.size || totalPossible);
+        } else if (currentView.dimCols?.length > 0) {
           currentView.dimCols.forEach(d => {
             totalPossible += d.distinctVals.length;
             totalSelected += (_modalState.filters[d.header]?.size || d.distinctVals.length);
@@ -9117,11 +9358,12 @@
 
       const resetBtn = document.getElementById('chart-modal-reset-btn');
       if (resetBtn) {
-        resetBtn.style.display = 'none';
+        resetBtn.style.display = 'inline-flex';
       }
     }
 
     function toggleModalDimensionItem(id, isChecked) {
+      _modalState.usePreviewChart = false;
       if (isChecked) {
         _modalState.hiddenItems.delete(id);
       } else {
@@ -9137,6 +9379,7 @@
     }
 
     function filterModalDimensions(mode) {
+      _modalState.usePreviewChart = false;
       const currentView = _modalState.tableViews?.[_modalState.activeViewIndex];
       if (currentView && (currentView.monthCols?.length || currentView.dimCols?.length)) {
         if (mode === 'all') {
@@ -9154,7 +9397,11 @@
           }
           if (currentView.dimCols) {
             currentView.dimCols.forEach(d => {
-              _modalState.filters[d.header] = new Set([d.distinctVals[0]]);
+              if (currentView.isPivoted && d.header === currentView.dateCol?.header) {
+                _modalState.filters[d.header] = new Set(d.distinctVals);
+              } else {
+                _modalState.filters[d.header] = new Set([d.distinctVals[0]]);
+              }
             });
           }
         } else if (mode === 'top3' || mode === 'top5') {
@@ -9164,7 +9411,11 @@
           }
           if (currentView.dimCols) {
             currentView.dimCols.forEach(d => {
-              _modalState.filters[d.header] = new Set(d.distinctVals.slice(0, count));
+              if (currentView.isPivoted && d.header === currentView.dateCol?.header) {
+                _modalState.filters[d.header] = new Set(d.distinctVals);
+              } else {
+                _modalState.filters[d.header] = new Set(d.distinctVals.slice(0, count));
+              }
             });
           }
         }
@@ -9226,7 +9477,11 @@
       // On first open, show the original preview chart exactly as rendered inline.
       // Once the user changes a toolbar control (X-axis, Y-axis, Category, Type),
       // usePreviewChart is cleared and we switch to table-derived aggregation.
-      if (_modalState.usePreviewChart && _modalState.originalConfig?.data?.labels?.length) {
+      // If the user is viewing a single metric with Category=None, preview chart (which has multiple series)
+      // should NOT override the user-selected single metric.
+      const isMultiSeriesPreview = (_modalState.originalConfig?.data?.datasets?.length || 0) > 1;
+      const wantsSingleSeries = _modalState.activeCatDim === 'None' || (_modalState.activeMetricId && _modalState.activeMetricId !== 'total_spend' && _modalState.activeMetricId !== 'default_metric');
+      if (!wantsSingleSeries && _modalState.usePreviewChart && _modalState.originalConfig?.data?.labels?.length) {
         const cfg = _modalState.originalConfig;
         return {
           labels: [...(cfg.data?.labels || [])],
@@ -9248,18 +9503,268 @@
       }
 
       if (!currentView || (!currentView.rawRows?.length)) {
+        const origDatasets = _modalState.originalConfig?.data?.datasets || [];
+        const origLabels = _modalState.originalConfig?.data?.labels || [];
+        const valLabel = _modalState.originalConfig?.rawSpec?.value_label || _modalState.originalConfig?.options?.scales?.y?.title?.text || 'Cost';
+
+        if (_modalState.activeCatDim === 'None' && origDatasets.length > 1) {
+          // If user selected an individual series name (e.g. Claude Opus 5.5) as the metric
+          let targetDataset = null;
+          if (_modalState.activeMetricId) {
+            targetDataset = origDatasets.find(ds => ds.label === _modalState.activeMetricId || ds.id === _modalState.activeMetricId);
+            if (!targetDataset && currentView?.availableMetrics) {
+              const mObj = currentView.availableMetrics.find(m => m.id === _modalState.activeMetricId);
+              if (mObj) {
+                targetDataset = origDatasets.find(ds => ds.label === mObj.name || ds.label?.toLowerCase() === mObj.name?.toLowerCase());
+              }
+            }
+          }
+
+          if (targetDataset) {
+            return {
+              labels: [...origLabels],
+              datasets: [{
+                ...targetDataset,
+                data: Array.isArray(targetDataset.data) ? [...targetDataset.data] : targetDataset.data
+              }],
+              value_label: targetDataset.label || valLabel,
+              x_label: _modalState.activeXDim || 'Date',
+              isCost: _modalState.originalConfig?.rawSpec?.isCost !== false,
+              isPercent: Boolean(_modalState.originalConfig?.rawSpec?.isPercent),
+              isWaterfall: _modalState.activeType === 'waterfall'
+            };
+          }
+
+          // Otherwise collapse all series into one total series per label
+          const totalData = origLabels.map((_, i) => {
+            return origDatasets.reduce((sum, ds) => {
+              const v = Array.isArray(ds.data) ? ds.data[i] : 0;
+              return sum + (Number(v) || 0);
+            }, 0);
+          }).map(v => Math.round(v * 100) / 100);
+
+          return {
+            labels: [...origLabels],
+            datasets: [{
+              label: 'Total Spend',
+              data: totalData
+            }],
+            value_label: valLabel,
+            x_label: _modalState.activeXDim || 'Month',
+            isCost: _modalState.originalConfig?.rawSpec?.isCost !== false,
+            isPercent: Boolean(_modalState.originalConfig?.rawSpec?.isPercent),
+            isWaterfall: _modalState.activeType === 'waterfall'
+          };
+        }
+
         return {
-          labels: [...(_modalState.originalConfig?.data?.labels || [])],
-          datasets: (_modalState.originalConfig?.data?.datasets || []).map(ds => ({
+          labels: [...origLabels],
+          datasets: origDatasets.map(ds => ({
             ...ds,
             data: Array.isArray(ds.data) ? [...ds.data] : ds.data
           })),
-          value_label: _modalState.originalConfig?.rawSpec?.value_label || 'Cost',
+          value_label: valLabel,
           x_label: _modalState.originalConfig?.rawSpec?.x_label || 'Category',
           isCost: _modalState.originalConfig?.rawSpec?.isCost !== false,
           isPercent: Boolean(_modalState.originalConfig?.rawSpec?.isPercent),
           isWaterfall: _modalState.activeType === 'waterfall'
         };
+      }
+
+      if (currentView.isPivoted) {
+        const rawRows = currentView.rawRows || [];
+        const dateCol = currentView.dateCol;
+        const catDimName = currentView.categoryDimName || 'Category';
+        const catCols = currentView.categoryCols || [];
+        const totalCol = currentView.totalCol;
+        const varianceCol = currentView.varianceCol;
+        const activeX = _modalState.activeXDim || dateCol?.header || 'Date';
+        const activeCat = _modalState.activeCatDim || catDimName;
+        const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
+        const isWaterfall = _modalState.activeType === 'waterfall';
+        const activeMetricId = _modalState.activeMetricId || 'total_spend';
+        const activeMetric = (currentView.availableMetrics || []).find(m => m.id === activeMetricId) || currentView.availableMetrics?.[0] || {
+          id: 'total_spend', name: 'Total Spend', isCost: true, isPercent: false
+        };
+
+        // Filter rows by date filter
+        const selectedDates = _modalState.filters[dateCol?.header] || new Set(dateCol?.distinctVals || []);
+        let filteredRows = rawRows.filter(r => selectedDates.has((r[dateCol?.colIdx || 0] || '').trim()));
+        // Sort chronologically left-to-right for time-series display
+        filteredRows = [...filteredRows].sort((a, b) => String(a[dateCol?.colIdx || 0]).localeCompare(String(b[dateCol?.colIdx || 0])));
+
+        // Filter category columns by category filter
+        const selectedCats = _modalState.filters[catDimName] || new Set(catCols.map(c => c.header));
+        const activeCatCols = catCols.filter(c => selectedCats.has(c.header));
+
+        // PIE / DOUGHNUT
+        if (isPie) {
+          const labels = activeCatCols.map(c => c.header);
+          const sliceValues = activeCatCols.map(c => {
+            const sum = filteredRows.reduce((acc, r) => acc + _parseNumericValue(r[c.colIdx]), 0);
+            return Math.round(sum * 100) / 100;
+          });
+          const colors = labels.map((_, i) => _CHART_PALETTE[i % _CHART_PALETTE.length]);
+          return {
+            labels,
+            datasets: [{
+              label: activeMetric.name,
+              data: sliceValues,
+              backgroundColor: colors,
+              borderColor: _getChartThemeConfig().pieBorderColor,
+              borderWidth: 2
+            }],
+            value_label: activeMetric.name,
+            x_label: catDimName,
+            isCost: activeMetric.isCost,
+            isPercent: false,
+            isWaterfall: false
+          };
+        }
+
+        // WATERFALL
+        if (isWaterfall) {
+          let items = [];
+          if (activeMetric.isMoM && varianceCol) {
+            filteredRows.forEach(r => {
+              items.push({ label: _formatDateLabel(r[dateCol.colIdx]), value: _parseMoMValue(r[varianceCol.colIdx]) });
+            });
+          } else {
+            activeCatCols.forEach(c => {
+              const sum = filteredRows.reduce((acc, r) => acc + _parseNumericValue(r[c.colIdx]), 0);
+              items.push({ label: c.header, value: Math.round(sum * 100) / 100 });
+            });
+            const net = items.reduce((acc, it) => acc + it.value, 0);
+            items.push({ label: 'Net Total', value: Math.round(net * 100) / 100, isTotal: true });
+          }
+          const floatingData = [];
+          const bgColors = [];
+          const borderColors = [];
+          let running = 0;
+          items.forEach((it, idx) => {
+            const num = it.value;
+            if (it.isBase) {
+              floatingData.push([0, num]);
+              running = num;
+              bgColors.push('#0284c7');
+              borderColors.push('#0369a1');
+            } else if (it.isTotal) {
+              floatingData.push([0, num]);
+              bgColors.push('#818cf8');
+              borderColors.push('#6366f1');
+            } else {
+              const start = running;
+              const end = running + num;
+              floatingData.push([Math.min(start, end), Math.max(start, end)]);
+              running = end;
+              if (num >= 0) {
+                bgColors.push('#f87171');
+                borderColors.push('#ef4444');
+              } else {
+                bgColors.push('#4ade80');
+                borderColors.push('#22c55e');
+              }
+            }
+          });
+          return {
+            labels: items.map(it => it.label),
+            rawItems: items,
+            datasets: [{
+              label: activeMetric.name,
+              data: floatingData,
+              backgroundColor: bgColors,
+              borderColor: borderColors,
+              borderWidth: 1,
+              borderRadius: 3
+            }],
+            value_label: activeMetric.name,
+            x_label: activeX,
+            isCost: true,
+            isPercent: false,
+            isWaterfall: true
+          };
+        }
+
+        // BAR / LINE / AREA
+        if (activeX === dateCol?.header) {
+          const labels = filteredRows.map(r => _formatDateLabel(r[dateCol.colIdx]));
+          const isExplicitSingleCol = (activeMetric.colIdx !== undefined && activeMetric.colIdx !== -1 && activeMetric.colIdx !== totalCol?.colIdx && !activeMetric.isMoM) ||
+                                      (activeMetric.id && (activeMetric.id.startsWith('ds_') || activeMetric.id.startsWith('col_')));
+          if (activeCat === 'None' || isExplicitSingleCol) {
+            if (activeMetric.id && activeMetric.id.startsWith('ds_')) {
+              const dsIdx = parseInt(activeMetric.id.replace('ds_', ''), 10);
+              const dsObj = _modalState.originalConfig?.data?.datasets?.[dsIdx];
+              if (dsObj && Array.isArray(dsObj.data)) {
+                return {
+                  labels: [...(_modalState.originalConfig.data.labels || labels)],
+                  datasets: [{ ...dsObj, data: [...dsObj.data] }],
+                  value_label: dsObj.label || activeMetric.name,
+                  x_label: dateCol.header,
+                  isCost: activeMetric.isCost,
+                  isPercent: false,
+                  isWaterfall: false
+                };
+              }
+            }
+            const data = filteredRows.map(r => {
+              if (activeMetric.isMoM && varianceCol) {
+                return _parseMoMValue(r[varianceCol.colIdx]);
+              }
+              if (activeMetric.colIdx !== undefined && activeMetric.colIdx !== -1 && activeMetric.colIdx !== totalCol?.colIdx) {
+                return _parseNumericValue(r[activeMetric.colIdx]);
+              }
+              if (activeCatCols.length < catCols.length) {
+                const sum = activeCatCols.reduce((acc, c) => acc + _parseNumericValue(r[c.colIdx]), 0);
+                return Math.round(sum * 100) / 100;
+              }
+              return totalCol ? _parseNumericValue(r[totalCol.colIdx]) : 0;
+            });
+            return {
+              labels,
+              datasets: [{ label: activeMetric.name, data }],
+              value_label: activeMetric.name,
+              x_label: dateCol.header,
+              isCost: activeMetric.isCost,
+              isPercent: false,
+              isWaterfall: false
+            };
+          } else {
+            // Stacked / multi-line by Category
+            const datasets = activeCatCols.map((col) => {
+              const data = filteredRows.map(r => _parseNumericValue(r[col.colIdx]));
+              const total = data.reduce((a, b) => a + b, 0);
+              return { label: col.header, data, total };
+            }).sort((a, b) => b.total - a.total);
+            return {
+              labels,
+              datasets,
+              value_label: activeMetric.name,
+              x_label: dateCol.header,
+              isCost: activeMetric.isCost,
+              isPercent: false,
+              isWaterfall: false
+            };
+          }
+        } else {
+          // X-Axis is Category dimension
+          const labels = activeCatCols.map(c => c.header);
+          const datasets = [{
+            label: activeMetric.name,
+            data: activeCatCols.map(c => {
+              const sum = filteredRows.reduce((acc, r) => acc + _parseNumericValue(r[c.colIdx]), 0);
+              return Math.round(sum * 100) / 100;
+            })
+          }];
+          return {
+            labels,
+            datasets,
+            value_label: activeMetric.name,
+            x_label: catDimName,
+            isCost: activeMetric.isCost,
+            isPercent: false,
+            isWaterfall: false
+          };
+        }
       }
 
       const rawRows = currentView.rawRows || [];
@@ -9561,10 +10066,19 @@
           const val = getMetricValue(r, null);
           map.set(key, (map.get(key) || 0) + val);
         });
-        const sorted = labels.map(lbl => ({
-          lbl,
-          val: Math.round((map.get(lbl) || 0) * 100) / 100
-        })).sort((a, b) => b.val - a.val);
+        const isTimeX = /date|day|month|time|period/i.test(activeX);
+        let sorted;
+        if (isTimeX) {
+          sorted = labels.map(lbl => ({
+            lbl,
+            val: Math.round((map.get(lbl) || 0) * 100) / 100
+          }));
+        } else {
+          sorted = labels.map(lbl => ({
+            lbl,
+            val: Math.round((map.get(lbl) || 0) * 100) / 100
+          })).sort((a, b) => b.val - a.val);
+        }
 
         return {
           labels: sorted.map(s => s.lbl),

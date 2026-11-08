@@ -353,22 +353,21 @@ def call_mlx_generate(model_id: str, messages: list[dict], max_tokens: int = 614
     dur = max(0.01, time.perf_counter() - t0)
     ans = resp.strip()
 
-    if thinking_enabled:
+    if "</think>" in ans:
+        ans = ans.split("</think>", 1)[1].strip()
+    elif ans.startswith("<think>"):
+        ans = re.sub(r"<think>.*?</think>", "", ans, flags=re.DOTALL).strip()
+    elif thinking_enabled:
         logger.debug(f"[MLX Raw] first 200 chars: {repr(ans[:200])}")
-        if "</think>" in ans:
-            ans = ans.split("</think>", 1)[1].strip()
-        elif ans.startswith("<think>"):
-            ans = re.sub(r"<think>.*?</think>", "", ans, flags=re.DOTALL).strip()
+        salvage = re.search(
+            r'\n(?:Revised (?:Bullet|Answer|Response) \d*:?|Final (?:Answer|Response|Draft):?|Here (?:are|is) the (?:final|revised|clean))',
+            ans, flags=re.IGNORECASE
+        )
+        if salvage:
+            ans = ans[salvage.start():].strip()
+            logger.debug("[MLX Raw] Salvaged final section from truncated thinking block")
         else:
-            salvage = re.search(
-                r'\n(?:Revised (?:Bullet|Answer|Response) \d*:?|Final (?:Answer|Response|Draft):?|Here (?:are|is) the (?:final|revised|clean))',
-                ans, flags=re.IGNORECASE
-            )
-            if salvage:
-                ans = ans[salvage.start():].strip()
-                logger.debug("[MLX Raw] Salvaged final section from truncated thinking block")
-            else:
-                logger.warning("[MLX Raw] </think> tag missing and no salvage marker found")
+            logger.warning("[MLX Raw] </think> tag missing and no salvage marker found")
 
     if stats_out is not None:
         try:

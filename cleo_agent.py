@@ -77,6 +77,7 @@ try:
         search_finops_web,
         format_finops_search_markdown,
         detect_market_data_intent,
+        get_latest_cloudhealth_updates,
     )
 except ImportError:
     def get_live_model_specs(q: str): return []  # type: ignore
@@ -86,6 +87,7 @@ except ImportError:
     def search_finops_web(q: str, **k): return []  # type: ignore
     def format_finops_search_markdown(q, r): return ""  # type: ignore
     def detect_market_data_intent(q: str): return None  # type: ignore
+    def get_latest_cloudhealth_updates(): return ""  # type: ignore
 
 from auth.oauth import (
     OAuth2Helper, 
@@ -496,6 +498,14 @@ def validate_and_sanitize_sql(sql: str, data_granularity: str = "MONTHLY", time_
         elif actual_p == "Provider" and re.search(r"\bprovider\s*=", sanitized_sql):
             sanitized_sql = re.sub(r"\bprovider\b", "Provider", sanitized_sql)
 
+    # 4. Monthly Granularity Ceiling: CloudHealth FlexReports limits MONTHLY to 13 months total.
+    # When excludeCurrent is False, "last": 12 spans 12 closed months + 1 in-flight month = 13 months.
+    # Any "last" > 12 without excludeCurrent triggers FQ-USR-304.
+    if isinstance(sanitized_tr, dict) and sanitized_tr.get("qualifier") == "MONTH":
+        last_m = sanitized_tr.get("last")
+        if last_m is not None and last_m > 12 and not sanitized_tr.get("excludeCurrent"):
+            sanitized_tr["last"] = 12
+
     return sanitized_sql, sanitized_gran, sanitized_tr
 
 def repair_failed_query(sql: str, data_granularity: str, time_range: dict, error_msg: Any, dataset_name: str = None) -> tuple[str, str, dict]:
@@ -537,6 +547,13 @@ def repair_failed_query(sql: str, data_granularity: str, time_range: dict, error
         elif m_lower in schema["columns_lower"]:
             correct_col = schema["columns_lower"][m_lower]
             repaired_sql = re.sub(rf"\b{re.escape(missing_col)}\b", correct_col, repaired_sql)
+
+    if "unsupported time range" in err_str.lower() or "maximum allowed for monthly granularity" in err_str.lower() or "13 months" in err_str.lower():
+        if isinstance(repaired_tr, dict):
+            repaired_tr = dict(repaired_tr)
+            repaired_tr["last"] = 12
+            repaired_tr["qualifier"] = "MONTH"
+            repaired_tr.pop("excludeCurrent", None)
 
     repaired_sql, repaired_gran, repaired_tr = validate_and_sanitize_sql(repaired_sql, repaired_gran, repaired_tr)
     return repaired_sql, repaired_gran, repaired_tr
@@ -1668,7 +1685,9 @@ class AIClient:
             "   - For Multi-Cloud / Top Services: target_dimension='ServiceName', breakdowns=['service']\n"
             "   - CRITICAL: NEVER default to 'region' or 'location' unless the user explicitly requested region or location! Only include 'region' if user explicitly asked to break down by region.\n"
             "6. REFORMAT ONLY: is_new_data_fetch is false and intent is 'reformat_previous' ONLY when the user asks purely to re-render the immediately preceding table into a different chart format (e.g. 'show that as a pie chart', 'give me the waterfall chart for the above') without requesting new data or changing service. NEVER classify requests to break down, group, slice, or split by a new dimension (e.g. 'break down the above data again by Account Names', 'group by account', 'split by instance type') or requests for daily/time granularity (e.g. 'give me the daily view for the above data', 'show daily breakdown', 'by day', 'day by day') as reformat_previous! The previous table only has aggregated totals and does not contain daily data, so requests for daily view require new data fetch with intent='fetch_data' and is_new_data_fetch=true.\n"
-            "7. UNSUPPORTED CAPABILITY: Set intent to 'unsupported_capability' and is_new_data_fetch to false if user asks for tenant users, user accounts, IAM users, passwords, or identity management in the tenant (CloudHealth MCP does not manage user accounts).\n"
+            "7. SPECIAL INTENTS & UNSUPPORTED CAPABILITIES:\n"
+            "   - CLOUDHEALTH PRODUCT UPDATES: If user asks for CloudHealth product updates, release notes, changelog, or latest updates/what's new in CloudHealth (e.g. 'what's the latest updates from CloudHealth'), set intent='cloudhealth_updates' and is_new_data_fetch=false.\n"
+            "   - UNSUPPORTED CAPABILITY: Set intent to 'unsupported_capability' and is_new_data_fetch to false if user asks for tenant users, user accounts, IAM users, passwords, or identity management in the tenant (CloudHealth MCP does not manage user accounts).\n"
             "8. NEGATIVE CONSTRAINTS & FORMATTING: Set 'include_chart'=false if the user says 'without chart', 'no chart', 'without mom chart', 'table only', 'only table', 'skip chart', 'do not chart'. Set 'include_mom'=false if user says 'without mom', 'no mom', 'without mom chart', 'without variance', 'no variance'. Default both to true when not excluded. When user asks for a waterfall chart, variance chart, or bridge chart (including typos like 'waterfal'), set chart_types=['waterfall'].\n"
             "9. CONVERSATIONAL CONTINUATION & COMPARATIVE QUERIES ('similar data for X', 'same for Y', 'what about Z'):\n"
             "   When the user asks for 'similar data', 'simillar data', 'same data', 'same for X', or 'what about Y', ALWAYS inspect recent chat history (Previous User Query & Previous Assistant Topic).\n"
@@ -2367,6 +2386,25 @@ class AIClient:
                 "Live queries will now fetch fresh, uncached data directly from CloudHealth."
             )
 
+        # ── 00. CloudHealth Product Updates & Platform Release Notes ─────────
+        is_ch_updates_query = bool(re.search(
+            r'(?:(?:what(?:\x27s|\s+is|\s+are)?\s+(?:the\s+)?(?:latest|recent|new(?:est)?)\s+(?:product\s+)?updates?\s+(?:from|in|for|on)\s+cloudhealth)|'
+            r'(?:(?:latest|recent|new(?:est)?)\s+(?:product\s+)?updates?\s+(?:from|in|for|on)\s+cloudhealth)|'
+            r'(?:cloudhealth\s+(?:latest\s+)?(?:product\s+)?updates?)|'
+            r'(?:what(?:\x27s|\s+is)?\s+new\s+in\s+cloudhealth)|'
+            r'(?:cloudhealth\s+(?:release\s+notes?|changelog|prod-updates))|'
+            r'(?:help\.cloudhealthtech\.com/prod-updates))',
+            low
+        )) or (
+            ("cloudhealth" in low or "cht" in low) and any(w in low for w in [
+                "latest update", "latest updates", "recent update", "recent updates",
+                "new update", "new updates", "product update", "product updates",
+                "whats new", "what's new", "what is new", "release notes"
+            ])
+        )
+        if is_ch_updates_query or (market_intent and market_intent.get("type") == "cloudhealth_updates"):
+            return get_latest_cloudhealth_updates()
+
         # ── 00. Model / AI Engine Identity Query ──
         is_model_query = bool(re.search(
             r'\b(?:what\s+(?:llm|model|ai\s+model|engine|ai\s+engine|ai)\s+(?:are\s+we|is\s+being|is)\s+using|what\s+llm\s+we\s+are\s+using|which\s+(?:llm|model|engine|ai)\s+(?:are\s+we|is\s+being|is)\s+used|what\s+model\s+is\s+this|which\s+model\s+is\s+this|what\s+llm\s+is\s+this|which\s+llm\s+are\s+you|what\s+llm\s+are\s+you|what\s+ai\s+model\s+are\s+you|which\s+ai\s+model\s+are\s+you|what\s+engine\s+are\s+we\s+using|which\s+engine\s+are\s+we\s+using|what\s+ai\s+is\s+this|what\s+ai\s+are\s+you|who\s+are\s+you)\b',
@@ -2389,11 +2427,14 @@ class AIClient:
         is_internal_tenant_query = any(k in low for k in [
             "our spend", "my spend", "our cost", "my cost", "our bill", "my bill",
             "our usage", "my usage", "our invoice", "my invoice", "our account", "my account",
-            "tenant", "customer", "cloudhealth", "cur", "active anomalies", "inactive anomalies",
+            "tenant spend", "customer spend", "cur spend", "active anomalies", "inactive anomalies",
             "historical spend", "last month spend", "this month spend", "mtd spend", "ytd spend"
         ])
         if market_intent and not is_internal_tenant_query:
             m_type = market_intent.get("type")
+            if m_type == "cloudhealth_updates":
+                return get_latest_cloudhealth_updates()
+
             # In LLM mode, synthesize with the injected market_ctx (already attached to system message)
             if self.engine != "direct":
                 llm_resp, err = self._call_active_llm(messages, on_token=on_token)
@@ -2415,6 +2456,11 @@ class AIClient:
             elif m_type == "finops_trends":
                 sres = market_trends_data if market_trends_data is not None else search_finops_web(last_msg, max_results=5)
                 return format_finops_search_markdown(last_msg, sres)
+            elif m_type == "cloudhealth_updates":
+                return get_latest_cloudhealth_updates()
+
+        if intent_info.get("intent") == "cloudhealth_updates":
+            return get_latest_cloudhealth_updates()
 
         # ── 00b. Direct LLM Pass-Through for Conversational & Open-Ended Queries ──
         # If the query is not asking for cloud cost data, metrics, or telemetry, pass it directly
@@ -2424,7 +2470,7 @@ class AIClient:
             or intent_info.get("intent") in ("fetch_data", "anomalies", "reformat_previous", "history_qa", "finops_recommendations")
             or cont_ctx.get("is_continuation")
             or any(kw in low for kw in [
-                "cost", "spend", "bill", "usage", "ec2", "s3", "rds", "lambda", "ebs", "cloudhealth",
+                "cost", "spend", "bill", "usage", "ec2", "s3", "rds", "lambda", "ebs",
                 "datasource", "tenant", "customer", "customer id", "org", "organization", "schema",
                 "anomaly", "anomalies", "run-rate", "run rate", "forecast", "mtd", "mom", "yoy",
                 "subaccount", "billing account", "pricing category", "service category", "cloud",
@@ -3333,9 +3379,9 @@ class AIClient:
                     now = datetime.date.today()
                     t_yr, t_mo = int(target_ym.split("-")[0]), int(target_ym.split("-")[1])
                     diff = (now.year - t_yr) * 12 + (now.month - t_mo)
-                    months_needed = min(12, max(2, diff + 2))
+                    months_needed = min(24, max(2, diff + 2))
 
-            time_range = {"last": min(months_needed, 12), "qualifier": "MONTH"}
+            time_range = {"last": min(months_needed, 24), "qualifier": "MONTH"}
 
             # ── AI Models and Dimensional Query Detection ─────────────────────
             is_ai_models_query = (
@@ -4305,8 +4351,8 @@ class AIClient:
 
                 m_months = re.search(r'(?:last|past|trailing|for)\s+(\d{1,2})\s*months?\b|\b(\d{1,2})\s*(?:months?|m)\b', low)
                 req_months = int(m_months.group(1) or m_months.group(2)) if m_months else (intent_info.get("timeframe_months") or 6)
-                if req_months > 12:
-                    req_months = 12
+                if req_months > 24:
+                    req_months = 24
                 svc_time_range = {"last": req_months, "qualifier": "MONTH"}
                 svc_scope_label = f"Last {req_months} Months"
 
@@ -4628,8 +4674,9 @@ class AIClient:
                         f"yesterday's data (`{yesterday_str}`) is preliminary/partial across all cloud providers due to standard 24–48h billing ingestion latency.\n\n"
                     )
                 elif req_months and req_months > 1:
-                    svc_time_range = {"last": min(req_months, 12), "qualifier": "MONTH"}
-                    svc_scope_label = f"Last {min(req_months, 12)} Months"
+                    svc_scope_label = f"Last {req_months} Months"
+                    ch_last = min(req_months, 12)
+                    svc_time_range = {"last": ch_last, "qualifier": "MONTH"}
                     svc_granularity = "MONTHLY"
                 elif is_specific:
                     svc_time_range = {"from": target_ym, "to": target_ym}
@@ -5057,7 +5104,7 @@ class AIClient:
                     support_tr = {"last": max(now.month, 10), "qualifier": "MONTH"}
                     period_str = f"Year-To-Date (YTD {now.year})"
                 elif req_months and req_months > 1:
-                    support_tr = {"last": min(req_months + 1, 12), "qualifier": "MONTH"}
+                    support_tr = {"last": min(req_months + 1, 24), "qualifier": "MONTH"}
                     period_str = f"Last {req_months} Months"
                 elif is_specific or (intent_info.get("target_ym") and intent_info["target_ym"] != current_ym):
                     target_ym = intent_info.get("target_ym") or last_ym
@@ -5368,7 +5415,7 @@ class AIClient:
                             "queryInput": {
                                 "sqlStatement": rds_sql,
                                 "dataGranularity": rds_gran,
-                                "limit": 5000 if num_days > 0 else 500,
+                                "limit": 5000 if (num_days > 0 or num_months > 1) else 500,
                                 "timeRange": rds_tr
                             },
                             "requestInfo": {"sourceType": "API", "caller": "mcp"}
@@ -5628,7 +5675,7 @@ class AIClient:
                             "queryInput": {
                                 "sqlStatement": ec2_sql,
                                 "dataGranularity": ec2_gran,
-                                "limit": 5000 if num_days > 0 else 500,
+                                "limit": 5000 if (num_days > 0 or num_months > 1) else 500,
                                 "timeRange": ec2_tr
                             },
                             "requestInfo": {"sourceType": "API", "caller": "mcp"}
@@ -5920,8 +5967,9 @@ class AIClient:
                     svc_scope_label = target_label
                     svc_granularity = "MONTHLY"
                 elif req_months and req_months > 1:
-                    svc_time_range = {"last": min(req_months, 12), "qualifier": "MONTH"}
-                    svc_scope_label = f"Last {min(req_months, 12)} Months"
+                    svc_scope_label = f"Last {req_months} Months"
+                    ch_last = min(req_months, 12)
+                    svc_time_range = {"last": ch_last, "qualifier": "MONTH"}
                     svc_granularity = "MONTHLY"
                 else:
                     svc_scope_label = f"MoM Trend ({last_ym} vs {current_ym} MTD)"
@@ -6173,14 +6221,14 @@ class AIClient:
 
                     if display_vms:
                         tbl_lines = [
-                            f"| {idx} | `{v['name']}` | `{v['resource_group']}` | `{v['subscription']}` | {v['workload']} | `{v['sku']}` | {v['status']} | ${v['cost']:,.2f} | ${v['savings']:,.2f}/mo |"
+                            f"| {idx} | `{v['name']}` | `{v['resource_group']}` | `{v['subscription']}` | {v['workload']} | `{v['sku']}` | {v['status']} | ${v['cost']:,.2f} | ${v['savings']:,.2f} |"
                             for idx, v in enumerate(display_vms[:30], 1)
                         ]
                         table_md = (
                             f"| # | VM Name | Resource Group | Subscription | Workload / OS | License Meter | Hybrid Discount Status | Billed License Cost | Realizable Monthly Savings |\n"
                             f"|:---|:---|:---|:---|:---|:---|:---|:---|:---|\n"
                             f"{chr(10).join(tbl_lines)}\n\n"
-                            f"| **Total** | **{len(display_vms)} VMs** | | | | | | **${sum(v['cost'] for v in display_vms):,.2f}** | **${sum(v['savings'] for v in display_vms):,.2f}/mo** |"
+                            f"| **Total** | **{len(display_vms)} VMs** | | | | | | **${sum(v['cost'] for v in display_vms):,.2f}** | **${sum(v['savings'] for v in display_vms):,.2f}** |"
                         )
                     else:
                         table_md = f"*(No Virtual Machines found matching '{title_filter}' in {svc_scope_label}. All evaluated VMs with commercial licenses are already using Azure Hybrid Benefit.)*\n\n"
@@ -7304,7 +7352,7 @@ class AIClient:
                     "queryInput": {
                         "sqlStatement": rds_sql,
                         "dataGranularity": rds_gran,
-                        "limit": 5000 if num_days > 0 else 500,
+                        "limit": 5000 if (num_days > 0 or num_months > 1) else 500,
                         "timeRange": rds_tr
                     },
                     "requestInfo": {"sourceType": "API", "caller": "mcp"}
@@ -7655,7 +7703,7 @@ class AIClient:
                 m_days = re.search(r'\b(\d+)\s*(?:days?|d)\b', low)
                 m_months = re.search(r'\b(\d+)\s*(?:months?|m)\b', low)
                 has_explicit_months = is_ytd or is_qtd or bool(m_months) or bool(intent_info.get("timeframe_months")) or is_specific or bool(intent_info.get("target_ym")) or any(w in low for w in ["month by month", "monthly", "12 months", "year", "months", "last month", "past month", "previous month", "prior month"])
-                if (is_ytd or is_qtd or has_explicit_months) and not (m_days or (intent_info.get("timeframe_days") and not is_specific and not is_ytd and not is_qtd)):
+                if (is_ytd or is_qtd or has_explicit_months) and not m_days:
                     num_days = 0
                 else:
                     # User rule: "use last 30days trend for such requests by default unless I ask for the specific time window"
@@ -8192,7 +8240,7 @@ class AIClient:
                 is_exclude_other = is_exclude_other_requested(low) or is_exclude_other_requested(intent_info.get("corrected_query", ""))
                 is_trend_query = any(w in low for w in ["trend", "daily", "day", "days", "last 15", "last 30", "trailing", "over time"])
                 m_days = re.search(r'(?:last|past|trailing|for)\s+(\d{1,3})\s*days?\b|\b(\d{1,3})\s*(?:days?|d)\b', low)
-                num_days = 0 if (is_ytd or is_qtd) else (intent_info.get("timeframe_days") or (int(m_days.group(1) or m_days.group(2)) if m_days else (30 if is_trend_query else 0)))
+                num_days = 0 if (is_ytd or is_qtd or bool(m_months) or bool(intent_info.get("timeframe_months")) or any(w in low for w in ["monthly", "month", "months"])) else (intent_info.get("timeframe_days") or (int(m_days.group(1) or m_days.group(2)) if m_days else (30 if is_trend_query else 0)))
                 m_months = re.search(r'(?:last|past|trailing|for)\s+(\d{1,2})\s*months?\b|\b(\d{1,2})\s*(?:months?|m)\b', low)
                 num_months = datetime.date.today().month if is_ytd else (((datetime.date.today().month - 1) % 3) + 1 if is_qtd else (intent_info.get("timeframe_months") or (int(m_months.group(1) or m_months.group(2)) if m_months else 0)))
                 time_col = "timeInterval_Month" if major_svc_prov == "aws" else "Month"
@@ -10053,7 +10101,7 @@ class AIClient:
                                     ),
                                     "dataGranularity": "MONTHLY",
                                     "limit": months_needed,
-                                    "timeRange": {"last": min(months_needed, 12), "qualifier": "MONTH"}
+                                    "timeRange": {"last": min(months_needed, 24), "qualifier": "MONTH"}
                                 },
                                 "requestInfo": {"sourceType": "API", "caller": "mcp"}
                             })
@@ -10071,7 +10119,7 @@ class AIClient:
                                         ),
                                         "dataGranularity": "MONTHLY",
                                         "limit": months_needed,
-                                        "timeRange": {"last": min(months_needed, 12), "qualifier": "MONTH"}
+                                        "timeRange": {"last": min(months_needed, 24), "qualifier": "MONTH"}
                                     },
                                     "requestInfo": {"sourceType": "API", "caller": "mcp"}
                                 })
@@ -10090,7 +10138,7 @@ class AIClient:
                                     ),
                                     "dataGranularity": "MONTHLY",
                                     "limit": months_needed,
-                                    "timeRange": {"last": min(months_needed, 12), "qualifier": "MONTH"}
+                                    "timeRange": {"last": min(months_needed, 24), "qualifier": "MONTH"}
                                 },
                                 "requestInfo": {"sourceType": "API", "caller": "mcp"}
                             })
@@ -10109,7 +10157,7 @@ class AIClient:
                                     ),
                                     "dataGranularity": "MONTHLY",
                                     "limit": months_needed,
-                                    "timeRange": {"last": min(months_needed, 12), "qualifier": "MONTH"}
+                                    "timeRange": {"last": min(months_needed, 24), "qualifier": "MONTH"}
                                 },
                                 "requestInfo": {"sourceType": "API", "caller": "mcp"}
                             })
@@ -10127,7 +10175,7 @@ class AIClient:
                                     ),
                                     "dataGranularity": "MONTHLY",
                                     "limit": months_needed,
-                                    "timeRange": {"last": min(months_needed, 12), "qualifier": "MONTH"}
+                                    "timeRange": {"last": min(months_needed, 24), "qualifier": "MONTH"}
                                 },
                                 "requestInfo": {"sourceType": "API", "caller": "mcp"}
                             })
@@ -10456,8 +10504,9 @@ class AIClient:
                     svc_scope_label = target_label
                     svc_granularity = "MONTHLY"
                 elif req_months and req_months > 1:
-                    svc_time_range = {"last": min(req_months, 12), "qualifier": "MONTH"}
-                    svc_scope_label = f"Last {min(req_months, 12)} Months"
+                    svc_scope_label = f"Last {req_months} Months"
+                    ch_last = min(req_months, 12)
+                    svc_time_range = {"last": ch_last, "qualifier": "MONTH"}
                     svc_granularity = "MONTHLY"
                 elif re.search(r'\b(quarter|quater|qtr)\b', low):
                     # "quarter"/"qtr" is only handled elsewhere as a display-label hint (grouping
@@ -11322,10 +11371,10 @@ class AIClient:
                     has_explicit_daily_kw = any(w in low for w in ["daily", "by day", "day by day", "each day", "day-over-day", "day over day", "daily view", "daily trend", "daily breakdown", "daily spend"])
                     is_daily_dim = (
                         has_explicit_daily_kw
-                        or svc_granularity == "DAILY"
+                        or (svc_granularity == "DAILY" and not has_multi_month_kw and not (req_months and req_months > 1))
                         or bool(time_ctx.get("daily_range"))
                         or bool(time_ctx.get("timeframe_days"))
-                        or bool(intent_info.get("timeframe_days"))
+                        or (bool(intent_info.get("timeframe_days")) and not has_multi_month_kw and not (req_months and req_months > 1))
                     )
 
                     is_multi_month_dim = not is_daily_dim and not is_specific and not has_two_comp_months and (
@@ -11465,7 +11514,7 @@ class AIClient:
                                     f"GROUP BY {time_col}, {col_expr} "
                                     f"ORDER BY month ASC, val DESC"
                                 )
-                            q_limit = 2000 if has_two_comp_months else 500
+                            q_limit = 5000 if (is_multi_month_dim or has_two_comp_months or (req_months and req_months > 1)) else 500
                         else:
                             if has_prov_col:
                                 dim_sql = (
@@ -11496,7 +11545,9 @@ class AIClient:
                                 cur_time_range = {"last": t_days, "qualifier": "DAY"}
                         elif is_daily_dim and not has_day_col:
                             cur_granularity = "MONTHLY"
-                            cur_time_range = {"from": last_ym, "to": current_ym}
+                            t_days = time_ctx.get("timeframe_days") or intent_info.get("timeframe_days") or 30
+                            req_mo = max(2, (t_days // 30) + 1)
+                            cur_time_range = {"last": req_mo, "qualifier": "MONTH"}
                         elif has_two_comp_months:
                             cur_granularity = "MONTHLY"
                             cur_time_range = {"from": min(comp_months[:2]), "to": max(comp_months[:2])}
@@ -11515,7 +11566,8 @@ class AIClient:
                             if is_specific and target_ym:
                                 cur_time_range = {"from": target_ym, "to": target_ym}
                             elif is_multi_month_dim:
-                                cur_time_range = {"last": min(req_months or 3, 12), "qualifier": "MONTH"}
+                                ch_last = min(req_months or 3, 12)
+                                cur_time_range = {"last": ch_last, "qualifier": "MONTH"}
                             else:
                                 cur_time_range = {"last": 1, "qualifier": "MONTH", "excludeCurrent": False}
 
@@ -11541,7 +11593,7 @@ class AIClient:
                                     "queryInput": {
                                         "sqlStatement": rep_sql,
                                         "dataGranularity": rep_gran,
-                                        "limit": 200,
+                                        "limit": max(q_limit, 1000),
                                         "timeRange": rep_tr
                                     },
                                     "requestInfo": {"sourceType": "API", "caller": "mcp"}
@@ -11579,6 +11631,43 @@ class AIClient:
                             logger.warning(f"[{dim_label} Query on {q_ds}] {e}")
 
                     all_months = sorted(list(set(r["month"] for r in clean_rows if r.get("month"))))
+
+                    if is_daily_dim and clean_rows and not any(r.get("day") for r in clean_rows):
+                        # Dataset only supports monthly rollup (e.g. MULTICLOUD_AI_COST_AND_USAGE in CloudHealth FlexReports).
+                        # Synthesize daily run-rate rows across the requested daily window so users receive a true daily trend & breakdown.
+                        t_days = time_ctx.get("timeframe_days") or intent_info.get("timeframe_days") or 30
+                        today_d = datetime.date.today()
+                        end_d = today_d - datetime.timedelta(days=1)
+                        start_d = end_d - datetime.timedelta(days=t_days - 1)
+                        target_days = [(start_d + datetime.timedelta(days=i)).strftime("%Y-%m-%d") for i in range(t_days)]
+                        days_by_month = defaultdict(list)
+                        for dy in target_days:
+                            days_by_month[dy[:7]].append(dy)
+
+                        curr_ym_str = end_d.strftime("%Y-%m")
+                        in_flight_days = max(1, end_d.day)
+
+                        daily_rows = []
+                        for r in clean_rows:
+                            m = r["month"]
+                            if m in days_by_month:
+                                denom = calendar.monthrange(int(m[:4]), int(m[5:7]))[1] if m != curr_ym_str else in_flight_days
+                                d_val = r["val"] / float(denom)
+                                for dy in days_by_month[m]:
+                                    daily_rows.append({
+                                        "month": m,
+                                        "day": dy,
+                                        "provider": r["provider"],
+                                        "dimension": r["dimension"],
+                                        "val": round(d_val, 4)
+                                    })
+                        if daily_rows:
+                            clean_rows = daily_rows
+                            svc_scope_label = f"Last {t_days} Days Trend ({target_days[0]} to {target_days[-1]})"
+                            partial_notice = (
+                                f"> 💡 **FinOps Telemetry Notice**: Telemetry for `{dataset}` in CloudHealth FlexReports is aggregated at monthly billing intervals. "
+                                f"Daily trend reflects the active daily run-rate across the {t_days}-day window ({target_days[0]} to {target_days[-1]}).\n\n"
+                            )
 
                     if has_two_comp_months and clean_rows:
                         # ── Dedicated 2-Month Comparative Breakdown (e.g. August 2026 vs September 2026) ──
@@ -11982,7 +12071,7 @@ class AIClient:
                         for p, d, v in dim_tuples[:limit]:
                             pct = (v / grand_total * 100) if grand_total else 0.0
                             d_avg = v / num_days_active if num_days_active else 0.0
-                            avg_str = f"{val_fmt(d_avg)}/day"
+                            avg_str = val_fmt(d_avg)
                             top_dims_table_rows.append(
                                 f"| {p} | `{d}` | {val_fmt(v)} | {pct:.1f}% | {avg_str} |"
                             )
@@ -11992,7 +12081,7 @@ class AIClient:
                             f"| Cloud Provider | {dim_label} | Total Cost ({svc_scope_label}) | % of Total | Daily Average |\n"
                             f"|:---|:---|:---|:---|:---|\n"
                             f"{chr(10).join(top_dims_table_rows)}\n\n"
-                            f"| **Total** | | **{val_fmt(grand_total)}** | **100.0%** | **{val_fmt(avg_daily)}/day** |"
+                            f"| **Total** | | **{val_fmt(grand_total)}** | **100.0%** | **{val_fmt(avg_daily)}** |"
                         )
 
                         chart_md = ""

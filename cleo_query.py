@@ -1835,19 +1835,19 @@ def parse_query_time_context(query: str, context_ym: str = None) -> dict:
         prev_yr = now.year if now.month > 1 else (now.year - 1)
         target_label = f"Last Month ({FULL_NAMES[prev_m]} {prev_yr})"
 
-    # Calculate months needed for CloudHealth timeRange (cap at 12 to respect CloudHealth 13-month limit)
+    # Calculate months needed for CloudHealth timeRange (cap at 24 to respect CloudHealth FlexReports limit)
     t_yr, t_mo = int(target_ym.split("-")[0]), int(target_ym.split("-")[1])
     diff = (now.year - t_yr) * 12 + (now.month - t_mo)
-    months_needed = now.month if is_ytd else (((now.month - 1) % 3) + 1 if is_qtd else min(12, max(2, diff + 2)))
+    months_needed = now.month if is_ytd else (((now.month - 1) % 3) + 1 if is_qtd else min(24, max(2, diff + 2)))
 
-    # Check for requested duration count e.g. "last 6 months", "past 3 months"
-    m_count = re.search(r'(?:last|past|previous|for)\s+(\d{1,2})\s*months?\b|\b([1-9]|[1-4]\d)\s+months\b', low)
+    # Check for requested duration count e.g. "last 6 months", "past 3 months", "last 13 months"
+    m_count = re.search(r'(?:last|past|previous|for)\s*(\d{1,2})\s*months?\b|\b([1-9]|[1-4]\d)\s+months\b', low)
     timeframe_months = now.month if is_ytd else (((now.month - 1) % 3) + 1 if is_qtd else None)
     if m_count:
         try:
             req_cnt = int(m_count.group(1) or m_count.group(2))
             timeframe_months = req_cnt
-            months_needed = min(12, max(months_needed, req_cnt))
+            months_needed = min(24, max(months_needed, req_cnt))
             target_label = f"Last {req_cnt} Months"
             is_specific = False
         except (ValueError, TypeError):
@@ -1943,7 +1943,8 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         r'|\b(?:break\s*down|breakdown|split|group)\s+(?:the\s+)?(?:above|previous|prior)?\s*(?:data|results?|numbers?|spend|cost)?\s*(?:again\s+)?by\b',
         low
     )) or is_exclude_other_requested(low) or any(t in low for t in [
-        "from the above", "above data", "above result", "the above data", "the above result", "previous data", "previous result"
+        "from the above", "above data", "above result", "the above data", "the above result", "previous data", "previous result",
+        "for the same", "for same", "of the same", "of same", "for above", "for the above"
     ])
 
     words = low.split()
@@ -2074,6 +2075,17 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
     inherited_timeframe_days = None
     inherited_dim = None
     inherited_target_ym = None
+
+    # Check if current turn explicitly specifies a timeframe (takes precedence over prior turn)
+    m_cur_months = re.search(r'(?:last|past|trailing|previous|for)\s*(\d{1,2})\s*months?\b|\b(\d{1,2})\s*months?\b', low)
+    m_cur_days = re.search(r'(?:last|past|trailing|previous|for)\s*(\d{1,3})\s*days?\b|\b(\d{1,3})\s*days?\b', low)
+    is_cur_daily = any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily", "show daily", "daily spend"])
+    is_cur_monthly = any(w in low for w in ["monthly", "month over month", "month by month", "by month", "each month", "monthly spend", "monthly trend"])
+
+    if m_cur_months:
+        inherited_timeframe_months = int(m_cur_months.group(1) or m_cur_months.group(2))
+    elif m_cur_days or is_cur_daily:
+        inherited_timeframe_days = int(m_cur_days.group(1) or m_cur_days.group(2)) if m_cur_days else 30
     for prev_u in reversed(prior_user_msgs):
         u_tctx = parse_query_time_context(prev_u)
         if u_tctx.get("target_ym") and u_tctx.get("is_specific"):
@@ -2118,8 +2130,9 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         any(w in last_user_low for w in ["monthly trend", "month-over-month", "monthly cost", "monthly spend", "waterfall"])
     ):
         prior_type = "monthly_trend"
-        m_m = re.search(r'last\s*(\d{1,2})\s*months?', last_asst_head + " " + last_user_low)
-        inherited_timeframe_months = int(m_m.group(1)) if m_m else 6
+        if not inherited_timeframe_months and not inherited_timeframe_days:
+            m_m = re.search(r'last\s*(\d{1,2})\s*months?', last_asst_head + " " + last_user_low)
+            inherited_timeframe_months = int(m_m.group(1)) if m_m else 6
 
     # Check for Cost Anomalies:
     elif (
@@ -2168,7 +2181,7 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         elif "quarter-to-date" in last_asst_body or "(qtd" in last_asst_body or "qtd" in last_user_low:
             inherited_is_qtd = True
             inherited_timeframe_months = ((datetime.date.today().month - 1) % 3) + 1
-        else:
+        elif not inherited_timeframe_months and not inherited_timeframe_days:
             m_m = re.search(r'last\s*(\d{1,2})\s*months?', last_asst_body + " " + last_user_low)
             if m_m:
                 inherited_timeframe_months = int(m_m.group(1))
@@ -2202,11 +2215,12 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
     ):
         prior_type = "ai_model_breakdown"
         inherited_dim = "model"
-        m_d = re.search(r'last\s*(\d{1,3})\s*days?', low + " " + last_asst_head + " " + last_user_low)
-        if m_d:
-            inherited_timeframe_days = int(m_d.group(1))
-        m_m = re.search(r'last\s*(\d{1,2})\s*months?', last_asst_head + " " + last_user_low)
-        inherited_timeframe_months = int(m_m.group(1)) if m_m else 6
+        if not inherited_timeframe_months and not inherited_timeframe_days:
+            m_d = re.search(r'last\s*(\d{1,3})\s*days?', last_asst_head + " " + last_user_low)
+            if m_d:
+                inherited_timeframe_days = int(m_d.group(1))
+            m_m = re.search(r'last\s*(\d{1,2})\s*months?', last_asst_head + " " + last_user_low)
+            inherited_timeframe_months = int(m_m.group(1)) if m_m else 6
 
     # Check for Top Services:
     elif (
@@ -2245,7 +2259,7 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         elif "quarter-to-date" in last_asst_body or "(qtd" in last_asst_body or "qtd" in last_user_low:
             inherited_is_qtd = True
             inherited_timeframe_months = ((datetime.date.today().month - 1) % 3) + 1
-        else:
+        elif not inherited_timeframe_months and not inherited_timeframe_days:
             m_m = re.search(r'last\s*(\d{1,2})\s*months?', last_asst_body + " " + last_user_low)
             if m_m:
                 inherited_timeframe_months = int(m_m.group(1))
@@ -2270,7 +2284,8 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         yr_label = inherited_period_title or f"FY {inherited_target_year or 2027}"
         expanded_query = f"give me the forecast for {prov_disp} cost for {yr_label} and break it down monthly"
     elif prior_type == "monthly_trend":
-        expanded_query = f"give me the monthly spend trend and breakdown for {prov_disp} for the last {inherited_timeframe_months or 6} months"
+        mo_cnt = int(m_cur_months.group(1) or m_cur_months.group(2)) if m_cur_months else (inherited_timeframe_months or 6)
+        expanded_query = f"give me the monthly spend trend and breakdown for {prov_disp} for the last {mo_cnt} months"
     elif prior_type == "anomalies":
         status_word = "inactive " if ("inactive" in low or "inactive" in last_user_low) else ""
         thresh_phrase = ""
@@ -2286,24 +2301,48 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         else:
             expanded_query = f"show top {status_word}cost anomalies detected for {prov_disp}{thresh_phrase}".strip()
     elif prior_type == "region_breakdown":
-        expanded_query = f"show {prov_disp} spend breakdown by region"
+        if m_cur_months or is_cur_monthly:
+            mo_val = int(m_cur_months.group(1) or m_cur_months.group(2)) if m_cur_months else (inherited_timeframe_months or 6)
+            time_phrase = f" for the last {mo_val} months"
+        elif m_cur_days or is_cur_daily:
+            d_val = int(m_cur_days.group(1) or m_cur_days.group(2)) if m_cur_days else 30
+            time_phrase = f" daily for the last {d_val} days"
+        else:
+            time_phrase = ""
+        expanded_query = f"show {prov_disp} spend breakdown by region{time_phrase}".strip()
     elif prior_type == "service_breakdown":
-        is_daily_req = any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily", "show daily"])
+        is_daily_req = any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily", "show daily"]) or bool(m_cur_days) or is_cur_daily
         dim_phrase = f" by {inherited_dim.replace('_', ' ')}" if ('inherited_dim' in locals() and inherited_dim) else ""
-        daily_phrase = f" daily for the last {inherited_timeframe_days or 30} days" if is_daily_req else ""
-        expanded_query = f"show {prov_disp} spend breakdown{dim_phrase}{daily_phrase}".strip()
+        if m_cur_months or is_cur_monthly:
+            mo_val = int(m_cur_months.group(1) or m_cur_months.group(2)) if m_cur_months else (inherited_timeframe_months or 6)
+            time_phrase = f" for the last {mo_val} months"
+        elif is_daily_req:
+            d_val = int(m_cur_days.group(1) or m_cur_days.group(2)) if m_cur_days else (inherited_timeframe_days or 30)
+            time_phrase = f" daily for the last {d_val} days"
+        elif inherited_timeframe_months:
+            time_phrase = f" for the last {inherited_timeframe_months} months"
+        else:
+            time_phrase = ""
+        expanded_query = f"show {prov_disp} spend breakdown{dim_phrase}{time_phrase}".strip()
     elif prior_type == "coverage_breakdown":
         acc_phrase = " by account names" if any(w in low for w in ["account", "accounts", "subaccount", "subaccounts", "account name", "account names"]) else ""
         expanded_query = f"give me the {new_svc_disp or 'compute'} coverage type and commitment breakdown{acc_phrase}".strip()
     elif prior_type == "ai_model_breakdown":
-        is_daily_req = any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily", "show daily"])
-        if is_daily_req or ('inherited_timeframe_days' in locals() and inherited_timeframe_days):
-            t_d = inherited_timeframe_days if ('inherited_timeframe_days' in locals() and inherited_timeframe_days) else 7
-            expanded_query = f"give me the multi-cloud spend by ai model daily for the last {t_d} days"
-        else:
+        if inherited_timeframe_months or (not is_cur_daily and not ('inherited_timeframe_days' in locals() and inherited_timeframe_days)):
             expanded_query = f"give me the multi-cloud spend by ai model for the last {inherited_timeframe_months or 6} months"
+        else:
+            t_d = inherited_timeframe_days if ('inherited_timeframe_days' in locals() and inherited_timeframe_days) else 30
+            expanded_query = f"give me the multi-cloud spend by ai model daily for the last {t_d} days"
     elif prior_type == "top_services":
-        expanded_query = f"show top services by spend for {prov_disp}"
+        if m_cur_months or is_cur_monthly:
+            mo_val = int(m_cur_months.group(1) or m_cur_months.group(2)) if m_cur_months else (inherited_timeframe_months or 6)
+            time_phrase = f" for the last {mo_val} months"
+        elif m_cur_days or is_cur_daily:
+            d_val = int(m_cur_days.group(1) or m_cur_days.group(2)) if m_cur_days else 30
+            time_phrase = f" daily for the last {d_val} days"
+        else:
+            time_phrase = ""
+        expanded_query = f"show top services by spend for {prov_disp}{time_phrase}".strip()
     elif prior_type == "customer_spend":
         expanded_query = f"show spend breakdown for customer {new_customer or 'target'}"
     elif prior_type == "multi_service":
@@ -2323,13 +2362,16 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
             new_svc = inherited_service
             new_svc_disp = inherited_service_disp
 
-    ret_days = inherited_timeframe_days if 'inherited_timeframe_days' in locals() and inherited_timeframe_days else None
-    if not ret_days:
-        m_day_req = re.search(r'last\s*(\d{1,3})\s*days?', low)
-        if m_day_req:
-            ret_days = int(m_day_req.group(1))
-        elif any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily"]):
-            ret_days = 30
+    if inherited_timeframe_months and not (m_cur_days or is_cur_daily):
+        ret_days = None
+    else:
+        ret_days = inherited_timeframe_days if 'inherited_timeframe_days' in locals() and inherited_timeframe_days else None
+        if not ret_days:
+            m_day_req = re.search(r'last\s*(\d{1,3})\s*days?', low)
+            if m_day_req:
+                ret_days = int(m_day_req.group(1))
+            elif any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily"]):
+                ret_days = 30
 
     return {
         "is_continuation": True,

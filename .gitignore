@@ -16,6 +16,7 @@ secrets/
 .cleo/
 graphify-out/
 *.log
+*.db
 sessions.json
 config.json
 oauth_pending_verifiers.json

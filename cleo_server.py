@@ -2644,6 +2644,8 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     history: Optional[list[dict]] = Field(None, max_length=100)  # bounded: each turn is replayed to the LLM
     stream: Optional[bool] = False
+    save_history: Optional[bool] = True
+    ephemeral: Optional[bool] = False
 
 class ToolCallLog(BaseModel):
     tool: str
@@ -2753,11 +2755,19 @@ def chat(req: ChatRequest, request: Request):
     if _mcp:
         _mcp._use_fallback = False
 
+    is_ephemeral = bool(
+        req.save_history is False
+        or req.ephemeral
+        or request.headers.get("x-cleo-ephemeral") == "true"
+        or request.headers.get("x-cleo-test") == "true"
+        or (req.session_id and str(req.session_id).lower().startswith(("test-", "test_", "probe-")))
+    )
+
     # Session continuity (like Gemini):
     # If session_id is omitted, empty, or "active", continue the most recent ongoing session.
     # Only spawn a new session if "new" is explicitly requested or if no session exists yet.
     session_id = req.session_id
-    if session_id in (None, "", "active", "current"):
+    if not is_ephemeral and session_id in (None, "", "active", "current"):
         session_id = _get_active_session_id()
     if not session_id or session_id == "new" or not _is_valid_guid(session_id):
         session_id = str(uuid.uuid4())
@@ -2766,9 +2776,9 @@ def chat(req: ChatRequest, request: Request):
     now_iso = datetime.now(timezone.utc).isoformat()
 
     _engine_label = _ai.get_engine_display_name() if _ai and hasattr(_ai, "get_engine_display_name") else None
-    if session_id not in _sessions:
+    if session_id not in _sessions or is_ephemeral:
         title = _generate_chat_title(req.message)
-        _sessions[session_id] = {
+        session_entry = {
             "id": session_id,
             "title": title,
             "created_at": now_iso,
@@ -2780,12 +2790,16 @@ def chat(req: ChatRequest, request: Request):
         if req.history:
             for h in req.history:
                 if h.get("role") in ("user", "assistant") and isinstance(h.get("content"), str) and h["content"]:
-                    _sessions[session_id]["messages"].append({"role": h["role"], "content": h["content"][:131072]})
+                    session_entry["messages"].append({"role": h["role"], "content": h["content"][:131072]})
+        if not is_ephemeral:
+            _sessions[session_id] = session_entry
+    else:
+        session_entry = _sessions[session_id]
 
-    session_entry = _sessions[session_id]
     if isinstance(session_entry, list):
         session_entry = _normalize_session(session_id, session_entry)
-        _sessions[session_id] = session_entry
+        if not is_ephemeral:
+            _sessions[session_id] = session_entry
 
     messages = session_entry["messages"]
 
@@ -2811,7 +2825,8 @@ def chat(req: ChatRequest, request: Request):
         )
         messages.append({"role": "assistant", "content": _teach_reply})
         session_entry["updated_at"] = datetime.now(timezone.utc).isoformat()
-        _save_sessions()
+        if not is_ephemeral:
+            _save_sessions()
         return Response(
             content=json.dumps({"response": _teach_reply, "session_id": session_id, "tool_calls": []}),
             media_type="application/json"
@@ -2883,7 +2898,8 @@ def chat(req: ChatRequest, request: Request):
                     messages[:] = [messages[0]] + messages[-30:]
 
                 session_entry["updated_at"] = datetime.now(timezone.utc).isoformat()
-                _save_sessions()
+                if not is_ephemeral:
+                    _save_sessions()
 
                 q.put({
                     "type": "done",
@@ -2998,7 +3014,8 @@ def chat(req: ChatRequest, request: Request):
         messages[:] = [messages[0]] + messages[-30:]
 
     session_entry["updated_at"] = datetime.now(timezone.utc).isoformat()
-    _save_sessions()
+    if not is_ephemeral:
+        _save_sessions()
 
     return ChatResponse(
         response=response,
