@@ -7,7 +7,9 @@ import csv
 import io
 import json
 import calendar
+import datetime
 from typing import Optional
+from contextvars import ContextVar
 
 
 def is_no_chart_requested(low: str) -> bool:
@@ -31,10 +33,45 @@ def is_no_mom_requested(low: str) -> bool:
     return any(p in low for p in negative_mom_patterns)
 
 
-def is_no_insights_requested(text: str) -> bool:
-    """Check if the user explicitly asked to omit or skip FinOps insights, commentary, or recommendations."""
+_active_insights_toggle: ContextVar[Optional[bool]] = ContextVar("_active_insights_toggle", default=None)
+
+
+def set_active_insights_toggle(enabled: Optional[bool]):
+    """Set the active query insights toggle state for the current async/context execution."""
+    return _active_insights_toggle.set(enabled)
+
+
+def reset_active_insights_toggle(token):
+    """Reset the active query insights toggle state."""
+    if token is not None:
+        try:
+            _active_insights_toggle.reset(token)
+        except Exception:
+            pass
+
+
+def is_insights_explicitly_requested(text: str) -> bool:
+    """Check if the user explicitly asked to include FinOps insights, commentary, or recommendations."""
     if not text:
         return False
+    low = text.lower()
+    patterns = [
+        r'\b(?:with|include|add|give|provide|show|generate)\s+(?:me\s+)?(?:the\s+|some\s+|key\s+)?(?:finops\s+)?i[ns]+ights?\b',
+        r'\b(?:what\s+are\s+the|any)\s+(?:key\s+|finops\s+)?i[ns]+ights?\b',
+        r'\bi[ns]+ights?\s+(?:please|needed|wanted|required)\b',
+        r'\b(?:with|include|add|give|provide|show)\s+(?:me\s+)?(?:the\s+|some\s+|key\s+)?recommendations?\b',
+        r'\b(?:with|include|add|give|provide|show)\s+(?:me\s+)?(?:the\s+|some\s+|key\s+)?suggestions?\b',
+        r'\b(?:with|include|add|give|provide|show)\s+(?:me\s+)?(?:the\s+|some\s+|key\s+)?commentary\b',
+        r'\b(?:with|include|add|give|provide|show)\s+(?:me\s+)?(?:the\s+|some\s+|key\s+)?observations?\b',
+    ]
+    return any(bool(re.search(p, low)) for p in patterns)
+
+
+def is_no_insights_requested(text: str, toggle_state: Optional[bool] = None) -> bool:
+    """Check if the user explicitly asked to omit or skip FinOps insights, commentary, or recommendations."""
+    if not text:
+        active_t = toggle_state if toggle_state is not None else _active_insights_toggle.get()
+        return (active_t is False)
     low = text.lower()
     patterns = [
         r'\bno\s+i[ns]+ights?\b',
@@ -53,10 +90,24 @@ def is_no_insights_requested(text: str) -> bool:
         r'\b(?:just|only)\s+(?:the\s+)?data\b',
         r'\bdata\s+only\b',
         r'\braw\s+data\s+only\b',
+        r'\b(?:just|only)\s+(?:the\s+)?report\b',
+        r'\breport\s+only\b',
         r'\bno\s+analysis\b',
         r'\bwithout\s+analysis\b',
     ]
-    return any(bool(re.search(p, low)) for p in patterns)
+    if any(bool(re.search(p, low)) for p in patterns):
+        return True
+    if is_insights_explicitly_requested(text):
+        return False
+    active_t = toggle_state if toggle_state is not None else _active_insights_toggle.get()
+    if active_t is False:
+        return True
+    return False
+
+
+def should_include_insights(text: str, toggle_state: Optional[bool] = None) -> bool:
+    """Convenience helper: returns True if insights should be included."""
+    return not is_no_insights_requested(text, toggle_state=toggle_state)
 
 
 def is_exclude_other_requested(text: str) -> bool:
@@ -135,28 +186,22 @@ def strip_finops_insights(markdown_text: str) -> str:
     if not markdown_text:
         return markdown_text
 
+    boundary = r'(?=(?:\n\n?\*?(?:Source|Live|💡\s*\*?(?:Source|Live))|\n\n---\n\n|\n\n#{1,3}\s+[A-Za-z0-9]|\Z))'
     # 1. Match headings starting with 💡 FinOps / Strategic / Optimization Levers
     cleaned = re.sub(
-        r'(?:\n\n---\n\n|\n\n|\n)#{1,4}\s*💡\s*(?:FinOps|Strategic|Key FinOps|Optimization)[^\n]*\n.*?(?=(?:\n\n?\*?(?:Source|Live|💡\s*\*?Source)|\n\n---\n\n|\n\n#{1,3}\s+[A-Za-z0-9]|\Z))',
+        r'(?:\n\n---\n\n|\n\n|\n)#{1,4}\s*💡\s*(?:FinOps|Strategic|Key FinOps|Optimization)[^\n]*\n.*?' + boundary,
         '',
         markdown_text,
         flags=re.DOTALL
     )
-    # 2. Match bold **💡 FinOps ...** / **💡 Key FinOps ...** / **💡 Strategic ...**
+    # 2. Match bold, blockquote, or plain lines starting with 💡 FinOps ...
     cleaned = re.sub(
-        r'(?:\n\n|\n)\*\*💡\s*(?:FinOps|Key FinOps|Strategic)[^\n]*\*\*.*?(?=(?:\n\n?\*?(?:Source|Live|💡\s*\*?Source)|\n\n---\n\n|\n\n#{1,3}\s+[A-Za-z0-9]|\Z))',
+        r'(?:\n\n---\n\n|\n\n|\n)(?:>\s*)?(?:\*\*)?💡\s*(?:FinOps|Key FinOps|Strategic)[^\n]*(?:\*\*)?.*?' + boundary,
         '',
         cleaned,
         flags=re.DOTALL
     )
-    # 3. Match blockquotes > **💡 FinOps ...**
-    cleaned = re.sub(
-        r'(?:\n\n|\n)>\s*\*\*💡\s*FinOps[^\n]*\*\*.*?(?=(?:\n\n?\*?(?:Source|Live|💡\s*\*?Source)|\n\n---\n\n|\n\n#{1,3}\s+[A-Za-z0-9]|\Z))',
-        '',
-        cleaned,
-        flags=re.DOTALL
-    )
-    # 4. Clean up multiple blank lines and orphaned horizontal rules
+    # 3. Clean up multiple blank lines and orphaned horizontal rules
     cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
     cleaned = re.sub(r'\n\n---\n\n\s*(\*Source|\Z)', r'\n\n\1', cleaned)
     return cleaned.strip()
@@ -397,10 +442,12 @@ def _detect_wants_table(low: str) -> bool:
 
 
 def _format_time_label(ym_str: str, time_format: str = "month") -> str:
-    """Format '2026-03' into 'Mar 2026', '2026-08-20' into 'Aug 20', or 'Q1 2026'."""
+    """Format '2026-03' into 'Mar 2026', '2026-08-20' into 'Aug 20', '2026-W38' into 'Wk 38 2026', or 'Q1 2026'."""
     s = str(ym_str).strip()
     try:
         parts = s.split("-")
+        if len(parts) >= 2 and (parts[1].startswith("W") or parts[1].startswith("w")):
+            return f"Wk {parts[1][1:]} {parts[0]}"
         if len(parts) >= 3 and time_format in ("day", "daily"):
             mo = int(parts[1])
             day = int(parts[2])
@@ -408,10 +455,14 @@ def _format_time_label(ym_str: str, time_format: str = "month") -> str:
         if len(parts) >= 2:
             yr = int(parts[0])
             mo = int(parts[1])
+            curr_ym = datetime.date.today().strftime("%Y-%m")
             if time_format == "quarter":
                 q = (mo - 1) // 3 + 1
                 return f"Q{q} {yr}"
-            return f"{calendar.month_abbr[mo]} {yr}"
+            base_lbl = f"{calendar.month_abbr[mo]} {yr}"
+            if s == curr_ym and time_format not in ("day", "daily", "week", "weekly"):
+                return f"{base_lbl} (MTD)"
+            return base_lbl
     except Exception:
         pass
     return s
@@ -564,7 +615,7 @@ def _build_time_category_stacked_chart(
                 "data": other_d
             })
 
-    x_lbl = "Day" if time_format in ("day", "daily") else ("Quarter" if time_format == "quarter" else "Month")
+    x_lbl = "Day" if time_format in ("day", "daily") else ("Week" if time_format in ("week", "weekly") else ("Quarter" if time_format == "quarter" else "Month"))
     return _chart_block(chart_type, title, labels, datasets=datasets, value_label=unit, stacked=True, x_label=x_lbl)
 
 
@@ -610,9 +661,10 @@ def _sanitize_finops_bullet_titles(text: str) -> str:
     lines = text.split("\n")
     cleaned_lines = []
     for line in lines:
-        m = re.match(r'^(\s*[-*•]\s*\*\*([^*]+)\*\*:?)(.*)$', line)
+        m = re.match(r'^(\s*[-*•]\s*\*\*([^*]+)\*\*[:\s]*)(.*)$', line)
         if m:
-            title, body = m.group(2).strip(), m.group(3)
+            title = m.group(2).strip()
+            body = re.sub(r"^[\s:,]+", " ", m.group(3)).rstrip()
             title_low = title.lower()
             body_low = body.lower()
 

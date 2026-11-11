@@ -64,24 +64,22 @@ class _SafeStream:
     def isatty(self):
         return False
 
-# Reconfigure streams for UTF-8 and tee stderr to LOG_FILE
-if sys.stdout is None:
-    sys.stdout = _SafeStream(None, LOG_FILE)
-elif hasattr(sys.stdout, "reconfigure"):
+# Reconfigure streams for UTF-8 and tee stderr and stdout to LOG_FILE
+_orig_stdout = sys.stdout
+if _orig_stdout is not None and hasattr(_orig_stdout, "reconfigure"):
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        _orig_stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
-        sys.stdout = _SafeStream(sys.stdout, None)
-else:
-    sys.stdout = _SafeStream(sys.stdout, None)
+        pass
+sys.stdout = _SafeStream(_orig_stdout, LOG_FILE)
 
 _orig_stderr = sys.stderr
-sys.stderr = _SafeStream(_orig_stderr, LOG_FILE)
 if _orig_stderr is not None and hasattr(_orig_stderr, "reconfigure"):
     try:
         _orig_stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
+sys.stderr = _SafeStream(_orig_stderr, LOG_FILE)
 
 # ── Suppress Windows Flashing Command Prompt Popups ───────────────────────────
 def install_windows_process_silencer():

@@ -7,6 +7,7 @@ import json
 import csv
 import io
 import datetime
+import calendar
 from typing import Optional, Dict, Any, List, Tuple
 
 try:
@@ -109,7 +110,11 @@ COLUMN_SYNONYMS: Dict[str, Dict[str, Any]] = {
     },
     "ServiceName": {
         "label": "Service Name",
-        "synonyms": ["service", "service name", "cloud service", "product", "offering", "service title", "services"],
+        "synonyms": [
+            "service", "service name", "cloud service", "product", "offering", "service title", "services",
+            "cost driver", "cost drivers", "top cost drivers", "top drivers", "drivers", "key cost drivers",
+            "main cost drivers", "spend drivers", "by cost driver", "by cost drivers", "driver"
+        ],
         "description": "Normalized cloud service name across providers"
     },
     "lineItem_ProductCode": {
@@ -198,6 +203,60 @@ COLUMN_SYNONYMS: Dict[str, Dict[str, Any]] = {
         "label": "API Operation / Action",
         "synonyms": ["operation", "api operation", "action", "event", "api call", "invocations", "runinstances"],
         "description": "Cloud service API action or operation"
+    },
+
+    # Kubernetes Container Dimensions
+    "ClusterName": {
+        "label": "Kubernetes Cluster",
+        "synonyms": [
+            "cluster", "clusters", "cluster name", "clustername", "k8s cluster",
+            "eks cluster", "aks cluster", "gke cluster", "by cluster", "per cluster"
+        ],
+        "description": "Kubernetes cluster name in AWS_K8S_COST / AZURE_K8S_COST"
+    },
+    "NamespaceName": {
+        "label": "Kubernetes Namespace",
+        "synonyms": [
+            "namespace", "namespaces", "namespace name", "namespacename", "k8s namespace",
+            "by namespace", "per namespace", "namespace breakdown"
+        ],
+        "description": "Kubernetes namespace name in AWS_K8S_COST / AZURE_K8S_COST"
+    },
+    "WorkloadName": {
+        "label": "Kubernetes Workload",
+        "synonyms": [
+            "workload", "workloads", "workload name", "workload type", "deployment", "statefulset"
+        ],
+        "description": "Kubernetes workload name in AWS_K8S_COST / AZURE_K8S_COST"
+    },
+    "ContainerName": {
+        "label": "Kubernetes Container",
+        "synonyms": ["container", "containers", "container name", "pod", "pods"],
+        "description": "Kubernetes container name in AWS_K8S_COST / AZURE_K8S_COST"
+    },
+
+    # Network & Data Transfer Dimensions
+    "FromLocation": {
+        "label": "Data Transfer Source Location",
+        "synonyms": [
+            "from location", "source location", "from region", "fromlocation", "data transfer by location",
+            "egress by location", "egress source", "network location", "transfer location"
+        ],
+        "description": "Origin location for data transfer in AWS_DATA_TRANSFER_COST_AND_USAGE"
+    },
+    "ToLocation": {
+        "label": "Data Transfer Destination Location",
+        "synonyms": [
+            "to location", "destination location", "target location", "tolocation", "egress destination"
+        ],
+        "description": "Destination location for data transfer in AWS_DATA_TRANSFER_COST_AND_USAGE"
+    },
+    "TransferType": {
+        "label": "Data Transfer Type",
+        "synonyms": [
+            "transfer type", "transfertype", "egress type", "cross-region", "cross-az", "internet egress"
+        ],
+        "description": "Type of network data transfer in AWS_DATA_TRANSFER_COST_AND_USAGE"
     },
 
     # Geography & Assets
@@ -420,21 +479,71 @@ DATASET_CANONICAL_MAP = {
     "multicloud_commitment_savings": "MULTICLOUD_COMMITMENT_SAVINGS",
     "multicloud commitment savings": "MULTICLOUD_COMMITMENT_SAVINGS",
     "commitment savings": "MULTICLOUD_COMMITMENT_SAVINGS",
+    "commitment portfolio": "MULTICLOUD_FOCUS_COST_AND_USAGE",
+    "commitment cliff": "MULTICLOUD_FOCUS_COST_AND_USAGE",
+    "commitment cliffs": "MULTICLOUD_FOCUS_COST_AND_USAGE",
+    "expiration cliff": "MULTICLOUD_FOCUS_COST_AND_USAGE",
+    "expiration cliffs": "MULTICLOUD_FOCUS_COST_AND_USAGE",
+    "expiring savings plans": "MULTICLOUD_FOCUS_COST_AND_USAGE",
+    "expiring reservations": "MULTICLOUD_FOCUS_COST_AND_USAGE",
     "multicloud_rightsizing_recommendations": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
     "multicloud rightsizing recommendations": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
     "rightsizing_recommendations": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
     "rightsizing recommendations": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
     "rightsizing recommendation": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+    "rightsizing savings": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
     "rightsizing": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+    "rightsize": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+    "rightsizer": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+    "downsizing recommendations": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+    "downsizing recommendation": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+    "downsizing": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+    "downsize": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
+    "potential savings recommendations": "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS",
     "waste_opportunity": "WASTE_OPPORTUNITY",
     "waste opportunity": "WASTE_OPPORTUNITY",
     "waste opportunities": "WASTE_OPPORTUNITY",
+    "waste dataset": "WASTE_OPPORTUNITY",
+    "wastage dataset": "WASTE_OPPORTUNITY",
     "cloud waste": "WASTE_OPPORTUNITY",
+    "cloud wastage": "WASTE_OPPORTUNITY",
+    "infrastructure waste": "WASTE_OPPORTUNITY",
+    "wastage": "WASTE_OPPORTUNITY",
+    "waste": "WASTE_OPPORTUNITY",
+    "wasted resources": "WASTE_OPPORTUNITY",
+    "wasted assets": "WASTE_OPPORTUNITY",
+    "orphaned resources": "WASTE_OPPORTUNITY",
+    "orphaned resource": "WASTE_OPPORTUNITY",
+    "orphaned assets": "WASTE_OPPORTUNITY",
+    "orphaned asset": "WASTE_OPPORTUNITY",
+    "orphaned volumes": "WASTE_OPPORTUNITY",
+    "orphaned disks": "WASTE_OPPORTUNITY",
+    "unattached volumes": "WASTE_OPPORTUNITY",
+    "unattached disks": "WASTE_OPPORTUNITY",
+    "unattached elastic ips": "WASTE_OPPORTUNITY",
+    "unattached ips": "WASTE_OPPORTUNITY",
+    "unattached eips": "WASTE_OPPORTUNITY",
+    "stopped instances": "WASTE_OPPORTUNITY",
+    "idle vms": "WASTE_OPPORTUNITY",
+    "idle instances": "WASTE_OPPORTUNITY",
+    "idle resources": "WASTE_OPPORTUNITY",
+    "zombie resources": "WASTE_OPPORTUNITY",
+    "zombie assets": "WASTE_OPPORTUNITY",
+    "zombie infrastructure": "WASTE_OPPORTUNITY",
+    "cleanup opportunities": "WASTE_OPPORTUNITY",
+    "clean up opportunities": "WASTE_OPPORTUNITY",
+    "cleanup opportunity": "WASTE_OPPORTUNITY",
+    "clean up opportunity": "WASTE_OPPORTUNITY",
     "multicloud_operational_emissions": "MULTICLOUD_OPERATIONAL_EMISSIONS",
     "multicloud operational emissions": "MULTICLOUD_OPERATIONAL_EMISSIONS",
     "operational emissions": "MULTICLOUD_OPERATIONAL_EMISSIONS",
     "unified_ai_tokenomics": "UNIFIED_AI_TOKENOMICS",
     "unified ai tokenomics": "UNIFIED_AI_TOKENOMICS",
+    "unit economics": "MULTICLOUD_AI_COST_AND_USAGE",
+    "unit economic": "MULTICLOUD_AI_COST_AND_USAGE",
+    "unit cost": "MULTICLOUD_AI_COST_AND_USAGE",
+    "cost per token": "MULTICLOUD_AI_COST_AND_USAGE",
+    "cost per 1m tokens": "MULTICLOUD_AI_COST_AND_USAGE",
     "multicloud_ai_cost_and_usage": "MULTICLOUD_AI_COST_AND_USAGE",
     "multicloud ai cost and usage": "MULTICLOUD_AI_COST_AND_USAGE",
     "aws_ai_cost_and_usage": "AWS_AI_COST_AND_USAGE",
@@ -453,6 +562,14 @@ DATASET_CANONICAL_MAP = {
     "aws k8s cost": "AWS_K8S_COST",
     "aws kubernetes cost": "AWS_K8S_COST",
     "eks cost": "AWS_K8S_COST",
+    "kubernetes cost": "AWS_K8S_COST",
+    "kubernetes costs": "AWS_K8S_COST",
+    "kubernetes cost breakdown": "AWS_K8S_COST",
+    "k8s cost breakdown": "AWS_K8S_COST",
+    "k8s cost": "AWS_K8S_COST",
+    "k8s costs": "AWS_K8S_COST",
+    "kubernetes spend": "AWS_K8S_COST",
+    "k8s spend": "AWS_K8S_COST",
     "azure_k8s_cost": "AZURE_K8S_COST",
     "azure k8s cost": "AZURE_K8S_COST",
     "azure kubernetes cost": "AZURE_K8S_COST",
@@ -475,6 +592,14 @@ DATASET_CANONICAL_MAP = {
     "aws data transfer cost and usage": "AWS_DATA_TRANSFER_COST_AND_USAGE",
     "aws data transfer": "AWS_DATA_TRANSFER_COST_AND_USAGE",
     "data transfer cost": "AWS_DATA_TRANSFER_COST_AND_USAGE",
+    "data transfer costs": "AWS_DATA_TRANSFER_COST_AND_USAGE",
+    "data transfer spend": "AWS_DATA_TRANSFER_COST_AND_USAGE",
+    "data transfer": "AWS_DATA_TRANSFER_COST_AND_USAGE",
+    "network egress": "AWS_DATA_TRANSFER_COST_AND_USAGE",
+    "network egress cost": "AWS_DATA_TRANSFER_COST_AND_USAGE",
+    "network egress costs": "AWS_DATA_TRANSFER_COST_AND_USAGE",
+    "egress cost": "AWS_DATA_TRANSFER_COST_AND_USAGE",
+    "egress costs": "AWS_DATA_TRANSFER_COST_AND_USAGE",
     "aws_databricks_usage": "AWS_DATABRICKS_USAGE",
     "aws databricks usage": "AWS_DATABRICKS_USAGE",
     "aws databricks": "AWS_DATABRICKS_USAGE",
@@ -671,7 +796,8 @@ CLOUD_SERVICES_MAP = {
     "awskms": ("awskms", "KMS", "aws"),
     "bedrock": ("AmazonBedrock", "Bedrock", "aws"),
     "amazonbedrock": ("AmazonBedrock", "Bedrock", "aws"),
-    "transfer": ("AWSTransfer", "Transfer Family", "aws"),
+    "transfer family": ("AWSTransfer", "Transfer Family", "aws"),
+    "aws transfer": ("AWSTransfer", "Transfer Family", "aws"),
     "awstransfer": ("AWSTransfer", "Transfer Family", "aws"),
     "stepfunctions": ("AmazonStates", "Step Functions", "aws"),
     "amazonstates": ("AmazonStates", "Step Functions", "aws"),
@@ -1764,10 +1890,61 @@ def parse_query_time_context(query: str, context_ym: str = None) -> dict:
             target_label = f"{FULL_NAMES[m_num]} {yr}"
             is_specific = True
 
+    # Contextual month fallback if inherited from previous turn and not explicitly mentioned
+    if not target_ym and context_ym and re.match(r'^\d{4}-(?:0[1-9]|1[0-2])$', context_ym):
+        if context_ym != current_ym:
+            c_yr, c_mo = int(context_ym.split("-")[0]), int(context_ym.split("-")[1])
+            target_ym = context_ym
+            target_label = f"{FULL_NAMES[c_mo]} {c_yr}"
+            is_specific = True
+
     # 5. Relative timeframes
+    timeframe_weeks = None
     if daily_range is None:
+        m_weeks_ctx = re.search(r'(?:last|past|previous|for)\s+(\d{1,2})\s*weeks?\b|\b(\d{1,2})\s*(?:weeks?|w)\b', low)
+        is_weekly_keyword = any(w in low for w in [
+            "weekly view", "weekly breakdown", "weekly trend", "week by week", "by week",
+            "each week", "per week", "weekly spend", "weekly cost", "show weekly",
+            "weekly table", "weekly data", "weekly", "weekly granularity"
+        ])
         m_days_ctx = re.search(r'(?:last|past|previous|for)\s+(\d{1,3})\s*days?\b|\b(\d{1,3})\s*(?:days?|d)\b', low)
-        if m_days_ctx:
+        is_daily_keyword = any(w in low for w in [
+            "daily view", "daily breakdown", "daily trend", "day by day", "by day",
+            "each day", "per day", "daily spend", "daily cost", "show daily",
+            "daily table", "daily data", "daily", "by date", "date by date", "daily granularity"
+        ])
+
+        if (m_weeks_ctx or is_weekly_keyword) and is_specific and target_ym and target_ym != current_ym:
+            # Historical month bound: keep weekly granularity within that specific month
+            yr_t, mo_t = int(target_ym.split("-")[0]), int(target_ym.split("-")[1])
+            days_in_m = calendar.monthrange(yr_t, mo_t)[1]
+            timeframe_weeks = 5
+            timeframe_days = days_in_m
+            start_d_str = f"{target_ym}-01"
+            end_d_str = f"{target_ym}-{days_in_m:02d}"
+            target_label = f"{FULL_NAMES[mo_t]} {yr_t} Weekly Trend ({start_d_str} to {end_d_str})"
+            daily_range = {"from": start_d_str, "to": end_d_str}
+        elif m_weeks_ctx or is_weekly_keyword:
+            # Multi-month default (e.g. 6 months): weekly spans 26 weeks to cover the full window
+            timeframe_weeks = int(m_weeks_ctx.group(1) or m_weeks_ctx.group(2)) if m_weeks_ctx else 26
+            num_days = timeframe_weeks * 7
+            timeframe_days = num_days
+            start_d = now - datetime.timedelta(days=num_days)
+            end_d = now - datetime.timedelta(days=1)
+            target_label = f"Last {timeframe_weeks} Weeks Trend ({start_d.strftime('%Y-%m-%d')} to {end_d.strftime('%Y-%m-%d')})"
+            target_ym = current_ym
+            is_specific = False
+            daily_range = {"from": start_d.strftime("%Y-%m-%d"), "to": end_d.strftime("%Y-%m-%d")}
+        elif (m_days_ctx or is_daily_keyword) and is_specific and target_ym and target_ym != current_ym:
+            # Historical month bound: show ONLY that month's data in daily granularity
+            yr_t, mo_t = int(target_ym.split("-")[0]), int(target_ym.split("-")[1])
+            days_in_m = calendar.monthrange(yr_t, mo_t)[1]
+            timeframe_days = days_in_m
+            start_d_str = f"{target_ym}-01"
+            end_d_str = f"{target_ym}-{days_in_m:02d}"
+            target_label = f"{FULL_NAMES[mo_t]} {yr_t} Daily Trend ({start_d_str} to {end_d_str})"
+            daily_range = {"from": start_d_str, "to": end_d_str}
+        elif m_days_ctx:
             timeframe_days = int(m_days_ctx.group(1) or m_days_ctx.group(2))
             start_d = now - datetime.timedelta(days=timeframe_days)
             end_d = now - datetime.timedelta(days=1)  # Ignore current date (in-flight); end closed window at yesterday
@@ -1775,12 +1952,9 @@ def parse_query_time_context(query: str, context_ym: str = None) -> dict:
             target_ym = current_ym
             is_specific = True
             daily_range = {"from": start_d.strftime("%Y-%m-%d"), "to": end_d.strftime("%Y-%m-%d")}
-        elif any(w in low for w in [
-            "daily view", "daily breakdown", "daily trend", "day by day", "by day",
-            "each day", "per day", "daily spend", "daily cost", "show daily",
-            "daily table", "daily data", "daily", "by date", "date by date"
-        ]):
-            timeframe_days = 30
+        elif is_daily_keyword:
+            # Multi-month default (e.g. 6 months): daily defaults to last 60 days
+            timeframe_days = 60
             start_d = now - datetime.timedelta(days=timeframe_days)
             end_d = now - datetime.timedelta(days=1)  # Ignore current date (in-flight); end closed window at yesterday
             target_label = f"Last {timeframe_days} Days Trend ({start_d.strftime('%Y-%m-%d')} to {end_d.strftime('%Y-%m-%d')})"
@@ -1835,10 +2009,10 @@ def parse_query_time_context(query: str, context_ym: str = None) -> dict:
         prev_yr = now.year if now.month > 1 else (now.year - 1)
         target_label = f"Last Month ({FULL_NAMES[prev_m]} {prev_yr})"
 
-    # Calculate months needed for CloudHealth timeRange (cap at 24 to respect CloudHealth FlexReports limit)
+    # Calculate months needed for CloudHealth timeRange (cap at 13 to respect CloudHealth FlexReports limit)
     t_yr, t_mo = int(target_ym.split("-")[0]), int(target_ym.split("-")[1])
     diff = (now.year - t_yr) * 12 + (now.month - t_mo)
-    months_needed = now.month if is_ytd else (((now.month - 1) % 3) + 1 if is_qtd else min(24, max(2, diff + 2)))
+    months_needed = now.month if is_ytd else (((now.month - 1) % 3) + 1 if is_qtd else min(13, max(2, diff + 2)))
 
     # Check for requested duration count e.g. "last 6 months", "past 3 months", "last 13 months"
     m_count = re.search(r'(?:last|past|previous|for)\s*(\d{1,2})\s*months?\b|\b([1-9]|[1-4]\d)\s+months\b', low)
@@ -1846,12 +2020,24 @@ def parse_query_time_context(query: str, context_ym: str = None) -> dict:
     if m_count:
         try:
             req_cnt = int(m_count.group(1) or m_count.group(2))
+            req_cnt = min(req_cnt, 13)
             timeframe_months = req_cnt
-            months_needed = min(24, max(months_needed, req_cnt))
+            months_needed = min(13, max(months_needed, req_cnt))
             target_label = f"Last {req_cnt} Months"
             is_specific = False
         except (ValueError, TypeError):
             pass
+    elif not is_specific and not timeframe_days and not timeframe_weeks and not is_ytd and not is_qtd:
+        # Default AI spend query always gets last 13 months data
+        is_ai_query = any(w in low for w in [
+            "ai spend", "foundation model", "foundation models", "ai model", "ai models",
+            "tokenomics", "tokens by model", "ai cost", "ai costs", "ai usage", "llm spend", "llm cost"
+        ])
+        if is_ai_query:
+            timeframe_months = 13
+            months_needed = 13
+            target_label = "Last 13 Months"
+            is_specific = False
 
     sort_desc = not any(w in low for w in ["asc", "ascending", "lowest", "least", "bottom", "cheapest"])
 
@@ -1879,6 +2065,8 @@ def parse_query_time_context(query: str, context_ym: str = None) -> dict:
         "last_ym": last_ym,
         "limit": limit,
         "timeframe_days": timeframe_days,
+        "timeframe_weeks": timeframe_weeks,
+        "is_weekly": bool(timeframe_weeks),
         "daily_range": daily_range,
         "single_date": single_date,
         "is_mtd": is_mtd,
@@ -1992,7 +2180,16 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         len(words) <= 8
     )
 
-    if not (has_similar_term or is_short_pivot or has_threshold_refinement or has_limit_refinement or has_sort_refinement or has_exclusion_refinement or has_ordinal_refinement or has_relative_date_refinement or has_dataset_pivot):
+    has_granularity_pivot = any(w in low for w in [
+        "granularity", "daily view", "weekly view", "monthly view",
+        "daily breakdown", "weekly breakdown", "monthly breakdown",
+        "by day", "by week", "by month", "day by day", "week by week", "month by month",
+        "show daily", "show weekly", "show monthly",
+        "daily spend", "weekly spend", "monthly spend",
+        "switch to daily", "switch to weekly", "switch to monthly"
+    ])
+
+    if not (has_similar_term or is_short_pivot or has_threshold_refinement or has_limit_refinement or has_sort_refinement or has_exclusion_refinement or has_ordinal_refinement or has_relative_date_refinement or has_dataset_pivot or has_granularity_pivot):
         return {"is_continuation": False}
 
     prior_user_msgs = [m.get("content", "") for m in messages[:-1] if m.get("role") == "user"]
@@ -2076,25 +2273,68 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
     inherited_dim = None
     inherited_target_ym = None
 
-    # Check if current turn explicitly specifies a timeframe (takes precedence over prior turn)
-    m_cur_months = re.search(r'(?:last|past|trailing|previous|for)\s*(\d{1,2})\s*months?\b|\b(\d{1,2})\s*months?\b', low)
-    m_cur_days = re.search(r'(?:last|past|trailing|previous|for)\s*(\d{1,3})\s*days?\b|\b(\d{1,3})\s*days?\b', low)
-    is_cur_daily = any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily", "show daily", "daily spend"])
-    is_cur_monthly = any(w in low for w in ["monthly", "month over month", "month by month", "by month", "each month", "monthly spend", "monthly trend"])
-
-    if m_cur_months:
-        inherited_timeframe_months = int(m_cur_months.group(1) or m_cur_months.group(2))
-    elif m_cur_days or is_cur_daily:
-        inherited_timeframe_days = int(m_cur_days.group(1) or m_cur_days.group(2)) if m_cur_days else 30
+    # First, resolve inherited target YM from prior conversation history
+    _now = datetime.date.today()
+    current_ym = f"{_now.year}-{_now.month:02d}"
     for prev_u in reversed(prior_user_msgs):
         u_tctx = parse_query_time_context(prev_u)
-        if u_tctx.get("target_ym") and u_tctx.get("is_specific"):
+        if u_tctx.get("target_ym") and u_tctx.get("is_specific") and u_tctx.get("target_ym") != current_ym:
             inherited_target_ym = u_tctx.get("target_ym")
             break
-    if not inherited_target_ym and last_asst:
+    is_multi_month_view = bool(re.search(r'last\s*(\d{1,2})\s*months?', (last_asst_head + " " + last_asst_body + " " + last_user_low), re.IGNORECASE))
+    if not inherited_target_ym and last_asst and not is_multi_month_view:
         m_asst_ym = re.search(r'\b(202[0-9])-(0[1-9]|1[0-2])\b', last_asst)
-        if m_asst_ym:
+        if m_asst_ym and m_asst_ym.group(0) != current_ym:
             inherited_target_ym = m_asst_ym.group(0)
+
+    # Detect prior timeframe duration in months (default 13 months for AI spend, 6 months for standard)
+    is_ai_prior = any(w in (last_asst_head + " " + last_asst_body + " " + last_user_low).lower() for w in [
+        "ai spend", "foundation model", "foundation models", "ai model", "ai models", "tokenomics", "tokens by model", "multicloud_ai_cost_and_usage"
+    ])
+    prior_months_cnt = 13 if is_ai_prior else 6
+    m_prev_m = re.search(r'last\s*(\d{1,2})\s*months?', (last_asst_head + " " + last_asst_body + " " + last_user_low), re.IGNORECASE)
+    if m_prev_m:
+        try:
+            prior_months_cnt = min(int(m_prev_m.group(1)), 13)
+        except (ValueError, TypeError):
+            prior_months_cnt = 13 if is_ai_prior else 6
+
+    # Check if current turn explicitly specifies a timeframe (takes precedence over prior turn)
+    m_cur_months = re.search(r'(?:last|past|trailing|previous|for)\s*(\d{1,2})\s*months?\b|\b(\d{1,2})\s*months?\b', low)
+    m_cur_weeks = re.search(r'(?:last|past|trailing|previous|for)\s*(\d{1,2})\s*weeks?\b|\b(\d{1,2})\s*weeks?\b', low)
+    m_cur_days = re.search(r'(?:last|past|trailing|previous|for)\s*(\d{1,3})\s*days?\b|\b(\d{1,3})\s*days?\b', low)
+    is_cur_weekly = any(w in low for w in ["weekly view", "weekly breakdown", "weekly trend", "week by week", "by week", "weekly", "show weekly", "weekly spend", "weekly granularity"])
+    is_cur_daily = any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily", "show daily", "daily spend", "daily granularity"])
+    is_cur_monthly = any(w in low for w in ["monthly", "month over month", "month by month", "by month", "each month", "monthly spend", "monthly trend", "monthly view", "monthly breakdown", "monthly granularity"])
+
+    inherited_timeframe_weeks = None
+    if inherited_target_ym and inherited_target_ym != current_ym:
+        # Bounded historical month (e.g. August 2026): daily and weekly stay within that month
+        yr_h, mo_h = int(inherited_target_ym.split("-")[0]), int(inherited_target_ym.split("-")[1])
+        days_in_h = calendar.monthrange(yr_h, mo_h)[1]
+        if m_cur_weeks or is_cur_weekly:
+            inherited_timeframe_weeks = 5
+            inherited_timeframe_days = days_in_h
+            inherited_timeframe_months = None
+        elif m_cur_days or is_cur_daily:
+            inherited_timeframe_days = int(m_cur_days.group(1) or m_cur_days.group(2)) if m_cur_days else days_in_h
+            inherited_timeframe_months = None
+        elif m_cur_months or is_cur_monthly:
+            inherited_timeframe_months = 1
+            inherited_timeframe_days = None
+    else:
+        # Multi-month default window (e.g. 6 months): daily defaults to 60 days, weekly spans 26 weeks
+        if m_cur_weeks or is_cur_weekly:
+            w_cnt = int(m_cur_weeks.group(1) or m_cur_weeks.group(2)) if m_cur_weeks else round(prior_months_cnt * 4.3333)
+            inherited_timeframe_weeks = w_cnt
+            inherited_timeframe_days = w_cnt * 7
+            inherited_timeframe_months = None
+        elif m_cur_days or is_cur_daily:
+            inherited_timeframe_days = int(m_cur_days.group(1) or m_cur_days.group(2)) if m_cur_days else 60
+            inherited_timeframe_months = None
+        elif m_cur_months or is_cur_monthly:
+            inherited_timeframe_months = int(m_cur_months.group(1) or m_cur_months.group(2)) if m_cur_months else prior_months_cnt
+            inherited_timeframe_days = None
 
     # Check for Forecast:
     is_prior_forecast = (
@@ -2132,7 +2372,7 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         prior_type = "monthly_trend"
         if not inherited_timeframe_months and not inherited_timeframe_days:
             m_m = re.search(r'last\s*(\d{1,2})\s*months?', last_asst_head + " " + last_user_low)
-            inherited_timeframe_months = int(m_m.group(1)) if m_m else 6
+            inherited_timeframe_months = int(m_m.group(1)) if m_m else 13
 
     # Check for Cost Anomalies:
     elif (
@@ -2153,7 +2393,26 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
     ):
         prior_type = "region_breakdown"
 
-    # Check for Service Instance / Subcategory Breakdown:
+    # Check for AI Model / Foundation Model Breakdown:
+    elif (
+        "cost by ai model" in last_asst_head or
+        "spend by ai model" in last_asst_head or
+        "cost by model" in last_asst_head or
+        "spend by model" in last_asst_head or
+        "top ai model" in last_asst_body or
+        "multicloud_ai_cost_and_usage" in last_asst.lower() or
+        any(w in last_user_low for w in ["ai usage", "ai model", "ai models", "foundation model", "foundation models", "llm", "llms", "model breakdown"])
+    ):
+        prior_type = "ai_model_breakdown"
+        inherited_dim = "model"
+        if not inherited_timeframe_months and not inherited_timeframe_days:
+            m_d = re.search(r'last\s*(\d{1,3})\s*days?', last_asst_head + " " + last_user_low)
+            if m_d:
+                inherited_timeframe_days = int(m_d.group(1))
+            m_m = re.search(r'last\s*(\d{1,2})\s*months?', last_asst_head + " " + last_user_low)
+            inherited_timeframe_months = int(m_m.group(1)) if m_m else 13
+
+    # Check for Service Instance / Subcategory / Dimension Breakdown:
     elif (
         "spend by instance type" in last_asst_head or
         "spend by engine" in last_asst_head or
@@ -2161,9 +2420,11 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         "spend by volume type" in last_asst_head or
         "spend by rds instance type" in last_asst_body or
         "spend by ec2 instance type" in last_asst_body or
-        any(w in last_user_low for w in ["instance type", "engine type", "storage class", "volume type"])
+        re.search(r'(?:cost|spend)\s+by\s+([^—–\(\)\n]+)', last_asst_head, re.IGNORECASE) or
+        any(w in last_user_low for w in ["instance type", "engine type", "storage class", "volume type", "meter subcategory", "meter sub category", "meter category", "meter name", "service subcategory"])
     ):
         prior_type = "service_breakdown"
+        m_head_dim = re.search(r'(?:cost|spend)\s+by\s+([^—–\(\)\n]+)', last_asst_head, re.IGNORECASE)
         if "volume type" in (last_asst_head + " " + last_asst_body).lower() or "volume type" in last_user_low:
             inherited_dim = "volume_type"
         elif "storage class" in (last_asst_head + " " + last_asst_body).lower() or "storage class" in last_user_low:
@@ -2172,6 +2433,21 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
             inherited_dim = "instance_type"
         elif "engine" in (last_asst_head + " " + last_asst_body).lower() or "engine type" in last_user_low:
             inherited_dim = "engine_type"
+        elif "meter subcategory" in (last_asst_head + " " + last_asst_body).lower() or "meter subcategory" in last_user_low or "meter sub category" in last_user_low:
+            inherited_dim = "MeterSubCategory"
+        elif "meter category" in (last_asst_head + " " + last_asst_body).lower() or "meter category" in last_user_low:
+            inherited_dim = "MeterCategory"
+        elif "meter name" in (last_asst_head + " " + last_asst_body).lower() or "meter name" in last_user_low:
+            inherited_dim = "MeterName"
+        elif "service subcategory" in (last_asst_head + " " + last_asst_body).lower() or "service subcategory" in last_user_low:
+            inherited_dim = "ServiceSubcategory"
+        elif m_head_dim:
+            raw_dim = m_head_dim.group(1).strip()
+            if raw_dim.lower() in ("service", "services", "servicename"):
+                prior_type = "top_services"
+                inherited_dim = None
+            else:
+                inherited_dim = raw_dim
         else:
             inherited_dim = None
 
@@ -2202,25 +2478,6 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         any(w in last_user_low for w in ["coverage type", "coveragetype", "by coverage", "lease type", "leasetype", "by lease", "purchase option", "pricing model breakdown", "commitment coverage"])
     ):
         prior_type = "coverage_breakdown"
-
-    # Check for AI Model / Foundation Model Breakdown:
-    elif (
-        "cost by ai model" in last_asst_head or
-        "spend by ai model" in last_asst_head or
-        "cost by model" in last_asst_head or
-        "spend by model" in last_asst_head or
-        "top ai model" in last_asst_body or
-        "multicloud_ai_cost_and_usage" in last_asst.lower() or
-        any(w in last_user_low for w in ["ai usage", "ai model", "ai models", "foundation model", "foundation models", "llm", "llms", "model breakdown"])
-    ):
-        prior_type = "ai_model_breakdown"
-        inherited_dim = "model"
-        if not inherited_timeframe_months and not inherited_timeframe_days:
-            m_d = re.search(r'last\s*(\d{1,3})\s*days?', last_asst_head + " " + last_user_low)
-            if m_d:
-                inherited_timeframe_days = int(m_d.group(1))
-            m_m = re.search(r'last\s*(\d{1,2})\s*months?', last_asst_head + " " + last_user_low)
-            inherited_timeframe_months = int(m_m.group(1)) if m_m else 6
 
     # Check for Top Services:
     elif (
@@ -2272,8 +2529,8 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
             prior_type = "anomalies"
         else:
             prior_type = "top_services"
-    elif not prior_type and has_dataset_pivot:
-        prior_type = "service_breakdown" if new_svc else "top_services"
+    elif not prior_type and (has_dataset_pivot or has_granularity_pivot):
+        prior_type = "service_breakdown" if new_svc else "monthly_trend"
 
     if not prior_type:
         return {"is_continuation": False}
@@ -2284,8 +2541,23 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         yr_label = inherited_period_title or f"FY {inherited_target_year or 2027}"
         expanded_query = f"give me the forecast for {prov_disp} cost for {yr_label} and break it down monthly"
     elif prior_type == "monthly_trend":
-        mo_cnt = int(m_cur_months.group(1) or m_cur_months.group(2)) if m_cur_months else (inherited_timeframe_months or 6)
-        expanded_query = f"give me the monthly spend trend and breakdown for {prov_disp} for the last {mo_cnt} months"
+        is_weekly_req = any(w in low for w in ["weekly view", "weekly breakdown", "weekly trend", "week by week", "by week", "weekly", "show weekly"]) or bool(m_cur_weeks) or is_cur_weekly
+        if inherited_target_ym and inherited_target_ym != current_ym:
+            if is_weekly_req:
+                expanded_query = f"give me the weekly spend trend and breakdown for {prov_disp} for {inherited_target_ym}"
+            elif is_cur_daily or m_cur_days:
+                expanded_query = f"give me the daily spend trend and breakdown for {prov_disp} for {inherited_target_ym}"
+            else:
+                expanded_query = f"give me the monthly spend trend and breakdown for {prov_disp} for {inherited_target_ym}"
+        elif is_weekly_req:
+            wk_val = int(m_cur_weeks.group(1) or m_cur_weeks.group(2)) if m_cur_weeks else (inherited_timeframe_weeks or 26)
+            expanded_query = f"give me the weekly spend trend and breakdown for {prov_disp} for the last {wk_val} weeks"
+        elif is_cur_daily or m_cur_days:
+            d_val = int(m_cur_days.group(1) or m_cur_days.group(2)) if m_cur_days else 60
+            expanded_query = f"give me the daily spend trend and breakdown for {prov_disp} for the last {d_val} days"
+        else:
+            mo_cnt = int(m_cur_months.group(1) or m_cur_months.group(2)) if m_cur_months else (inherited_timeframe_months or 6)
+            expanded_query = f"give me the monthly spend trend and breakdown for {prov_disp} for the last {mo_cnt} months"
     elif prior_type == "anomalies":
         status_word = "inactive " if ("inactive" in low or "inactive" in last_user_low) else ""
         thresh_phrase = ""
@@ -2301,23 +2573,49 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         else:
             expanded_query = f"show top {status_word}cost anomalies detected for {prov_disp}{thresh_phrase}".strip()
     elif prior_type == "region_breakdown":
-        if m_cur_months or is_cur_monthly:
+        is_weekly_req = any(w in low for w in ["weekly view", "weekly breakdown", "weekly trend", "week by week", "by week", "weekly", "show weekly"]) or bool(m_cur_weeks) or is_cur_weekly
+        if inherited_target_ym and inherited_target_ym != current_ym:
+            if is_weekly_req:
+                time_phrase = f" weekly for {inherited_target_ym}"
+            elif m_cur_months or is_cur_monthly:
+                time_phrase = f" for {inherited_target_ym}"
+            elif m_cur_days or is_cur_daily:
+                time_phrase = f" daily for {inherited_target_ym}"
+            else:
+                time_phrase = f" for {inherited_target_ym}"
+        elif is_weekly_req:
+            wk_val = int(m_cur_weeks.group(1) or m_cur_weeks.group(2)) if m_cur_weeks else (inherited_timeframe_weeks or 26)
+            time_phrase = f" weekly for the last {wk_val} weeks"
+        elif m_cur_months or is_cur_monthly:
             mo_val = int(m_cur_months.group(1) or m_cur_months.group(2)) if m_cur_months else (inherited_timeframe_months or 6)
             time_phrase = f" for the last {mo_val} months"
         elif m_cur_days or is_cur_daily:
-            d_val = int(m_cur_days.group(1) or m_cur_days.group(2)) if m_cur_days else 30
+            d_val = int(m_cur_days.group(1) or m_cur_days.group(2)) if m_cur_days else 60
             time_phrase = f" daily for the last {d_val} days"
         else:
             time_phrase = ""
         expanded_query = f"show {prov_disp} spend breakdown by region{time_phrase}".strip()
     elif prior_type == "service_breakdown":
         is_daily_req = any(w in low for w in ["daily view", "daily breakdown", "daily trend", "day by day", "by day", "daily", "show daily"]) or bool(m_cur_days) or is_cur_daily
+        is_weekly_req = any(w in low for w in ["weekly view", "weekly breakdown", "weekly trend", "week by week", "by week", "weekly", "show weekly"]) or bool(m_cur_weeks) or is_cur_weekly
         dim_phrase = f" by {inherited_dim.replace('_', ' ')}" if ('inherited_dim' in locals() and inherited_dim) else ""
-        if m_cur_months or is_cur_monthly:
+        if inherited_target_ym and inherited_target_ym != current_ym:
+            if is_weekly_req:
+                time_phrase = f" weekly for {inherited_target_ym}"
+            elif m_cur_months or is_cur_monthly:
+                time_phrase = f" for {inherited_target_ym}"
+            elif is_daily_req:
+                time_phrase = f" daily for {inherited_target_ym}"
+            else:
+                time_phrase = f" for {inherited_target_ym}"
+        elif is_weekly_req:
+            wk_val = int(m_cur_weeks.group(1) or m_cur_weeks.group(2)) if m_cur_weeks else (inherited_timeframe_weeks or 26)
+            time_phrase = f" weekly for the last {wk_val} weeks"
+        elif m_cur_months or is_cur_monthly:
             mo_val = int(m_cur_months.group(1) or m_cur_months.group(2)) if m_cur_months else (inherited_timeframe_months or 6)
             time_phrase = f" for the last {mo_val} months"
         elif is_daily_req:
-            d_val = int(m_cur_days.group(1) or m_cur_days.group(2)) if m_cur_days else (inherited_timeframe_days or 30)
+            d_val = int(m_cur_days.group(1) or m_cur_days.group(2)) if m_cur_days else (inherited_timeframe_days or 60)
             time_phrase = f" daily for the last {d_val} days"
         elif inherited_timeframe_months:
             time_phrase = f" for the last {inherited_timeframe_months} months"
@@ -2329,16 +2627,29 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         expanded_query = f"give me the {new_svc_disp or 'compute'} coverage type and commitment breakdown{acc_phrase}".strip()
     elif prior_type == "ai_model_breakdown":
         if inherited_timeframe_months or (not is_cur_daily and not ('inherited_timeframe_days' in locals() and inherited_timeframe_days)):
-            expanded_query = f"give me the multi-cloud spend by ai model for the last {inherited_timeframe_months or 6} months"
+            expanded_query = f"give me the multi-cloud spend by ai model for the last {inherited_timeframe_months or 13} months"
         else:
-            t_d = inherited_timeframe_days if ('inherited_timeframe_days' in locals() and inherited_timeframe_days) else 30
+            t_d = inherited_timeframe_days if ('inherited_timeframe_days' in locals() and inherited_timeframe_days) else 60
             expanded_query = f"give me the multi-cloud spend by ai model daily for the last {t_d} days"
     elif prior_type == "top_services":
-        if m_cur_months or is_cur_monthly:
+        is_weekly_req = any(w in low for w in ["weekly view", "weekly breakdown", "weekly trend", "week by week", "by week", "weekly", "show weekly"]) or bool(m_cur_weeks) or is_cur_weekly
+        if inherited_target_ym and inherited_target_ym != current_ym:
+            if is_weekly_req:
+                time_phrase = f" weekly for {inherited_target_ym}"
+            elif m_cur_months or is_cur_monthly:
+                time_phrase = f" for {inherited_target_ym}"
+            elif m_cur_days or is_cur_daily:
+                time_phrase = f" daily for {inherited_target_ym}"
+            else:
+                time_phrase = f" for {inherited_target_ym}"
+        elif is_weekly_req:
+            wk_val = int(m_cur_weeks.group(1) or m_cur_weeks.group(2)) if m_cur_weeks else (inherited_timeframe_weeks or 26)
+            time_phrase = f" weekly for the last {wk_val} weeks"
+        elif m_cur_months or is_cur_monthly:
             mo_val = int(m_cur_months.group(1) or m_cur_months.group(2)) if m_cur_months else (inherited_timeframe_months or 6)
             time_phrase = f" for the last {mo_val} months"
         elif m_cur_days or is_cur_daily:
-            d_val = int(m_cur_days.group(1) or m_cur_days.group(2)) if m_cur_days else 30
+            d_val = int(m_cur_days.group(1) or m_cur_days.group(2)) if m_cur_days else (inherited_timeframe_days or 60)
             time_phrase = f" daily for the last {d_val} days"
         else:
             time_phrase = ""
@@ -2382,6 +2693,7 @@ def _detect_contextual_continuation(messages: list[dict], cust_map: dict = None)
         "inherited_target_period_title": inherited_period_title or f"FY {inherited_target_year or 2027}",
         "inherited_timeframe_months": inherited_timeframe_months or 12,
         "inherited_timeframe_days": ret_days,
+        "inherited_timeframe_weeks": inherited_timeframe_weeks if 'inherited_timeframe_weeks' in locals() else None,
         "inherited_target_ym": inherited_target_ym,
         "inherited_is_ytd": inherited_is_ytd if 'inherited_is_ytd' in locals() else False,
         "inherited_is_qtd": inherited_is_qtd if 'inherited_is_qtd' in locals() else False,
@@ -2552,6 +2864,10 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         service = None
 
     # Timeframe detection
+    t_ctx = parse_query_time_context(last_msg, context_ym=cont_ctx.get("inherited_target_ym"))
+    target_ym = t_ctx.get("target_ym") if t_ctx.get("is_specific") else None
+    has_specific_month = bool(t_ctx.get("is_specific") and t_ctx.get("target_ym"))
+
     is_mtd = bool(re.search(r'\b(?:mtd|month\s*to\s*date|this\s*month|current\s*month)\b', low))
     m_months = re.search(r'\b(\d+)\s*(?:months?|m)\b', low)
     m_days = re.search(r'\b(\d+)\s*(?:days?|d)\b', low)
@@ -2587,7 +2903,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
                 timeframe_days = int(m_days.group(1)) if m_days else (cont_ctx.get("inherited_timeframe_days") or 7)
                 timeframe_months = None
             else:
-                timeframe_months = cont_ctx.get("inherited_timeframe_months", 6)
+                timeframe_months = cont_ctx.get("inherited_timeframe_months", 13 if cont_ctx.get("prior_query_type") == "ai_model_breakdown" else 6)
                 timeframe_days = None
         elif cont_ctx.get("prior_query_type") in ("multi_service", "service_breakdown"):
             if is_ytd:
@@ -2617,9 +2933,21 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         timeframe_months = int(m_months.group(1)) if m_months else 12
     elif has_explicit_days:
         timeframe_days = int(m_days.group(1)) if m_days else 30
+    elif has_specific_month and not (has_explicit_days or any(w in low for w in ["daily", "by day", "day by day", "per day", "daily view", "daily breakdown", "daily trend"])):
+        timeframe_months = 1
+        timeframe_days = None
     else:
-        # User rule: "use last 30days trend for such requests by default unless I ask for the specific time window"
-        timeframe_days = 30
+        is_ai_query = any(w in low for w in [
+            "ai spend", "foundation model", "foundation models", "ai model", "ai models",
+            "tokenomics", "tokens by model", "ai cost", "ai costs", "ai usage", "llm spend", "llm cost"
+        ])
+        if is_ai_query and not (has_explicit_days or any(w in low for w in ["daily", "by day", "day by day", "per day", "daily view", "daily breakdown", "daily trend"])):
+            # User rule: default AI spend query always gets last 13 months data
+            timeframe_months = 13
+            timeframe_days = None
+        else:
+            # User rule: "use last 30days trend for such requests by default unless I ask for the specific time window"
+            timeframe_days = 30
 
     # Breakdowns
     breakdowns = []
@@ -2648,7 +2976,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         breakdowns.append("region")
     if any(w in low for w in ["location", "locations", "geography", "geographic"]):
         breakdowns.append("location")
-    if any(w in low for w in ["service", "product"]):
+    if any(w in low for w in ["service", "product", "cost driver", "cost drivers", "drivers", "driver", "spend driver", "spend drivers", "top drivers"]):
         breakdowns.append("service")
     if any(w in low for w in ["customer", "tenant", "client"]):
         breakdowns.append("customer")
@@ -2702,9 +3030,14 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
     is_daily_req = any(w in low for w in [
         "daily view", "daily breakdown", "daily trend", "day by day", "by day",
         "each day", "per day", "daily spend", "daily cost", "show daily",
-        "daily table", "daily data", "daily", "by date", "date by date"
+        "daily table", "daily data", "daily", "by date", "date by date", "daily granularity"
     ])
-    if is_daily_req:
+    is_weekly_req = any(w in low for w in [
+        "weekly view", "weekly breakdown", "weekly trend", "week by week", "by week",
+        "each week", "per week", "weekly spend", "weekly cost", "show weekly",
+        "weekly table", "weekly data", "weekly", "weekly granularity"
+    ])
+    if is_daily_req or is_weekly_req:
         is_pure_reformat = False
 
     is_history_qa = any(w in low for w in [
@@ -2834,6 +3167,107 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         else:
             breakdowns.append("tags")
             target_dimension = "Tags"
+    elif target_dataset == "WASTE_OPPORTUNITY" or any(w in low for w in [
+        "waste opportunity", "waste opportunities", "cloud waste", "cloud wastage", "wastage",
+        "orphaned resources", "orphaned resource", "orphaned assets", "orphaned asset",
+        "orphaned volumes", "orphaned disks", "unattached volumes", "unattached disks",
+        "unattached elastic ips", "unattached ips", "unattached eips", "stopped instances",
+        "idle vms", "idle instances", "idle resources", "zombie resources", "zombie assets",
+        "zombie infrastructure", "cleanup opportunities", "clean up opportunities", "cleanup opportunity"
+    ]):
+        if not target_dataset:
+            target_dataset = "WASTE_OPPORTUNITY"
+        if any(w in low for w in ["by region", "per region", "by location", "region breakdown"]):
+            if "region" not in breakdowns: breakdowns.append("region")
+            target_dimension = "Region"
+        elif any(w in low for w in ["by account", "per account", "cloud account", "by subaccount"]):
+            if "account" not in breakdowns: breakdowns.append("account")
+            target_dimension = "CloudAccountId"
+        elif any(w in low for w in ["by opportunity", "by name", "opportunity name", "by policy", "by definition", "definitions", "policies"]):
+            if "opportunity_name" not in breakdowns: breakdowns.append("opportunity_name")
+            target_dimension = "WasteOpportunityName"
+        else:
+            if "entity_type" not in breakdowns: breakdowns.append("entity_type")
+            target_dimension = "EntityType"
+        metric_type = "quantity"
+    elif target_dataset == "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS" or any(w in low for w in [
+        "rightsizing", "rightsizing recommendations", "rightsizing recommendation", "rightsizing savings",
+        "downsizing recommendations", "downsizing recommendation", "downsizing", "downsize",
+        "potential savings recommendations", "rightsizer", "modernization recommendations"
+    ]):
+        if not target_dataset:
+            target_dataset = "MULTICLOUD_RIGHTSIZING_RECOMMENDATIONS"
+        if any(w in low for w in ["by type", "by recommendation type", "recommendation type", "downsize vs terminate"]):
+            if "recommendation_type" not in breakdowns: breakdowns.append("recommendation_type")
+            target_dimension = "Recommendation_Type"
+        elif any(w in low for w in ["by region", "per region", "region breakdown"]):
+            if "region" not in breakdowns: breakdowns.append("region")
+            target_dimension = "Region"
+        elif any(w in low for w in ["by account", "per account", "subaccount"]):
+            if "account" not in breakdowns: breakdowns.append("account")
+            target_dimension = "SubAccount_Name"
+        else:
+            if "service" not in breakdowns: breakdowns.append("service")
+            target_dimension = "Service"
+    elif any(w in low for w in [
+        "by service", "per service", "service breakdown", "services breakdown", "breakdown by service",
+        "top services", "top service", "top 10 services", "top 5 services", "cost drivers", "cost driver",
+        "top cost drivers", "top 10 cost drivers", "top 5 cost drivers", "top drivers", "key cost drivers",
+        "main cost drivers", "spend drivers", "by cost driver", "by cost drivers", "drivers", "driver"
+    ]) and not any(w in low for w in ["service category", "service subcategory", "service account"]):
+        if "service" not in breakdowns:
+            breakdowns.append("service")
+        target_dimension = "ServiceName"
+    elif any(w in low for w in [
+        "commitment portfolio", "commitment cliff", "commitment cliffs", "expiration cliff",
+        "expiration cliffs", "expiring commitment", "expiring commitments", "expiring savings plan",
+        "expiring savings plans", "expiring reservation", "expiring reservations", "commitment schedule",
+        "portfolio coverage", "portfolio commitments"
+    ]):
+        if "lease_type" not in breakdowns:
+            breakdowns.append("lease_type")
+        target_dimension = "PricingCategory"
+        if not target_dataset:
+            target_dataset = "MULTICLOUD_FOCUS_COST_AND_USAGE"
+    elif any(w in low for w in [
+        "unit economics", "unit economic", "unit cost", "unit costs",
+        "cost per token", "cost per 1m token", "cost per 1m tokens",
+        "cost per tenant", "cost per customer", "cost per vcpu",
+        "cost per container", "cost per pod", "business denominator",
+        "business metric", "unit metric", "tokenomics"
+    ]) and not any(w in low for w in ["anomal", "spike"]):
+        if "unit_economics" not in breakdowns:
+            breakdowns.append("unit_economics")
+        target_dimension = "Model"
+        if not target_dataset:
+            target_dataset = "MULTICLOUD_AI_COST_AND_USAGE"
+    elif any(w in low for w in [
+        "data transfer", "network egress", "egress cost", "egress costs", "transfer cost", "transfer costs",
+        "egress", "data transfer by location", "egress by location"
+    ]):
+        if "location" not in breakdowns:
+            breakdowns.append("location")
+        target_dimension = "FromLocation"
+        if not target_dataset:
+            target_dataset = "AWS_DATA_TRANSFER_COST_AND_USAGE"
+    elif any(w in low for w in [
+        "by namespace", "per namespace", "namespace breakdown", "namespace name", "namespace names",
+        "k8s namespace", "namespaces", "namespace"
+    ]):
+        if "k8s_namespace" not in breakdowns:
+            breakdowns.append("k8s_namespace")
+        target_dimension = "NamespaceName"
+        if not target_dataset:
+            target_dataset = "AZURE_K8S_COST" if cloud == "azure" else "AWS_K8S_COST"
+    elif any(w in low for w in [
+        "by cluster", "per cluster", "cluster breakdown", "cluster name", "cluster names",
+        "k8s cluster", "eks cluster", "aks cluster", "gke cluster", "clusters", "cluster"
+    ]):
+        if "k8s_cluster" not in breakdowns:
+            breakdowns.append("k8s_cluster")
+        target_dimension = "ClusterName"
+        if not target_dataset:
+            target_dataset = "AZURE_K8S_COST" if cloud == "azure" else "AWS_K8S_COST"
     elif any(w in low for w in ["team", "teams", "by team", "by teams", "per team", "team breakdown", "which team", "teams breakdown", "team spent", "team spend"]):
         breakdowns.append("perspective_team")
         target_dimension = "Perspective_Kubernetes Teams"
@@ -3011,32 +3445,42 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
                 target_dimension = "InstanceType"
                 if "engine_type" not in breakdowns:
                     breakdowns.append("engine_type")
-        if not target_dimension and service == "AmazonEC2":
-            target_dimension = "product_InstanceType"
-            if "instance_type" not in breakdowns:
-                breakdowns.append("instance_type")
-        elif service == "AmazonRDS":
-            target_dimension = "InstanceType"
-            if "instance_type" not in breakdowns:
-                breakdowns.append("instance_type")
-        elif service == "AmazonS3":
-            target_dimension = "product_storageClass"
-            if "storage_class" not in breakdowns:
-                breakdowns.append("storage_class")
-        elif service == "AmazonEC2_EBS":
-            target_dimension = "product_volumeType"
-            if "volume_type" not in breakdowns:
-                breakdowns.append("volume_type")
-        elif service == "AWSLambda":
-            target_dimension = "lineItem_Operation"
-        elif (cloud in ("azure", "gcp") or (service and service in ("Azure", "GCP"))) and not any(w in low for w in ["top ", "service", "services", "most expensive", "monthly", "month", "trend", "mom"]):
-            target_dimension = "ServiceSubcategory"
-            if "service_subcategory" not in breakdowns:
-                breakdowns.append("service_subcategory")
-        elif cloud == "all" and not any(w in low for w in ["month", "monthly", "trend", "mom", "progression", "over time", "history", "by month"]):
-            target_dimension = "ServiceName"
-            if "service" not in breakdowns:
-                breakdowns.append("service")
+            elif inh_d in ("MeterSubCategory", "MeterCategory", "MeterName", "ServiceSubcategory"):
+                target_dimension = inh_d
+                b_name = "meter_subcategory" if inh_d == "MeterSubCategory" else ("meter_category" if inh_d == "MeterCategory" else ("meter_name" if inh_d == "MeterName" else "service_subcategory"))
+                if b_name not in breakdowns:
+                    breakdowns.append(b_name)
+            elif inh_d:
+                target_dimension = inh_d
+                if inh_d.lower() not in breakdowns:
+                    breakdowns.append(inh_d.lower())
+        if not target_dimension:
+            if service == "AmazonEC2":
+                target_dimension = "product_InstanceType"
+                if "instance_type" not in breakdowns:
+                    breakdowns.append("instance_type")
+            elif service == "AmazonRDS":
+                target_dimension = "InstanceType"
+                if "instance_type" not in breakdowns:
+                    breakdowns.append("instance_type")
+            elif service == "AmazonS3":
+                target_dimension = "product_storageClass"
+                if "storage_class" not in breakdowns:
+                    breakdowns.append("storage_class")
+            elif service == "AmazonEC2_EBS":
+                target_dimension = "product_volumeType"
+                if "volume_type" not in breakdowns:
+                    breakdowns.append("volume_type")
+            elif service == "AWSLambda":
+                target_dimension = "lineItem_Operation"
+            elif (cloud in ("azure", "gcp") or (service and service in ("Azure", "GCP"))) and not any(w in low for w in ["top ", "service", "services", "most expensive", "monthly", "month", "trend", "mom"]):
+                target_dimension = "ServiceSubcategory"
+                if "service_subcategory" not in breakdowns:
+                    breakdowns.append("service_subcategory")
+            elif cloud == "all" and not any(w in low for w in ["month", "monthly", "trend", "mom", "progression", "over time", "history", "by month"]):
+                target_dimension = "ServiceName"
+                if "service" not in breakdowns:
+                    breakdowns.append("service")
 
     if target_dataset:
         is_new_data_fetch = True
@@ -3086,8 +3530,12 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "target_dimension": target_dimension,
         "target_ym": target_ym,
         "comparison_months": t_ctx.get("comparison_months", []),
+        "daily_range": t_ctx.get("daily_range"),
+        "target_label": t_ctx.get("target_label"),
         "timeframe_months": timeframe_months,
         "timeframe_days": timeframe_days,
+        "timeframe_weeks": t_ctx.get("timeframe_weeks") or cont_ctx.get("inherited_timeframe_weeks"),
+        "is_weekly": bool(is_weekly_req or t_ctx.get("is_weekly")),
         "breakdowns": breakdowns,
         "chart_types": chart_types,
         "include_chart": include_chart,
@@ -3103,7 +3551,7 @@ def _deterministic_understand_query(messages: list[dict], cust_map: dict = None)
         "exclusions": cont_ctx.get("exclusions") or extract_negative_exclusions(last_msg),
         "ordinal_entity": cont_ctx.get("ordinal_entity"),
         "sort_refinement": cont_ctx.get("sort_refinement"),
-        "limit": cont_ctx.get("inherited_limit"),
+        "limit": extract_limit_adjustment(last_msg) or cont_ctx.get("inherited_limit"),
         "anomaly_status": detect_anomaly_status_filter(last_msg) if is_anomaly else None,
         "corrected_query": cont_ctx.get("expanded_query") or last_msg
     }

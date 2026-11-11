@@ -513,7 +513,7 @@ _init_ota_code_loader()
 from fastapi import FastAPI, HTTPException, Request, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from html import escape as html_escape
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 import uvicorn
 
@@ -593,19 +593,31 @@ def _on_process_shutdown():
 atexit.register(_on_process_shutdown)
 
 # ── Idle LLM unload watchdog ──────────────────────────────────────────────────
-# Unload local model from memory after 75s of inactivity; reload happens
+# Unload local model from memory after 60s of inactivity; reload happens
 # automatically on the next chat request via lazy-load in call_mlx_generate.
+# Tier 2.5: Adaptive — if a chat is in progress or last activity was <30s ago,
+# skip unload to avoid cold-start penalty mid-conversation.
 _last_activity: float = 0.0
-_IDLE_UNLOAD_SECS = 75  # midpoint of 60-90s window
+_IDLE_UNLOAD_SECS = 60  # reduced from 75s for faster memory reclaim
+_ACTIVE_GRACE_SECS = 30  # keep warm if activity within last 30s
+_active_chats_count: int = 0
 
 def _idle_watchdog():
     while True:
-        time.sleep(30)
-        if _last_activity and (time.time() - _last_activity) > _IDLE_UNLOAD_SECS:
+        time.sleep(10)  # check every 10s (was 15s) for snappier reclaim
+        global _active_chats_count
+        if _active_chats_count > 0:
+            continue
+        if not _last_activity:
+            continue
+        idle_secs = time.time() - _last_activity
+        if idle_secs < _ACTIVE_GRACE_SECS:
+            continue  # recent activity — keep model warm
+        if idle_secs > _IDLE_UNLOAD_SECS:
             try:
                 from cleo_agent import _mlx_models_cache
                 if _mlx_models_cache:
-                    logger.info("💤 [Idle Watchdog] No activity for 75s — unloading local LLM from memory.")
+                    logger.info(f"💤 [Idle Watchdog] No activity for {idle_secs:.0f}s — unloading local LLM from memory.")
                     sys.stdout.flush()
                     unload_mlx_models()
                     unload_ollama_models()
@@ -904,6 +916,7 @@ def _save_sessions():
         logger.warning(f"Could not save sessions cache: {e}")
 
 _sessions: dict        = _load_sessions()
+_ephemeral_sessions: dict = {}  # In-memory session store for ephemeral/test runs (never persisted to disk)
 # ponytail: query-result caching is handled at MCPClient._query_cache (cleo_mcp.py:~380) — no duplicate cache needed here
 _server_start          = datetime.now(timezone.utc).isoformat()
 _active_engine_key     = _init_engine_key
@@ -2642,10 +2655,12 @@ def delete_token(engine: str):
 class ChatRequest(BaseModel):
     message: str = Field(..., max_length=131072)  # 128 KB ceiling (security: L3)
     session_id: Optional[str] = None
+    sessionId: Optional[str] = None
     history: Optional[list[dict]] = Field(None, max_length=100)  # bounded: each turn is replayed to the LLM
     stream: Optional[bool] = False
     save_history: Optional[bool] = True
     ephemeral: Optional[bool] = False
+    include_insights: Optional[bool] = None
 
 class ToolCallLog(BaseModel):
     tool: str
@@ -2661,6 +2676,97 @@ class ChatResponse(BaseModel):
     duration_secs: Optional[float] = None
     tokens: Optional[int] = None
     tokens_per_sec: Optional[float] = None
+    suggested_chips: Optional[list[str]] = None
+
+class GranularityRequest(BaseModel):
+    session_id: str
+    message_index: Optional[int] = None
+    target_granularity: str = Field(..., pattern="^(monthly|weekly|daily)$")
+    month_ref: Optional[str] = None
+    prompt: Optional[str] = None
+    include_insights: Optional[bool] = None
+    force_refresh: Optional[bool] = False
+
+def generate_finops_followup_chips(prompt: str, response: str, tool_calls: list = None) -> list[str]:
+    """
+    Generates dynamic, data-aware suggestion pills rendered under assistant data bubbles.
+    Extracts high-value FinOps entities (top cluster, namespace, model, anomaly, service, customer)
+    from markdown tables and telemetry context.
+    """
+    chips = []
+    rlow = (response or "").lower()
+    plow = (prompt or "").lower()
+
+    table_headers = []
+    first_row_cells = []
+    
+    for line in (response or "").splitlines():
+        line = line.strip()
+        if line.startswith("|") and line.endswith("|"):
+            parts = [p.strip() for p in line.split("|")[1:-1]]
+            if not parts:
+                continue
+            if not table_headers and not any(set(p) <= {"-", ":"} for p in parts):
+                table_headers = [p.lower() for p in parts]
+            elif table_headers and any(set(p) <= {"-", ":"} for p in parts):
+                continue
+            elif table_headers and not first_row_cells:
+                first_row_cells = parts
+                break
+
+    top_entity = None
+    entity_col = None
+    if table_headers and first_row_cells:
+        for idx, h in enumerate(table_headers):
+            if idx < len(first_row_cells):
+                val = first_row_cells[idx].strip().strip("`").strip("*")
+                if not val or val.lower() in ("total", "all", "unknown", "—", "-"):
+                    continue
+                if any(k in h for k in ["cluster", "k8s cluster"]):
+                    return [f"🔍 Drill into {val} by namespace", f"📊 Workload breakdown for {val}", "📉 3-Month K8s Cost Trend"]
+                elif any(k in h for k in ["ai model", "foundation model", "model name"]):
+                    return [f"🤖 Drill into {val} token volume", f"⚡ Compare {val} vs Claude 3.5 Sonnet", "💡 Model routing & caching levers"]
+                elif any(k in h for k in ["anomaly", "cost spike", "impacted service"]) or ("variance" in h and "service" in h):
+                    return [f"🚨 Triage {val} Spike", "📉 60-Day Anomaly History", "💰 Impacted Accounts & Owners"]
+                elif any(k in h for k in ["from location", "source location", "egress"]):
+                    return ["🌐 NAT Gateway vs S3 VPC Endpoint savings", "📍 Egress cost by destination region", "💡 Inter-AZ chatterbox triage"]
+                elif any(k in h for k in ["commitment plan", "pricing category", "lease type", "commitment coverage"]):
+                    return ["⏳ 30-60-90 Day Expiration Cliffs", "📉 Unused Commitment Waste", "🎯 Target 80% Coverage Plan"]
+                elif any(k in h for k in ["service name", "service", "cost driver"]):
+                    if not top_entity:
+                        top_entity = val
+                        entity_col = "service"
+                elif any(k in h for k in ["customer name", "channel customer", "customer"]):
+                    if not top_entity:
+                        top_entity = val
+                        entity_col = "customer"
+
+    if top_entity:
+        if entity_col == "service":
+            return [f"🔍 Drill into {top_entity} by usage type", f"📉 Show monthly trend for {top_entity}", f"💡 Rightsizing levers for {top_entity}"]
+        elif entity_col == "customer":
+            return [f"Show top cloud services for {top_entity}", f"Compare {top_entity} with previous month", f"Show Azure spend for {top_entity}"]
+
+    if any(w in rlow or w in plow for w in ["kubernetes", "k8s", "container", "cluster"]):
+        return ["Show Kubernetes cost breakdown by cluster and namespace", "Show Kubernetes top namespaces", "Show 3-Month K8s Trend"]
+    elif any(w in rlow or w in plow for w in ["anomaly", "anomalies", "spike", "unusual spend"]):
+        return ["Show active cost anomalies across my clouds", "Show resolved anomalies", "Show cost spikes above $5,000"]
+    elif any(w in rlow or w in plow for w in ["ai spend", "foundation model", "tokenomics", "tokens"]):
+        return ["Show AI spend by foundation model across all clouds", "Show token usage by model", "Show AI cost by cloud provider"]
+    elif any(w in rlow or w in plow for w in ["commitment", "savings plan", "reservation", "lease type"]):
+        return ["Show commitment portfolio and upcoming expiration cliffs", "Show commitment coverage by cloud", "Show unused reservations"]
+    elif any(w in rlow or w in plow for w in ["egress", "data transfer", "network", "nat gateway"]):
+        return ["Show data transfer and network egress costs by location", "NAT Gateway vs S3 VPC Endpoint savings", "Inter-AZ transfer costs"]
+    elif any(w in rlow or w in plow for w in ["unit economics", "cost per token", "cost per tenant", "cost per vcpu"]):
+        return ["Show unit economics and cost per 1M tokens", "Show cost per tenant", "Show cost per vCPU-hour"]
+    elif "azure" in rlow:
+        return ["Show top Azure services", "Show Azure VM spend by instance type", "Show active cost anomalies"]
+    elif "gcp" in rlow:
+        return ["Show top GCP services", "Show BigQuery spend", "Show active cost anomalies"]
+    elif "aws" in rlow:
+        return ["Show top AWS services", "Show EC2 spend", "Show active cost anomalies"]
+    else:
+        return ["Top cloud services across all clouds", "Show active cost anomalies", "Show commitment portfolio and upcoming expiration cliffs"]
 
 _cancelled_sessions: set[str] = set()
 
@@ -2739,8 +2845,9 @@ def chat(req: ChatRequest, request: Request):
     if not _check_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="Too many chat requests. Please slow down.")
 
-    global _mcp, _ai, _tools, _last_activity
+    global _mcp, _ai, _tools, _last_activity, _active_chats_count
     _last_activity = time.time()  # reset idle watchdog countdown
+    _active_chats_count += 1
     if not _mcp or not _tools:
         if not init_mcp_if_authenticated():
             raise HTTPException(
@@ -2766,17 +2873,18 @@ def chat(req: ChatRequest, request: Request):
     # Session continuity (like Gemini):
     # If session_id is omitted, empty, or "active", continue the most recent ongoing session.
     # Only spawn a new session if "new" is explicitly requested or if no session exists yet.
-    session_id = req.session_id
+    session_id = req.session_id or req.sessionId
     if not is_ephemeral and session_id in (None, "", "active", "current"):
         session_id = _get_active_session_id()
-    if not session_id or session_id == "new" or not _is_valid_guid(session_id):
+    if not session_id or session_id == "new" or (not is_ephemeral and not _is_valid_guid(session_id)):
         session_id = str(uuid.uuid4())
 
     _cancelled_sessions.discard(session_id)
     now_iso = datetime.now(timezone.utc).isoformat()
 
     _engine_label = _ai.get_engine_display_name() if _ai and hasattr(_ai, "get_engine_display_name") else None
-    if session_id not in _sessions or is_ephemeral:
+    session_pool = _ephemeral_sessions if is_ephemeral else _sessions
+    if session_id not in session_pool:
         title = _generate_chat_title(req.message)
         session_entry = {
             "id": session_id,
@@ -2791,15 +2899,13 @@ def chat(req: ChatRequest, request: Request):
             for h in req.history:
                 if h.get("role") in ("user", "assistant") and isinstance(h.get("content"), str) and h["content"]:
                     session_entry["messages"].append({"role": h["role"], "content": h["content"][:131072]})
-        if not is_ephemeral:
-            _sessions[session_id] = session_entry
+        session_pool[session_id] = session_entry
     else:
-        session_entry = _sessions[session_id]
+        session_entry = session_pool[session_id]
 
     if isinstance(session_entry, list):
         session_entry = _normalize_session(session_id, session_entry)
-        if not is_ephemeral:
-            _sessions[session_id] = session_entry
+        session_pool[session_id] = session_entry
 
     messages = session_entry["messages"]
 
@@ -2864,7 +2970,12 @@ def chat(req: ChatRequest, request: Request):
                     q.put({"type": "status", "message": status})
 
                 active_messages = prune_messages_to_context_budget(messages)
-                response = run_agent_turn(_mcp, _ai, active_messages, on_token=on_token, on_status=on_status)
+                response = run_agent_turn(
+                    _mcp, _ai, active_messages,
+                    on_token=on_token,
+                    on_status=on_status,
+                    include_insights=req.include_insights
+                )
                 duration_secs = max(0.01, round(time.perf_counter() - t0, 2))
                 stats = getattr(_ai, "last_stats", {}) or {}
                 total_tokens = stats.get("tokens") or (stats.get("prompt_tokens", 0) + stats.get("completion_tokens", 0))
@@ -2930,16 +3041,20 @@ def chat(req: ChatRequest, request: Request):
         worker_thread.start()
 
         def event_generator():
-            while True:
-                try:
-                    item = q.get(timeout=0.05)
-                except queue.Empty:
-                    if not worker_thread.is_alive():
+            try:
+                while True:
+                    try:
+                        item = q.get(timeout=0.05)
+                    except queue.Empty:
+                        if not worker_thread.is_alive():
+                            break
+                        continue
+                    if item is done_marker:
                         break
-                    continue
-                if item is done_marker:
-                    break
-                yield f"data: {json.dumps(item)}\n\n"
+                    yield f"data: {json.dumps(item)}\n\n"
+            finally:
+                global _active_chats_count
+                _active_chats_count = max(0, _active_chats_count - 1)
 
         return StreamingResponse(
             event_generator(),
@@ -2966,7 +3081,10 @@ def chat(req: ChatRequest, request: Request):
     t0 = time.perf_counter()
     try:
         active_messages = prune_messages_to_context_budget(messages)
-        response = run_agent_turn(_mcp, _ai, active_messages)
+        response = run_agent_turn(
+            _mcp, _ai, active_messages,
+            include_insights=req.include_insights
+        )
     except Exception as e:
         if session_id in _cancelled_sessions or "cancelled by user" in str(e).lower():
             logger.info(f"[Chat] Query cancelled by user for session {session_id}")
@@ -2975,6 +3093,7 @@ def chat(req: ChatRequest, request: Request):
             raise HTTPException(status_code=499, detail="Query cancelled by user.")
         raise
     finally:
+        _active_chats_count = max(0, _active_chats_count - 1)
         _mcp.call_tool = original_call_tool
         _cancelled_sessions.discard(session_id)
 
@@ -3017,6 +3136,8 @@ def chat(req: ChatRequest, request: Request):
     if not is_ephemeral:
         _save_sessions()
 
+    suggested_chips = generate_finops_followup_chips(req.message, response, tool_log)
+
     return ChatResponse(
         response=response,
         thinking=thinking,
@@ -3025,8 +3146,106 @@ def chat(req: ChatRequest, request: Request):
         title=session_entry.get("title"),
         duration_secs=duration_secs,
         tokens=total_tokens,
-        tokens_per_sec=tokens_per_sec
+        tokens_per_sec=tokens_per_sec,
+        suggested_chips=suggested_chips
     )
+
+
+@app.post("/api/chat/granularity")
+def switch_chat_granularity(req: GranularityRequest, request: Request):
+    global _mcp, _ai, _tools, _last_activity
+    _last_activity = time.time()
+    if not _mcp or not _tools:
+        if not init_mcp_if_authenticated():
+            raise HTTPException(status_code=401, detail="CloudHealth MCP is disconnected.")
+    if not _ai:
+        raise HTTPException(status_code=503, detail="AI engine is initializing.")
+
+    session_pool = _sessions
+    session_entry = session_pool.get(req.session_id)
+    if not session_entry:
+        session_entry = _ephemeral_sessions.get(req.session_id)
+    if not session_entry:
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    if isinstance(session_entry, list):
+        session_entry = _normalize_session(req.session_id, session_entry)
+        session_pool[req.session_id] = session_entry
+
+    messages = session_entry.get("messages", [])
+    if not messages:
+        raise HTTPException(status_code=400, detail="No messages in session.")
+
+    assistant_indices = [i for i, m in enumerate(messages) if m.get("role") == "assistant"]
+    if not assistant_indices:
+        raise HTTPException(status_code=400, detail="No assistant message found to change granularity.")
+
+    if req.message_index is not None and 0 <= req.message_index < len(assistant_indices):
+        asst_idx = assistant_indices[req.message_index]
+    elif req.message_index is not None and 0 <= req.message_index < len(messages) and messages[req.message_index].get("role") == "assistant":
+        asst_idx = req.message_index
+    else:
+        asst_idx = assistant_indices[-1]
+
+    asst_msg = messages[asst_idx]
+    if not isinstance(asst_msg.get("granularities"), dict):
+        curr_content = asst_msg.get("content", "")
+        curr_gran = "monthly"
+        if "weekly" in curr_content.lower() or "iso calendar weeks" in curr_content.lower():
+            curr_gran = "weekly"
+        elif "daily" in curr_content.lower() or "day-over-day" in curr_content.lower() or "active days" in curr_content.lower():
+            curr_gran = "daily"
+        asst_msg["granularities"] = {curr_gran: curr_content}
+        asst_msg["default_granularity"] = curr_gran
+        asst_msg["active_granularity"] = curr_gran
+
+    target_gran = req.target_granularity.lower().strip()
+    # Check if target granularity is already in cache
+    if not req.force_refresh and target_gran in asst_msg["granularities"]:
+        cached_md = asst_msg["granularities"][target_gran]
+        asst_msg["content"] = cached_md
+        asst_msg["active_granularity"] = target_gran
+        _save_sessions()
+        return {
+            "success": True,
+            "cached": True,
+            "granularity": target_gran,
+            "markdown": cached_md,
+            "session_id": req.session_id,
+            "message_index": asst_idx
+        }
+
+    # Not cached: query CloudHealth telemetry for this granularity
+    hist = messages[:asst_idx]
+    if req.prompt:
+        gran_prompt = req.prompt
+    elif req.month_ref:
+        gran_prompt = f"Show this spend with {target_gran} granularity {req.month_ref}".strip()
+    else:
+        gran_prompt = f"Show this spend with {target_gran} granularity"
+
+    query_messages = hist + [{"role": "user", "content": gran_prompt}]
+    active_messages = prune_messages_to_context_budget(query_messages)
+
+    response = run_agent_turn(_mcp, _ai, active_messages, include_insights=req.include_insights)
+    clean_resp, extra_thinking = split_thinking_and_response(response)
+    if not clean_resp and response:
+        clean_resp = response
+
+    asst_msg["granularities"][target_gran] = clean_resp
+    asst_msg["content"] = clean_resp
+    asst_msg["active_granularity"] = target_gran
+    session_entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+    _save_sessions()
+
+    return {
+        "success": True,
+        "cached": False,
+        "granularity": target_gran,
+        "markdown": clean_resp,
+        "session_id": req.session_id,
+        "message_index": asst_idx
+    }
 
 
 @app.get("/api/sessions/search")
@@ -3119,7 +3338,10 @@ def get_session(session_id: str):
             "duration_secs": m.get("duration_secs"),
             "tokens": m.get("tokens"),
             "tokens_per_sec": m.get("tokens_per_sec"),
-            "tool_calls": m.get("tool_calls", [])
+            "tool_calls": m.get("tool_calls", []),
+            "granularities": m.get("granularities", {}),
+            "default_granularity": m.get("default_granularity"),
+            "active_granularity": m.get("active_granularity")
         }
         if item["role"] == "assistant":
             if item["tokens"] is None and item["content"]:
@@ -3281,6 +3503,70 @@ def delete_memory_entry(entry_id: str):
     if not deleted:
         raise HTTPException(status_code=404, detail="Entry not found")
     return {"status": "deleted"}
+
+# ── Client Deliverables (.xlsx, .pptx, .html) ─────────────────────────────────
+
+@app.get("/api/deliverables/download/{file_type}")
+def download_deliverable(file_type: str, session_id: Optional[str] = None, refresh: bool = False):
+    out_dir = os.path.join(_base_dir, "client_deliverables")
+    os.makedirs(out_dir, exist_ok=True)
+    if file_type in ("drivers-dashboard", "drivers-xlsx", "drivers"):
+        fname = "CloudHealth_cloud_drivers_dashboard.xlsx"
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        file_path = os.path.join(out_dir, fname)
+        if refresh or not os.path.exists(file_path):
+            import subprocess
+            script_path = os.path.join(_base_dir, "scripts", "generate_drivers_dashboard.py")
+            subprocess.run([sys.executable, script_path, file_path], check=True)
+        return FileResponse(file_path, media_type=media_type, filename=fname)
+    elif file_type == "drivers-gs":
+        fname = "CloudHealthDriversDashboard.gs"
+        media_type = "text/plain"
+        file_path = os.path.join(out_dir, fname)
+        return FileResponse(file_path, media_type=media_type, filename=fname)
+    elif file_type == "drivers-telemetry":
+        cache_fp = os.path.join(out_dir, ".cache", "cloudhealth_monthly_telemetry.json")
+        if os.path.exists(cache_fp):
+            with open(cache_fp, "r") as f:
+                return json.load(f)
+        return {"rows": []}
+    elif file_type not in ("pptx", "xlsx", "html"):
+        raise HTTPException(status_code=400, detail="Invalid file type. Supported: pptx, xlsx, html, drivers-dashboard, drivers-gs, drivers-telemetry")
+
+    media_types = {
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "html": "text/html"
+    }
+    media_type = media_types[file_type]
+
+    # Resolve target directory (isolated per session to prevent cross-chat data collisions)
+    if session_id:
+        safe_sid = re.sub(r'[^a-zA-Z0-9_-]', '_', session_id)
+        target_dir = os.path.join(out_dir, "sessions", safe_sid)
+    else:
+        target_dir = out_dir
+    os.makedirs(target_dir, exist_ok=True)
+
+    try:
+        import importlib.util
+        exp_script = os.path.join(_base_dir, "scripts", "export_deliverables.py")
+        spec = importlib.util.spec_from_file_location("export_deliverables_mod", exp_script)
+        exp_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(exp_mod)
+        
+        res = exp_mod.export_deliverables(session_id=session_id, host="http://127.0.0.1:8080", out_dir=target_dir, refresh=refresh)
+        file_path = res.get(file_type)
+        if not file_path or not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail=f"Deliverable file '{file_type}' was not generated.")
+        download_fname = res.get(f"{file_type}_filename", os.path.basename(file_path))
+        
+        return FileResponse(file_path, media_type=media_type, filename=download_fname)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Deliverables Download Error] {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate {file_type}: {str(e)}")
 
 # ── Auto-Update via GitHub ────────────────────────────────────────────────────
 # Update trust model:

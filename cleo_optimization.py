@@ -415,22 +415,6 @@ def format_optimization_response(
         )
         out.append(chart_json)
 
-    # 4. Actionable Remediation Guides & CLI Commands
-    out.append("#### 🛠️ Immediate Execution & Remediation Guides\n\n")
-
-    # Display top 3 levers with full runnable CLI snippets
-    for l in levers[:3]:
-        out.append(f"##### 🔹 {l['title']} ({l['cloud']})\n")
-        out.append(f"{l['summary']}\n\n")
-        out.append(f"**Estimated Monthly Savings**: **${l['savings_monthly']:,.2f}** &nbsp;·&nbsp; **Implementation Risk**: `{l['risk']}`\n\n")
-        out.append("```bash\n")
-        out.append(l["cli_command"])
-        out.append("\n```\n\n")
-
-    if len(levers) > 3:
-        remaining_count = len(levers) - 3
-        out.append(f"*\n💡 **{remaining_count} additional levers** available in backlog (S3 lifecycle rules, idle load balancers, and snapshot pruning). Type `execute optimization for {levers[3]['title']}` for specific scripts.*\n\n")
-
-    out.append("---\n*Source: Evaluated by Cleo Autonomous FinOps Engine against Cloud FinOps Best Practice Playbooks.*")
+    out.append("---\n*Source: Evaluated by Cleo Autonomous FinOps Engine against CloudHealth live telemetry.*")
 
     return "".join(out)

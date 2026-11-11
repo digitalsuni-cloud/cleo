@@ -43,12 +43,17 @@ remove_*.py
 test_*.py
 test*.py
 *test*.py
+*probe*.py
+*benchmark*.py
 conftest.py
 tests/
 update_compare.py
 scratch/
 local_tests/
 *.gs
+
+# Client deliverables & sensitive session artifacts
+client_deliverables/
 
 # OS & Local editor/agent files
 .DS_Store
@@ -62,7 +67,9 @@ local_tests/
 RELEASE_CHECKLIST.md
 *checklist*.md
 RELEASE_NOTES.md
-scripts/
+scripts/*
+!scripts/export_deliverables.py
+!scripts/generate_drivers_dashboard.py
 
 # Agent skills & internal dev rules
 agent/

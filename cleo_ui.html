@@ -52,57 +52,57 @@
     }
 
     :root[data-theme="light"] {
-      --bg-base: #f5f3ee;
-      --bg-surface: #eae5db;
-      --bg-card: #fbf9f4;
-      --bg-card-hover: #eee9df;
-      --border: #ded7c8;
-      --border-subtle: rgba(45, 38, 30, 0.06);
+      --bg-base: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-card: #ffffff;
+      --bg-card-hover: #f1f5f9;
+      --border: #e2e8f0;
+      --border-subtle: rgba(15, 23, 42, 0.06);
       --border-focus: #0284c7;
       --primary: #0284c7;
       --primary-hover: #0369a1;
       --accent-azure: #0284c7;
       --accent-emerald: #059669;
-      --text: #1f1c19;
-      --text-muted: #524c44;
-      --text-dim: #7c756b;
-      --text-primary: #1f1c19;
-      --text-secondary: #524c44;
-      --surface-2: #f6f3eb;
+      --text: #0f172a;
+      --text-muted: #475569;
+      --text-dim: #64748b;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --surface-2: #f1f5f9;
       --danger: #dc2626;
       --warning: #d97706;
       --success: #059669;
-      --shadow-sm: 0 1px 3px rgba(45, 38, 30, 0.05);
-      --shadow-md: 0 4px 16px rgba(45, 38, 30, 0.06);
-      --shadow-lg: 0 12px 32px rgba(45, 38, 30, 0.08);
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+      --shadow-md: 0 4px 12px -1px rgba(15, 23, 42, 0.05), 0 2px 4px -2px rgba(15, 23, 42, 0.03);
+      --shadow-lg: 0 12px 28px -4px rgba(15, 23, 42, 0.08), 0 4px 8px -2px rgba(15, 23, 42, 0.03);
       color-scheme: light;
     }
 
     @media (prefers-color-scheme: light) {
       :root:not([data-theme="dark"]) {
-        --bg-base: #f5f3ee;
-        --bg-surface: #eae5db;
-        --bg-card: #fbf9f4;
-        --bg-card-hover: #eee9df;
-        --border: #ded7c8;
-        --border-subtle: rgba(45, 38, 30, 0.06);
+        --bg-base: #f8fafc;
+        --bg-surface: #ffffff;
+        --bg-card: #ffffff;
+        --bg-card-hover: #f1f5f9;
+        --border: #e2e8f0;
+        --border-subtle: rgba(15, 23, 42, 0.06);
         --border-focus: #0284c7;
         --primary: #0284c7;
         --primary-hover: #0369a1;
         --accent-azure: #0284c7;
         --accent-emerald: #059669;
-        --text: #1f1c19;
-        --text-muted: #524c44;
-        --text-dim: #7c756b;
-        --text-primary: #1f1c19;
-        --text-secondary: #524c44;
-        --surface-2: #f6f3eb;
+        --text: #0f172a;
+        --text-muted: #475569;
+        --text-dim: #64748b;
+        --text-primary: #0f172a;
+        --text-secondary: #475569;
+        --surface-2: #f1f5f9;
         --danger: #dc2626;
         --warning: #d97706;
         --success: #059669;
-        --shadow-sm: 0 1px 3px rgba(45, 38, 30, 0.05);
-        --shadow-md: 0 4px 16px rgba(45, 38, 30, 0.06);
-        --shadow-lg: 0 12px 32px rgba(45, 38, 30, 0.08);
+        --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+        --shadow-md: 0 4px 12px -1px rgba(15, 23, 42, 0.05), 0 2px 4px -2px rgba(15, 23, 42, 0.03);
+        --shadow-lg: 0 12px 28px -4px rgba(15, 23, 42, 0.08), 0 4px 8px -2px rgba(15, 23, 42, 0.03);
         color-scheme: light;
       }
     }
@@ -206,6 +206,34 @@
     }
     .brand-logo-wrap:hover {
       opacity: 0.9;
+    }
+    /* ── Cleo Brand Logo 3D Prism ── */
+    .cleo-logo-svg {
+      overflow: visible;
+      filter: drop-shadow(0 2px 8px rgba(56, 189, 248, 0.28));
+      transition: filter 0.15s ease, transform 0.15s ease;
+    }
+    .cleo-logo-face {
+      opacity: 0.96;
+      stroke: rgba(11, 15, 23, 0.4);
+      stroke-width: 0.6px;
+      stroke-linejoin: round;
+      transition: stroke 0.15s ease;
+    }
+    .cleo-logo-core {
+      fill: #090d16;
+      stroke: #38bdf8;
+      stroke-width: 0.75px;
+      stroke-opacity: 0.8;
+      transition: fill 0.15s ease, stroke 0.15s ease;
+    }
+    .cleo-logo-star {
+      fill: #ffffff;
+      transition: fill 0.15s ease;
+    }
+    .cleo-logo-spark {
+      fill: #38bdf8;
+      transition: fill 0.15s ease;
     }
     .brand-text {
       display: flex;
@@ -552,139 +580,392 @@
       transform: translateX(24px); /* Dark mode: thumb sits on right (moon) */
     }
 
+    /* ── FinOps Insights Toggle Buttons (Dark Mode) ── */
+    .insights-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      background: rgba(245, 158, 11, 0.1);
+      color: #fbbf24;
+      white-space: nowrap;
+      transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+      user-select: none;
+    }
+    .insights-toggle-btn:hover {
+      background: rgba(245, 158, 11, 0.18);
+      border-color: rgba(245, 158, 11, 0.6);
+      transform: translateY(-1px);
+    }
+    .insights-toggle-btn:active {
+      transform: scale(0.96);
+    }
+    .insights-toggle-btn .insights-bulb-icon {
+      font-size: 0.8rem;
+      line-height: 1;
+      filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.5));
+      transition: filter 0.2s ease, opacity 0.2s ease;
+    }
+    .insights-toggle-btn .insights-status-tag {
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: rgba(245, 158, 11, 0.22);
+      color: #fde68a;
+      transition: all 0.2s ease;
+    }
+    .insights-toggle-btn.off {
+      background: rgba(255, 255, 255, 0.03);
+      border-color: var(--border);
+      color: var(--text-dim);
+    }
+    .insights-toggle-btn.off:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.15);
+      color: var(--text-muted);
+    }
+    .insights-toggle-btn.off .insights-bulb-icon {
+      filter: grayscale(1) opacity(0.35);
+    }
+    .insights-toggle-btn.off .insights-status-tag {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-dim);
+    }
+
+    .input-insights-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 32px;
+      padding: 0 10px;
+      border-radius: 7px;
+      font-size: 0.72rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      background: rgba(245, 158, 11, 0.1);
+      color: #fbbf24;
+      white-space: nowrap;
+      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+      user-select: none;
+      flex-shrink: 0;
+    }
+    .input-insights-btn:hover {
+      background: rgba(245, 158, 11, 0.18);
+      border-color: rgba(245, 158, 11, 0.6);
+      transform: translateY(-1px);
+    }
+    .input-insights-btn:active {
+      transform: scale(0.95);
+    }
+    .input-insights-btn .input-insights-bulb {
+      font-size: 0.8rem;
+      line-height: 1;
+      filter: drop-shadow(0 0 3px rgba(251, 191, 36, 0.45));
+      transition: filter 0.2s ease, opacity 0.2s ease;
+    }
+    .input-insights-btn.off {
+      background: rgba(255, 255, 255, 0.03);
+      border-color: rgba(255, 255, 255, 0.08);
+      color: #64748b;
+    }
+    .input-insights-btn.off:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.15);
+      color: #94a3b8;
+    }
+    .input-insights-btn.off .input-insights-bulb {
+      filter: grayscale(1) opacity(0.35);
+    }
+
     /* Light mode track & thumb */
     :root[data-theme="light"] .theme-switch-track {
-      background: #eae7de;
-      border-color: #d6d2c4;
-      box-shadow: inset 0 1px 2px rgba(45, 38, 30, 0.08);
+      background: #e2e8f0;
+      border-color: #cbd5e1;
+      box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.08);
     }
     :root[data-theme="light"] .theme-switch-icon.sun {
       color: #d97706;
       opacity: 1;
     }
     :root[data-theme="light"] .theme-switch-icon.moon {
-      color: #78716c;
+      color: #64748b;
       opacity: 0.5;
     }
     :root[data-theme="light"] .theme-switch-thumb {
-      background: #fbf9f4;
-      box-shadow: 0 1px 3px rgba(45, 38, 30, 0.15), 0 0 6px rgba(217, 119, 6, 0.25);
+      background: #ffffff;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.15), 0 0 6px rgba(217, 119, 6, 0.25);
       transform: translateX(0); /* Light mode: thumb sits on left (sun) */
     }
 
-    /* ── Light Mode Polish Rules (Warm Bone / Linen Editorial Palette) ── */
+    /* ── Light Mode Polish Rules (Crisp Slate / Snow SaaS Palette) ── */
     :root[data-theme="light"] .brand-name {
-      color: #1f1c19;
+      color: #0f172a;
     }
     :root[data-theme="light"] .brand-tag {
-      background: rgba(45, 38, 30, 0.05);
-      border-color: rgba(45, 38, 30, 0.1);
-      color: #524c44;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      color: #334155;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .brand-beta {
+      background: #fef3c7;
+      border: 1px solid #fcd34d;
+      color: #92400e;
+      font-weight: 700;
+    }
+    :root[data-theme="light"] .brand-subtitle {
+      color: #475569;
+      font-weight: 500;
+    }
+    :root[data-theme="light"] .cleo-logo-svg {
+      filter: drop-shadow(0 2px 6px rgba(2, 132, 199, 0.18));
+    }
+    :root[data-theme="light"] .cleo-logo-face {
+      opacity: 1;
+      stroke: #ffffff;
+      stroke-width: 1.2px;
+      stroke-linejoin: round;
+    }
+    :root[data-theme="light"] .cleo-logo-core {
+      fill: #ffffff;
+      stroke: #0284c7;
+      stroke-width: 1.25px;
+      stroke-opacity: 1;
+      filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.12));
+    }
+    :root[data-theme="light"] .cleo-logo-star {
+      fill: #0284c7;
+    }
+    :root[data-theme="light"] .cleo-logo-spark {
+      fill: #38bdf8;
+    }
+    :root[data-theme="light"] .brand-link:hover {
+      background: #f1f5f9;
+    }
+    :root[data-theme="light"] .brand-link:hover .brand-name {
+      color: #0284c7;
+    }
+    :root[data-theme="light"] .brand-link:hover .cleo-logo-svg {
+      filter: drop-shadow(0 3px 10px rgba(2, 132, 199, 0.32));
     }
     :root[data-theme="light"] .icon-btn {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
-      color: var(--text-muted);
+      color: #334155;
     }
     :root[data-theme="light"] .icon-btn:hover {
-      background: #eee9df;
-      color: var(--text);
-      border-color: #a8a29e;
+      background: #f1f5f9;
+      color: #0f172a;
+      border-color: #cbd5e1;
     }
     :root[data-theme="light"] .btn-secondary {
-      background: #fbf9f4;
-      color: #292524;
-      border-color: var(--border);
-      box-shadow: 0 1px 2px rgba(45, 38, 30, 0.03);
+      background: #ffffff;
+      color: #0f172a;
+      border-color: #cbd5e1;
+      font-weight: 600;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     }
     :root[data-theme="light"] .btn-secondary:hover {
-      background: #eee9df;
-      color: #1c1917;
-      border-color: #a8a29e;
+      background: #f1f5f9;
+      color: #0f172a;
+      border-color: #94a3b8;
     }
     :root[data-theme="light"] .btn-logs {
-      background: #fbf9f4;
-      border-color: var(--border);
-      color: var(--text-muted);
+      background: #ffffff;
+      border-color: #cbd5e1;
+      color: #334155;
+      font-weight: 500;
     }
     :root[data-theme="light"] .btn-logs:hover {
-      background: #eee9df;
-      border-color: #a8a29e;
-      color: var(--text);
+      background: #f1f5f9;
+      border-color: #94a3b8;
+      color: #0f172a;
     }
     :root[data-theme="light"] .ch-status-btn {
-      background: #fbf9f4;
-      border-color: var(--border);
-      color: var(--text-muted);
+      background: #ffffff;
+      border-color: #cbd5e1;
+      color: #334155;
+      font-weight: 500;
     }
     :root[data-theme="light"] .ch-status-btn:hover {
-      background: #eee9df;
-      border-color: #a8a29e;
+      background: #f1f5f9;
+      border-color: #94a3b8;
+      color: #0f172a;
     }
     :root[data-theme="light"] .ch-status-btn.connected {
-      background: rgba(16, 185, 129, 0.08);
-      border-color: rgba(16, 185, 129, 0.3);
-      color: #059669;
+      background: #ecfdf5;
+      border: 1px solid #6ee7b7;
+      color: #065f46;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .ch-status-btn.connected #badge-text {
+      color: #065f46;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .ch-status-btn.connected .ch-chevron {
+      color: #065f46;
+      opacity: 0.9;
+    }
+    :root[data-theme="light"] .ch-status-btn.connected .dot {
+      background: #059669;
+      box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.25);
     }
     :root[data-theme="light"] .ch-status-btn.disconnected {
-      background: rgba(220, 38, 38, 0.08);
-      border-color: rgba(220, 38, 38, 0.3);
-      color: #dc2626;
+      background: #fef2f2;
+      border: 1px solid #fca5a5;
+      color: #991b1b;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .ch-status-btn.disconnected #badge-text {
+      color: #991b1b;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .insights-toggle-btn {
+      background: #fffbeb;
+      border: 1px solid #f59e0b;
+      color: #78350f;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .insights-toggle-btn:hover {
+      background: #fef3c7;
+      border-color: #d97706;
+      color: #78350f;
+    }
+    :root[data-theme="light"] .insights-toggle-btn .insights-label {
+      color: #78350f;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .insights-toggle-btn .insights-status-tag {
+      background: #b45309;
+      color: #ffffff;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      letter-spacing: 0.04em;
+    }
+    :root[data-theme="light"] .insights-toggle-btn.off {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      color: #475569;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .insights-toggle-btn.off:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+      color: #1e293b;
+    }
+    :root[data-theme="light"] .insights-toggle-btn.off .insights-label {
+      color: #475569;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .insights-toggle-btn.off .insights-status-tag {
+      background: #e2e8f0;
+      color: #475569;
+      font-weight: 700;
+    }
+    :root[data-theme="light"] .input-insights-btn {
+      background: #fffbeb;
+      border: 1px solid #f59e0b;
+      color: #78350f;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .input-insights-btn:hover {
+      background: #fef3c7;
+      border-color: #d97706;
+      color: #78350f;
+    }
+    :root[data-theme="light"] .input-insights-btn .input-insights-label {
+      color: #78350f;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .input-insights-btn.off {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      color: #64748b;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .input-insights-btn.off:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+      color: #334155;
+    }
+    :root[data-theme="light"] .input-insights-btn.off .input-insights-label {
+      color: #64748b;
     }
     :root[data-theme="light"] .ch-dropdown {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
-      box-shadow: 0 10px 25px -5px rgba(45, 38, 30, 0.1), 0 8px 10px -6px rgba(45, 38, 30, 0.06);
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px -6px rgba(15, 23, 42, 0.06);
     }
     :root[data-theme="light"] .ch-menu-item {
-      color: #292524;
+      color: #1e293b;
     }
     :root[data-theme="light"] .ch-menu-item:hover {
-      background: #eee9df;
-      color: #1c1917;
+      background: #f1f5f9;
+      color: #0f172a;
     }
     :root[data-theme="light"] .sidebar-tabs {
-      background: #eae5db;
+      background: #f8fafc;
       border-bottom-color: var(--border);
     }
     :root[data-theme="light"] .sidebar-tab-btn:hover {
-      background: rgba(45, 38, 30, 0.05);
+      background: rgba(15, 23, 42, 0.05);
       color: var(--text);
     }
     :root[data-theme="light"] .sidebar-tab-btn.active {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
       color: #0284c7;
-      box-shadow: 0 1px 3px rgba(45, 38, 30, 0.04);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+    }
+    :root[data-theme="light"] .counter-badge {
+      background: #e0f2fe;
+      border: 1px solid #7dd3fc;
+      color: #0369a1;
+      font-weight: 700;
+    }
+    :root[data-theme="light"] #sidebar-tool-badge {
+      background: #ecfdf5 !important;
+      border-color: #86efac !important;
+      color: #15803d !important;
+      font-weight: 700;
     }
     :root[data-theme="light"] .search-input {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
       color: var(--text);
     }
     :root[data-theme="light"] .search-input:focus {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: #0284c7;
       box-shadow: 0 0 0 1px #0284c7;
     }
     :root[data-theme="light"] .sidebar-new-btn {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
-      color: #78716c;
+      color: #64748b;
     }
     :root[data-theme="light"] .sidebar-new-btn:hover {
-      background: #eef5fb;
+      background: #f0f9ff;
       border-color: #0284c7;
       color: #0284c7;
     }
     :root[data-theme="light"] .history-select-btn {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
-      color: #78716c;
+      color: #64748b;
     }
     :root[data-theme="light"] .history-select-btn:hover {
-      background: #eee9df;
-      color: #292524;
+      background: #f1f5f9;
+      color: #1e293b;
     }
     :root[data-theme="light"] .history-select-btn.active {
       background: #e0f2fe;
@@ -692,12 +973,12 @@
       color: #0284c7;
     }
     :root[data-theme="light"] .history-batch-bar {
-      background: #eae5db;
+      background: #f8fafc;
       border-color: var(--border);
-      color: #524c44;
+      color: #475569;
     }
     :root[data-theme="light"] .history-item {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
     }
     :root[data-theme="light"] .history-item.is-selected {
@@ -706,38 +987,54 @@
       box-shadow: 0 0 8px rgba(2, 132, 199, 0.15) !important;
     }
     :root[data-theme="light"] .history-item:hover {
-      background: #eee9df;
-      border-color: #a8a29e;
+      background: #f1f5f9;
+      border-color: #cbd5e1;
     }
     :root[data-theme="light"] .history-item.active {
-      background: #eef5fb;
+      background: #f0f9ff;
       border-color: #0284c7;
       box-shadow: 0 0 12px rgba(2, 132, 199, 0.12);
     }
     :root[data-theme="light"] .history-item-title {
-      color: #292524;
+      color: #1e293b;
     }
     :root[data-theme="light"] .history-item.active .history-item-title {
       color: #0284c7;
     }
+    :root[data-theme="light"] .history-item-meta {
+      color: #64748b;
+    }
+    :root[data-theme="light"] .history-item-msgs {
+      color: #1e293b;
+      font-weight: 600;
+    }
+    :root[data-theme="light"] .history-item-date {
+      color: #64748b;
+      font-weight: 500;
+    }
     :root[data-theme="light"] .history-item-guid {
-      background: #f0ece2;
-      border-color: #ded7c8;
-      color: #78716c;
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      color: #334155;
+      font-weight: 600;
     }
     :root[data-theme="light"] .history-item-guid:hover {
       background: #e0f2fe;
       color: #0284c7;
+      border-color: #7dd3fc;
+    }
+    :root[data-theme="light"] .history-item-preview {
+      color: #475569;
     }
     :root[data-theme="light"] .cleo .avatar {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
     }
     :root[data-theme="light"] .cleo .bubble {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
       border-top: 1px solid rgba(2, 132, 199, 0.35);
-      box-shadow: 0 1px 3px rgba(45, 38, 30, 0.04);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
     }
     :root[data-theme="light"] .user .bubble {
       background: #0284c7;
@@ -746,140 +1043,181 @@
       box-shadow: 0 1px 3px rgba(2, 132, 199, 0.18);
     }
     :root[data-theme="light"] .bubble-header {
-      border-bottom-color: rgba(45, 38, 30, 0.07);
+      border-bottom-color: rgba(15, 23, 42, 0.07);
     }
     :root[data-theme="light"] .bubble-header-title {
-      color: #524c44;
+      color: #1e293b;
+      font-weight: 600;
     }
     :root[data-theme="light"] .bubble-header-time {
-      color: #78716c;
+      color: #64748b;
     }
     :root[data-theme="light"] .bubble-header-dur {
-      color: #292524;
+      color: #0f172a;
+      font-weight: 600;
     }
     :root[data-theme="light"] .bubble-header-tokens {
-      background: rgba(2, 132, 199, 0.08);
-      border-color: rgba(2, 132, 199, 0.25);
-      color: #0284c7;
+      background: #e0f2fe;
+      border-color: #bae6fd;
+      color: #0369a1;
+      font-weight: 600;
     }
     :root[data-theme="light"] .bubble-header-tps {
-      background: rgba(5, 150, 105, 0.08);
-      border-color: rgba(5, 150, 105, 0.25);
-      color: #059669;
+      background: #dcfce7;
+      border-color: #bbf7d0;
+      color: #15803d;
+      font-weight: 600;
     }
     :root[data-theme="light"] .bubble h1,
     :root[data-theme="light"] .bubble h2,
     :root[data-theme="light"] .bubble h3,
     :root[data-theme="light"] .bubble h4 {
-      color: #1f1c19;
+      color: #0f172a;
     }
     :root[data-theme="light"] .bubble table {
-      background: #fbf9f4;
-      border-color: var(--border);
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
     }
     :root[data-theme="light"] .bubble th {
-      background: #f0ebe0;
-      color: #44403c;
-      border-color: var(--border);
-      border-right-color: #ded7c8;
+      background: #f8fafc;
+      color: #0f172a;
+      font-weight: 700;
+      border-bottom: 2px solid #cbd5e1;
+      border-right: 1px solid #e2e8f0;
     }
     :root[data-theme="light"] .bubble td {
-      color: #292524;
-      border-bottom-color: #e6e0d3;
-      border-right-color: #e6e0d3;
+      color: #0f172a;
+      font-weight: 500;
+      border-bottom-color: #e2e8f0;
+      border-right-color: #f1f5f9;
+    }
+    :root[data-theme="light"] .bubble td:nth-child(n+2) {
+      color: #0f172a;
+      font-weight: 500;
     }
     :root[data-theme="light"] .bubble tbody tr:hover {
-      background: #eee8dc;
+      background: #f1f5f9;
     }
     :root[data-theme="light"] .bubble tbody tr:nth-child(even) {
-      background: #f6f3eb;
+      background: #f8fafc;
     }
     :root[data-theme="light"] .bubble li {
-      color: #292524;
+      color: #0f172a;
     }
     :root[data-theme="light"] .bubble code {
-      background: #f0ebe0;
-      color: #0369a1;
-      border: 1px solid #ded7c8;
+      background: #f1f5f9;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    :root[data-theme="light"] .bubble td code {
+      background: #f1f5f9;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+      font-weight: 600;
+      font-size: 0.8rem;
+      padding: 2.5px 7px;
+      border-radius: 5px;
+      display: inline-block;
+    }
+    :root[data-theme="light"] .trend-up {
+      color: #dc2626;
+      font-weight: 700;
+    }
+    :root[data-theme="light"] .trend-down {
+      color: #16a34a;
+      font-weight: 700;
+    }
+    :root[data-theme="light"] .thinking {
+      color: #0f172a;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    :root[data-theme="light"] .thinking-spinner {
+      border: 2px solid #cbd5e1;
+      border-top-color: #0284c7;
     }
     :root[data-theme="light"] .bubble pre {
-      background: #f4f0e6;
+      background: #f8fafc;
       border-color: var(--border);
     }
     :root[data-theme="light"] .bubble pre code {
       background: transparent;
       border: none;
-      color: #1f1c19;
+      color: #0f172a;
     }
     :root[data-theme="light"] .bubble blockquote {
       background: rgba(2, 132, 199, 0.05);
       border-left-color: #0284c7;
-      color: #524c44;
+      color: #475569;
     }
     :root[data-theme="light"] .welcome-hero {
-      background: linear-gradient(180deg, #fbf9f4 0%, #f3eee4 100%);
+      background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
       border-color: var(--border);
-      box-shadow: 0 4px 16px rgba(45, 38, 30, 0.04);
+      box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
     }
     :root[data-theme="light"] .welcome-hero-title {
-      color: #1f1c19;
+      color: #0f172a;
     }
     :root[data-theme="light"] .welcome-card {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
-      box-shadow: 0 1px 2px rgba(45, 38, 30, 0.03);
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
     }
     :root[data-theme="light"] .welcome-card:hover {
-      background: #f0ebe0;
+      background: #f1f5f9;
       border-color: #0284c7;
       box-shadow: 0 4px 12px rgba(2, 132, 199, 0.1);
     }
     :root[data-theme="light"] .cleo-chart-wrap {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
-      box-shadow: 0 1px 4px rgba(45, 38, 30, 0.04);
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
     }
     :root[data-theme="light"] .cleo-chart-title {
-      color: #1f1c19;
+      color: #0f172a;
       font-weight: 700;
     }
     :root[data-theme="light"] .cleo-chart-action-btn {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
-      color: #44403c;
+      color: #334155;
     }
     :root[data-theme="light"] .cleo-chart-action-btn:hover {
-      background: #eee9df;
+      background: #f1f5f9;
       border-color: #0284c7;
       color: #0284c7;
     }
     :root[data-theme="light"] .cleo-chart-loading-placeholder {
-      background: #f4f1ea;
+      background: #f8fafc;
       border-color: rgba(2, 132, 199, 0.35);
-      color: #78716c;
+      color: #64748b;
     }
     :root[data-theme="light"] .chips-row {
       background: var(--bg-surface);
       border-top-color: var(--border);
     }
     :root[data-theme="light"] .chip {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
-      color: #292524;
-      box-shadow: 0 1px 2px rgba(45, 38, 30, 0.03);
+      color: #1e293b;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
     }
     :root[data-theme="light"] .chip:hover {
-      background: #eee9df;
-      border-color: #a8a29e;
-      color: #1c1917;
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      color: #0f172a;
     }
     :root[data-theme="light"] .chip-btn {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
-      color: #292524;
+      color: #1e293b;
     }
     :root[data-theme="light"] .chip-btn:hover {
-      background: #eee9df;
+      background: #f1f5f9;
       border-color: #0284c7;
       color: #0284c7;
     }
@@ -888,46 +1226,46 @@
       border-top-color: var(--border);
     }
     :root[data-theme="light"] .input-form {
-      background: #fbf9f4;
-      border-color: #d6d0c2;
-      box-shadow: 0 1px 4px rgba(45, 38, 30, 0.04);
+      background: #ffffff;
+      border-color: #cbd5e1;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
     }
     :root[data-theme="light"] .input-form:focus-within {
       border-color: #0284c7;
       box-shadow: 0 0 0 1px #0284c7, 0 4px 16px -2px rgba(2, 132, 199, 0.12);
     }
     :root[data-theme="light"] .kbd-hint {
-      background: #f0ece2;
-      border-color: #ded7c8;
-      color: #78716c;
+      background: #f1f5f9;
+      border-color: #e2e8f0;
+      color: #64748b;
     }
     :root[data-theme="light"] .send-btn:disabled {
-      background: #f0ece2;
-      border-color: #ded7c8;
-      color: #a8a29e;
+      background: #f1f5f9;
+      border-color: #e2e8f0;
+      color: #cbd5e1;
     }
     :root[data-theme="light"] .tool-item {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
-      color: #292524;
+      color: #1e293b;
     }
     :root[data-theme="light"] .modal-overlay {
-      background: rgba(28, 25, 23, 0.45);
+      background: rgba(15, 23, 42, 0.45);
     }
     :root[data-theme="light"] .modal-box {
-      background: #f8f6f0;
+      background: #ffffff;
       border-color: var(--border);
-      box-shadow: 0 20px 48px -12px rgba(45, 38, 30, 0.18);
+      box-shadow: 0 20px 48px -12px rgba(15, 23, 42, 0.18);
     }
     :root[data-theme="light"] .modal-header {
       background: transparent;
       border-bottom-color: var(--border);
     }
     :root[data-theme="light"] .modal-title {
-      color: #1c1917;
+      color: #0f172a;
     }
     :root[data-theme="light"] .modal-subtitle {
-      color: #57534e;
+      color: #475569;
     }
     :root[data-theme="light"] .modal-title-icon {
       color: #0284c7;
@@ -935,25 +1273,25 @@
     :root[data-theme="light"] .close-btn {
       background: transparent;
       border: 1px solid transparent;
-      color: #78716c;
+      color: #64748b;
       box-shadow: none;
     }
     :root[data-theme="light"] .close-btn svg {
-      stroke: #78716c;
+      stroke: #64748b;
     }
     :root[data-theme="light"] .close-btn:hover {
-      background: #eae4d6;
+      background: #f1f5f9;
       border-color: var(--border);
-      color: #1c1917;
+      color: #0f172a;
       box-shadow: none;
     }
     :root[data-theme="light"] .close-btn:hover svg {
-      stroke: #1c1917;
+      stroke: #0f172a;
     }
     :root[data-theme="light"] .system-hw-card {
-      background: #f4f0e6;
-      border: 1px solid #dcd5c5;
-      box-shadow: 0 1px 3px rgba(45, 38, 30, 0.04);
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
     }
     :root[data-theme="light"] .system-hw-title {
       color: #0369a1;
@@ -971,29 +1309,29 @@
       color: #065f46;
     }
     :root[data-theme="light"] .system-hw-rec-text > div:first-child {
-      color: #1c1917 !important;
+      color: #0f172a !important;
     }
     :root[data-theme="light"] #system-rec-model-name {
       color: #047857 !important;
       font-weight: 700;
     }
     :root[data-theme="light"] #system-rec-reason {
-      color: #44403c !important;
+      color: #334155 !important;
     }
     :root[data-theme="light"] .engine-section-title {
-      color: #292524;
+      color: #1e293b;
       font-weight: 700;
     }
     :root[data-theme="light"] .engine-section-title svg {
       color: #0284c7;
     }
     :root[data-theme="light"] .engine-section-desc {
-      color: #57534e;
+      color: #475569;
     }
     :root[data-theme="light"] .engine-pill {
-      background: #eeeae0;
-      color: #292524;
-      border: 1px solid #d5cec0;
+      background: #f1f5f9;
+      color: #1e293b;
+      border: 1px solid #e2e8f0;
       font-weight: 600;
     }
     :root[data-theme="light"] .status-indicator-pill.online {
@@ -1015,26 +1353,26 @@
       font-weight: 600;
     }
     :root[data-theme="light"] .model-row {
-      background: #fdfcf9;
-      border-color: #d8d1c2;
+      background: #ffffff;
+      border-color: #e2e8f0;
     }
     :root[data-theme="light"] .model-row:hover {
-      background: #f4f0e6;
-      border-color: #a8a29e;
+      background: #f8fafc;
+      border-color: #cbd5e1;
     }
     :root[data-theme="light"] .model-row.active {
       background: #f0fdf4;
       border-color: #86efac;
     }
     :root[data-theme="light"] .model-name {
-      color: #1c1917;
+      color: #0f172a;
     }
     :root[data-theme="light"] .model-size-badge {
-      color: #57534e;
+      color: #475569;
       font-weight: 600;
     }
     :root[data-theme="light"] .model-desc-text {
-      color: #57534e;
+      color: #475569;
     }
     :root[data-theme="light"] .tier-tag-rec {
       background: #ecfdf5;
@@ -1043,9 +1381,9 @@
       font-weight: 600;
     }
     :root[data-theme="light"] .tier-tag-subtle {
-      background: #eeeae0;
-      color: #292524;
-      border: 1px solid #d5cec0;
+      background: #f1f5f9;
+      color: #1e293b;
+      border: 1px solid #e2e8f0;
       font-weight: 600;
     }
     :root[data-theme="light"] .btn-status-active {
@@ -1061,14 +1399,14 @@
       font-weight: 600;
     }
     :root[data-theme="light"] .btn-model-action {
-      background: #fbf9f4;
+      background: #ffffff;
       border: 1px solid var(--border);
-      color: #292524;
+      color: #1e293b;
     }
     :root[data-theme="light"] .btn-model-action:hover {
-      background: #eee9df;
-      border-color: #a8a29e;
-      color: #1c1917;
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      color: #0f172a;
     }
     :root[data-theme="light"] .auth-info-card {
       background: #e0f2fe;
@@ -1079,31 +1417,31 @@
       color: #0284c7;
     }
     :root[data-theme="light"] .auth-divider {
-      background: #d8d1c2 !important;
+      background: #e2e8f0 !important;
     }
     :root[data-theme="light"] #token-modal-desc {
-      color: #57534e !important;
+      color: #475569 !important;
     }
     :root[data-theme="light"] #token-modal-label {
-      color: #44403c !important;
+      color: #334155 !important;
     }
     :root[data-theme="light"] #app-dialog-title {
-      color: #1c1917 !important;
+      color: #0f172a !important;
     }
     :root[data-theme="light"] #app-dialog-message {
-      color: #44403c !important;
+      color: #334155 !important;
     }
     :root[data-theme="light"] .app-dialog-footer {
-      border-top-color: #d8d1c2 !important;
+      border-top-color: #e2e8f0 !important;
     }
     :root[data-theme="light"] .sidebar-persistence-text {
-      color: #44403c !important;
+      color: #334155 !important;
     }
     :root[data-theme="light"] .chart-modal-toolbar,
     :root[data-theme="light"] .ch-report-toolbar {
-      background: #f4f0e6;
+      background: #f8fafc;
       border-color: var(--border);
-      box-shadow: 0 1px 3px rgba(45, 38, 30, 0.04);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
     }
     :root[data-theme="light"] .chart-modal-label,
     :root[data-theme="light"] .ch-label {
@@ -1115,8 +1453,8 @@
     }
     :root[data-theme="light"] .chart-modal-select,
     :root[data-theme="light"] .ch-select {
-      background-color: #fbf9f4;
-      color: #1f1c19;
+      background-color: #ffffff;
+      color: #0f172a;
       border-color: var(--border);
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
       background-repeat: no-repeat;
@@ -1126,17 +1464,17 @@
     :root[data-theme="light"] .chart-modal-select:focus,
     :root[data-theme="light"] .ch-select:hover,
     :root[data-theme="light"] .ch-select:focus {
-      background-color: #eee9df;
+      background-color: #f1f5f9;
       border-color: #94a3b8;
     }
     :root[data-theme="light"] .ch-toolbar-btn {
-      background-color: #fbf9f4;
+      background-color: #ffffff;
       background-image: none;
-      color: #1f1c19;
+      color: #0f172a;
       border-color: var(--border);
     }
     :root[data-theme="light"] .ch-toolbar-btn:hover {
-      background-color: #eee9df;
+      background-color: #f1f5f9;
       border-color: #94a3b8;
     }
     :root[data-theme="light"] .ch-val {
@@ -1146,15 +1484,15 @@
       color: #64748b;
     }
     :root[data-theme="light"] .ch-options-popover {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
-      box-shadow: 0 10px 25px -5px rgba(45, 38, 30, 0.1), 0 8px 10px -6px rgba(45, 38, 30, 0.06);
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px -6px rgba(15, 23, 42, 0.06);
     }
     :root[data-theme="light"] .ch-options-menu-item {
       color: #1e293b;
     }
     :root[data-theme="light"] .ch-options-menu-item:hover {
-      background: #eee9df;
+      background: #f1f5f9;
       color: #0284c7;
     }
     :root[data-theme="light"] .ch-options-menu-item.active {
@@ -1162,7 +1500,7 @@
       background: #e0f2fe;
     }
     :root[data-theme="light"] .ch-opt-badge {
-      background: #eee9df;
+      background: #f1f5f9;
       color: #64748b;
     }
     :root[data-theme="light"] .ch-options-menu-item.active .ch-opt-badge {
@@ -1173,7 +1511,7 @@
       background: var(--border);
     }
     :root[data-theme="light"] .chart-modal-dim-popover {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
       box-shadow: var(--shadow-lg);
     }
@@ -1188,45 +1526,45 @@
       border-top-color: var(--border);
     }
     :root[data-theme="light"] .chart-modal-dim-item {
-      color: #292524;
+      color: #1e293b;
     }
     :root[data-theme="light"] .chart-modal-dim-item:hover {
-      background: #eee9df;
+      background: #f1f5f9;
     }
     :root[data-theme="light"] .btn-dim-quick {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
-      color: #44403c;
+      color: #334155;
     }
     :root[data-theme="light"] .btn-dim-quick:hover {
-      background: #eee9df;
+      background: #f1f5f9;
       color: #0284c7;
     }
     :root[data-theme="light"] .chart-modal-dim-search-input {
-      background: #f4f0e6;
+      background: #f8fafc;
       border-color: var(--border);
-      color: #1c1917;
+      color: #0f172a;
     }
     :root[data-theme="light"] .history-footer {
-      background: #eae5db;
+      background: #f8fafc;
       border-top-color: var(--border);
     }
     :root[data-theme="light"] .btn-link-danger {
-      color: #78716c;
+      color: #64748b;
     }
     :root[data-theme="light"] .btn-link-danger:hover:not(:disabled) {
       color: #dc2626;
     }
     :root[data-theme="light"] .btn-link-danger:disabled {
-      color: #b5b0a4;
+      color: #94a3b8;
     }
     :root[data-theme="light"] .persist-hint {
-      color: #78716c;
+      color: #64748b;
     }
     :root[data-theme="light"] .clear-confirm-face {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: #fca5a5;
-      box-shadow: 0 12px 32px rgba(45, 38, 30, 0.15), 0 0 20px rgba(239, 68, 68, 0.08);
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.15), 0 0 20px rgba(239, 68, 68, 0.08);
     }
     :root[data-theme="light"] .clear-confirm-header {
       color: #dc2626;
@@ -1235,16 +1573,16 @@
       color: #059669 !important;
     }
     :root[data-theme="light"] .clear-confirm-text {
-      color: #44403c;
+      color: #334155;
     }
     :root[data-theme="light"] .clear-confirm-btn {
-      background: #eee9df;
+      background: #f1f5f9;
       border-color: var(--border);
-      color: #44403c;
+      color: #334155;
     }
     :root[data-theme="light"] .clear-confirm-btn:hover {
-      background: #e2dbcc;
-      color: #1c1917;
+      background: #f1f5f9;
+      color: #0f172a;
     }
     :root[data-theme="light"] .clear-confirm-btn-danger {
       background: #fee2e2;
@@ -1257,14 +1595,14 @@
       box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
     }
     :root[data-theme="light"] .mcp-endpoint-url {
-      background: #fbf9f4 !important;
+      background: #ffffff !important;
       color: #0284c7 !important;
       border-color: var(--border) !important;
     }
     :root[data-theme="light"] .log-container {
-      background: #f4f0e6;
+      background: #f8fafc;
       border-color: var(--border);
-      color: #292524;
+      color: #1e293b;
     }
     :root[data-theme="light"] .cloud-service-badge.aws {
       background: rgba(234, 88, 12, 0.08);
@@ -1287,80 +1625,179 @@
       color: #6d28d9;
     }
     :root[data-theme="light"] .cloud-region-badge {
-      background: rgba(120, 113, 108, 0.08);
-      border-color: rgba(120, 113, 108, 0.22);
-      color: #57534e;
+      background: rgba(100, 116, 139, 0.08);
+      border-color: rgba(100, 116, 139, 0.22);
+      color: #475569;
     }
     :root[data-theme="light"] .assistant-more-menu {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
       box-shadow: var(--shadow-lg);
     }
     :root[data-theme="light"] .assistant-menu-item {
-      color: #292524;
+      color: #1e293b;
     }
     :root[data-theme="light"] .assistant-menu-item:hover {
       background: #e0f2fe;
       color: #0284c7;
     }
     :root[data-theme="light"] .copy-btn {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
-      color: #78716c;
+      color: #64748b;
     }
     :root[data-theme="light"] .copy-btn:hover {
-      background: #eee9df;
-      color: #1c1917;
-      border-color: #a8a29e;
+      background: #f1f5f9;
+      color: #0f172a;
+      border-color: #cbd5e1;
     }
     :root[data-theme="light"] .assistant-action-btn:hover {
-      background: rgba(45, 38, 30, 0.05);
-      color: #1c1917;
+      background: rgba(15, 23, 42, 0.05);
+      color: #0f172a;
     }
     :root[data-theme="light"] .user-action-btn {
-      background: rgba(45, 38, 30, 0.04);
-      border-color: rgba(45, 38, 30, 0.1);
-      color: #78716c;
+      background: rgba(15, 23, 42, 0.04);
+      border-color: rgba(15, 23, 42, 0.1);
+      color: #64748b;
     }
     :root[data-theme="light"] .user-action-btn:hover {
-      background: #eee9df;
-      border-color: #a8a29e;
-      color: #1c1917;
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      color: #0f172a;
     }
     :root[data-theme="light"] .user-action-btn:hover svg {
-      stroke: #1c1917;
+      stroke: #0f172a;
+    }
+    :root[data-theme="light"] .table-top-bar {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+    }
+    :root[data-theme="light"] .gran-title {
+      color: #475569;
+    }
+    :root[data-theme="light"] .gran-pills {
+      background: #e2e8f0;
+      border-color: #cbd5e1;
+    }
+    :root[data-theme="light"] .gran-pill-btn {
+      color: #475569;
+    }
+    :root[data-theme="light"] .gran-pill-btn:hover {
+      background: #ffffff;
+      color: #0f172a;
+    }
+    :root[data-theme="light"] .gran-pill-btn.active {
+      background: #0284c7;
+      color: #ffffff;
+      box-shadow: 0 1px 2px rgba(2, 132, 199, 0.25);
+    }
+    :root[data-theme="light"] .table-top-bar .export-csv-btn {
+      background: #ffffff;
+      border-color: #cbd5e1;
+      color: #475569;
+    }
+    :root[data-theme="light"] .table-top-bar .export-csv-btn:hover {
+      background: #f8fafc;
+      color: #0f172a;
+      border-color: #94a3b8;
     }
     :root[data-theme="light"] .export-csv-btn {
-      background: #f4f0e6;
+      background: #f8fafc;
       border-color: var(--border);
-      color: #57534e;
+      color: #475569;
     }
     :root[data-theme="light"] .export-csv-btn:hover {
-      background: #eee9df;
-      border-color: #a8a29e;
-      color: #1c1917;
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      color: #0f172a;
     }
     :root[data-theme="light"] .export-csv-btn svg {
-      stroke: #57534e;
+      stroke: #475569;
     }
     :root[data-theme="light"] .export-csv-btn:hover svg {
-      stroke: #1c1917;
+      stroke: #0f172a;
     }
     :root[data-theme="light"] .feedback-btn {
-      background: #fbf9f4;
+      background: #ffffff;
       border-color: var(--border);
-      color: #78716c;
+      color: #64748b;
     }
     :root[data-theme="light"] .feedback-btn svg {
-      stroke: #78716c;
+      stroke: #64748b;
     }
     :root[data-theme="light"] .feedback-btn:hover {
-      background: #eee9df;
-      border-color: #a8a29e;
-      color: #1c1917;
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      color: #0f172a;
     }
     :root[data-theme="light"] .feedback-btn:hover svg {
-      stroke: #1c1917;
+      stroke: #0f172a;
+    }
+    :root[data-theme="light"] .feedback-btn.voted-good {
+      background: #f0fdf4;
+      border-color: #86efac;
+      color: #16a34a;
+    }
+    :root[data-theme="light"] .feedback-btn.voted-good svg {
+      stroke: #16a34a;
+    }
+    :root[data-theme="light"] .feedback-btn.voted-bad {
+      background: #fef2f2;
+      border-color: #fca5a5;
+      color: #dc2626;
+    }
+    :root[data-theme="light"] .feedback-btn.voted-bad svg {
+      stroke: #dc2626;
+    }
+    :root[data-theme="light"] .feedback-correction {
+      margin: 10px 0 6px;
+      padding: 6px;
+      border-radius: 8px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+    }
+    :root[data-theme="light"] .feedback-correction input {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      color: #0f172a;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.82rem;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+    }
+    :root[data-theme="light"] .feedback-correction input::placeholder {
+      color: #64748b;
+      opacity: 1;
+    }
+    :root[data-theme="light"] .feedback-correction input:focus {
+      border-color: #0284c7;
+      box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.14);
+    }
+    :root[data-theme="light"] .feedback-correction button {
+      background: #0284c7;
+      color: #ffffff;
+      border: 1px solid #0284c7;
+      font-weight: 600;
+      font-size: 0.76rem;
+      border-radius: 6px;
+      padding: 6px 14px;
+      box-shadow: 0 1px 2px rgba(2, 132, 199, 0.2);
+    }
+    :root[data-theme="light"] .feedback-correction button:hover {
+      background: #0369a1;
+      border-color: #0369a1;
+      color: #ffffff;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 4px rgba(2, 132, 199, 0.28);
+    }
+    :root[data-theme="light"] .feedback-correction button:active {
+      transform: scale(0.98);
+    }
+    :root[data-theme="light"] .feedback-correction button:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
     }
 
     /* ── Main Layout: 3 Panes ── */
@@ -2274,33 +2711,60 @@
     .feedback-btn.voted-good svg { stroke: #4ade80; }
     .feedback-btn.voted-bad  svg { stroke: #f87171; }
     .feedback-correction {
-      margin: 6px 0 2px;
+      margin: 10px 0 6px;
+      padding: 6px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       display: flex;
-      gap: 6px;
+      gap: 8px;
       align-items: center;
     }
     .feedback-correction input {
       flex: 1;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 6px;
-      padding: 5px 10px;
-      font-size: 0.8rem;
-      color: #e2e8f0;
+      padding: 6px 12px;
+      font-size: 0.82rem;
+      color: #f1f5f9;
       outline: none;
+      transition: all 0.15s ease;
     }
-    .feedback-correction input:focus { border-color: rgba(255,255,255,0.25); }
+    .feedback-correction input::placeholder {
+      color: #64748b;
+    }
+    .feedback-correction input:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+    }
     .feedback-correction button {
-      background: #1e293b;
-      border: 1px solid rgba(255,255,255,0.12);
+      background: #0284c7;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      color: #ffffff;
       border-radius: 6px;
-      padding: 5px 12px;
-      font-size: 0.75rem;
-      color: #94a3b8;
+      padding: 6px 14px;
+      font-size: 0.76rem;
+      font-weight: 600;
       cursor: pointer;
       white-space: nowrap;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      transition: all 0.15s ease;
     }
-    .feedback-correction button:hover { color: #f1f5f9; border-color: rgba(255,255,255,0.25); }
+    .feedback-correction button:hover {
+      background: #0369a1;
+      border-color: #38bdf8;
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+    .feedback-correction button:active {
+      transform: scale(0.98);
+    }
+    .feedback-correction button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
     .cleo-toast {
       position: fixed;
       bottom: 24px;
@@ -2893,6 +3357,71 @@
       position: relative;
       margin: 14px 0;
     }
+    .table-top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      padding: 4px 8px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 6px;
+      gap: 10px;
+    }
+    .table-gran-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .gran-title {
+      font-size: 0.65rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      color: #64748b;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .gran-pills {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 2px;
+      border-radius: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      gap: 2px;
+    }
+    .gran-pill-btn {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      font-size: 0.68rem;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      line-height: 1.25;
+    }
+    .gran-pill-btn:hover {
+      color: #f1f5f9;
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .gran-pill-btn.active {
+      background: #0284c7;
+      color: #ffffff;
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    }
+    .table-top-bar .export-csv-btn {
+      position: static;
+      opacity: 0.85;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+    .table-top-bar:hover .export-csv-btn {
+      opacity: 1;
+    }
     .export-csv-btn {
       position: absolute;
       bottom: -11px;
@@ -3205,9 +3734,8 @@
     .chip:hover .chip-icon {
       opacity: 1;
     }
-    /* Inline auto-expand in-flow (pushes sibling chips) */
-    .chip::after {
-      content: attr(data-detail);
+    /* Inline auto-expand in-flow with slow marquee ticker */
+    .chip-detail {
       display: inline-block;
       max-width: 0;
       margin-left: 0;
@@ -3217,13 +3745,52 @@
       font-weight: 400;
       color: var(--text-dim);
       /* Smoother, slightly slower expansion animation */
-      transition: max-width 0.9s cubic-bezier(0.25, 1, 0.35, 1), opacity 0.5s ease, margin-left 0.9s cubic-bezier(0.25, 1, 0.35, 1);
+      transition: max-width 0.8s cubic-bezier(0.25, 1, 0.35, 1), opacity 0.45s ease, margin-left 0.8s cubic-bezier(0.25, 1, 0.35, 1);
       vertical-align: middle;
+      pointer-events: none;
+      position: relative;
     }
-    .chip:hover::after {
-      max-width: 420px;
+    .chip:hover .chip-detail {
+      max-width: 380px;
       margin-left: 6px;
       opacity: 0.85;
+    }
+    .chip:hover .chip-detail.is-overflowing {
+      /* Soft right edge gradient mask so long text fades out smoothly before the boundary */
+      mask-image: linear-gradient(90deg, #000 0%, #000 calc(100% - 24px), transparent 100%);
+      -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 calc(100% - 24px), transparent 100%);
+    }
+    .chip-detail-inner {
+      display: inline-block;
+      white-space: nowrap;
+      will-change: transform, opacity;
+    }
+    .chip:hover .chip-detail.is-overflowing .chip-detail-inner {
+      animation: chipSlowMarquee var(--marquee-duration, 8.5s) cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+      animation-delay: 0.9s;
+    }
+
+    @keyframes chipSlowMarquee {
+      0%, 25% {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      75%, 88% {
+        transform: translateX(var(--marquee-dist, -120px));
+        opacity: 1;
+      }
+      92% {
+        transform: translateX(var(--marquee-dist, -120px));
+        opacity: 0;
+      }
+      94% {
+        transform: translateX(0);
+        opacity: 0;
+      }
+      100% {
+        transform: translateX(0);
+        opacity: 1;
+      }
     }
 
     /* Compact "Clear all histories" confirm — anchored next to the button instead of a
@@ -4045,12 +4612,13 @@
                 <stop offset="100%" stop-color="#059669" />
               </linearGradient>
             </defs>
-            <polygon points="24,4 42,14 24,24 6,14" fill="url(#chGradTop)" opacity="0.95" />
-            <polygon points="6,14 24,24 24,44 6,34" fill="url(#chGradLeft)" opacity="0.95" />
+            <polygon class="cleo-logo-face top" points="24,4 42,14 24,24 6,14" fill="url(#chGradTop)" />
+            <polygon class="cleo-logo-face left" points="6,14 24,24 24,44 6,34" fill="url(#chGradLeft)" />
+            <polygon class="cleo-logo-face right" points="42,14 42,34 24,44 24,24" fill="url(#chGradRight)" />
             <!-- AI Nexus Core -->
-            <circle cx="24" cy="24" r="5.2" fill="#090d16" stroke="#38bdf8" stroke-width="0.75" stroke-opacity="0.6" />
-            <path d="M24 20 C24 22.2 22.2 24 20 24 C22.2 24 24 25.8 24 28 C24 25.8 25.8 24 28 24 C25.8 24 24 22.2 24 20 Z" fill="#ffffff" />
-            <circle cx="24" cy="24" r="1" fill="#38bdf8" />
+            <circle class="cleo-logo-core" cx="24" cy="24" r="5.2" />
+            <path class="cleo-logo-star" d="M24 20 C24 22.2 22.2 24 20 24 C22.2 24 24 25.8 24 28 C24 25.8 25.8 24 28 24 C25.8 24 24 22.2 24 20 Z" />
+            <circle class="cleo-logo-spark" cx="24" cy="24" r="1" />
           </svg>
         </div>
 
@@ -4099,6 +4667,12 @@
           </button>
         </div>
       </div>
+      <!-- FinOps Insights Global Toggle Button -->
+      <button class="insights-toggle-btn" id="header-insights-btn" onclick="toggleInsights()" role="switch" aria-checked="true" title="FinOps Insights: ON. Generates strategic recommendations. Click to toggle. Query prompt overrides this setting." aria-label="Toggle FinOps Insights">
+        <span class="insights-bulb-icon">💡</span>
+        <span class="insights-label">Insights</span>
+        <span class="insights-status-tag" id="header-insights-status">ON</span>
+      </button>
       <!-- Theme Switch Button (Light / Dark Mode) -->
       <button class="theme-switch-btn" id="theme-toggle-btn" onclick="toggleTheme()" role="switch" aria-checked="false" title="Switch to Light Theme" aria-label="Switch between light and dark theme">
         <span class="theme-switch-track">
@@ -4337,13 +4911,14 @@
         <!-- Default Welcome Hero Card -->
         <div class="welcome-hero">
           <div class="welcome-hero-header">
-            <svg width="28" height="28" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <polygon points="24,4 42,14 24,24 6,14" fill="#38bdf8" />
-              <polygon points="6,14 24,24 24,44 6,34" fill="#818cf8" />
+            <svg class="cleo-logo-svg" width="28" height="28" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <polygon class="cleo-logo-face top" points="24,4 42,14 24,24 6,14" fill="url(#chGradTop)" />
+              <polygon class="cleo-logo-face left" points="6,14 24,24 24,44 6,34" fill="url(#chGradLeft)" />
+              <polygon class="cleo-logo-face right" points="42,14 42,34 24,44 24,24" fill="url(#chGradRight)" />
               <!-- AI Nexus Core -->
-              <circle cx="24" cy="24" r="5.2" fill="#090d16" stroke="#38bdf8" stroke-width="0.75" stroke-opacity="0.6" />
-              <path d="M24 20 C24 22.2 22.2 24 20 24 C22.2 24 24 25.8 24 28 C24 25.8 25.8 24 28 24 C25.8 24 24 22.2 24 20 Z" fill="#ffffff" />
-              <circle cx="24" cy="24" r="1" fill="#38bdf8" />
+              <circle class="cleo-logo-core" cx="24" cy="24" r="5.2" />
+              <path class="cleo-logo-star" d="M24 20 C24 22.2 22.2 24 20 24 C22.2 24 24 25.8 24 28 C24 25.8 25.8 24 28 24 C25.8 24 24 22.2 24 20 Z" />
+              <circle class="cleo-logo-spark" cx="24" cy="24" r="1" />
             </svg>
             <div>
               <div class="welcome-hero-title">Cleo FinOps Command Center <span class="brand-beta" style="vertical-align: middle; margin-left: 6px;">BETA</span></div>
@@ -4378,32 +4953,39 @@
       <div class="chips-row">
         <div class="chip" data-detail="Show our top cloud services across AWS, Azure, and GCP this month with MoM variance" onclick="sendPrompt('Show our top cloud services across AWS, Azure, and GCP this month with MoM variance')">
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-          <span>All Clouds Spend</span>
+          <span class="chip-title">All Clouds Spend</span>
+          <span class="chip-detail"><span class="chip-detail-inner">Show our top cloud services across AWS, Azure, and GCP this month with MoM variance</span></span>
         </div>
         <div class="chip" data-detail="Show our top Azure services this month with MoM variance" onclick="sendPrompt('Show our top Azure services this month with MoM variance')">
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M4 20h16L15 4h-4L8 14l-4 6z"></path></svg>
-          <span>Azure Spend</span>
+          <span class="chip-title">Azure Spend</span>
+          <span class="chip-detail"><span class="chip-detail-inner">Show our top Azure services this month with MoM variance</span></span>
         </div>
         <div class="chip" data-detail="Show our top GCP services this month with MoM variance" onclick="sendPrompt('Show our top GCP services this month with MoM variance')">
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
-          <span>GCP Spend</span>
+          <span class="chip-title">GCP Spend</span>
+          <span class="chip-detail"><span class="chip-detail-inner">Show our top GCP services this month with MoM variance</span></span>
         </div>
 
         <div class="chip" data-detail="Show our top 5 most expensive AWS services this month" onclick="sendPrompt('Show our top 5 most expensive AWS services this month')">
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14c3.5 3 9.5 3.5 14 .5"></path><path d="M16.5 12.5l2.5 2.5-2.5 2.5"></path><path d="M7 8h10M9 4h6"></path></svg>
-          <span>AWS Spend</span>
+          <span class="chip-title">AWS Spend</span>
+          <span class="chip-detail"><span class="chip-detail-inner">Show our top 5 most expensive AWS services this month</span></span>
         </div>
         <div class="chip" data-detail="Show my top cost anomalies across all clouds for this month" onclick="sendPrompt('Show my top cost anomalies across all clouds for this month')">
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-          <span>Cost Anomalies</span>
+          <span class="chip-title">Cost Anomalies</span>
+          <span class="chip-detail"><span class="chip-detail-inner">Show my top cost anomalies across all clouds for this month</span></span>
         </div>
         <div class="chip" id="chip-channel-customers" style="display: none;" data-detail="Find channel customers and show multi-cloud spend" onclick="sendPrompt('Find channel customers and show multi-cloud spend')">
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-          <span>Channel Customers</span>
+          <span class="chip-title">Channel Customers</span>
+          <span class="chip-detail"><span class="chip-detail-inner">Find channel customers and show multi-cloud spend</span></span>
         </div>
         <div class="chip" data-detail="Show monthly cost breakdown for the last 3 months across all clouds" onclick="sendPrompt('Show monthly cost breakdown for the last 3 months across all clouds')">
           <svg class="chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
-          <span>3-Month Trend</span>
+          <span class="chip-title">3-Month Trend</span>
+          <span class="chip-detail"><span class="chip-detail-inner">Show monthly cost breakdown for the last 3 months across all clouds</span></span>
         </div>
       </div>
 
@@ -4412,6 +4994,10 @@
         <form id="chat-form" class="input-form" onsubmit="handleSend(event)">
           <textarea id="prompt-input" class="input-box" placeholder="Ask about cloud costs, service forecasts, or waste reclamation..." rows="1" autocomplete="off" aria-label="FinOps query input"></textarea>
           <div class="input-actions">
+            <button id="input-insights-btn" type="button" class="input-insights-btn" onclick="toggleInsights()" role="switch" aria-checked="true" title="FinOps Insights: ON. Generates strategic recommendations. Click to toggle." aria-label="Toggle FinOps Insights">
+              <span class="input-insights-bulb">💡</span>
+              <span class="input-insights-label">Insights</span>
+            </button>
             <button id="send-btn" type="submit" class="send-btn" title="Send message (Enter, Shift+Enter for new line)" aria-label="Send message" disabled>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="12" y1="19" x2="12" y2="5"></line>
@@ -4811,6 +5397,16 @@
           <label for="chart-modal-category-select" class="ch-label">CATEGORY:</label>
           <select id="chart-modal-category-select" class="ch-select" style="max-width: 240px;" onchange="onModalCategoryChange(this.value)">
           </select>
+        </div>
+
+        <!-- Dynamic Granularity Selector (Monthly ↔ Weekly ↔ Daily) -->
+        <div class="ch-toolbar-item" id="chart-modal-granularity-control" style="display: none;">
+          <label class="ch-label">GRANULARITY:</label>
+          <div class="gran-pills" id="modal-gran-pills">
+            <button type="button" class="gran-pill-btn active" data-gran="monthly" onclick="onModalGranularityChange('monthly')">Monthly</button>
+            <button type="button" class="gran-pill-btn" data-gran="weekly" onclick="onModalGranularityChange('weekly')">Weekly</button>
+            <button type="button" class="gran-pill-btn" data-gran="daily" onclick="onModalGranularityChange('daily')">Daily</button>
+          </div>
         </div>
 
         <!-- Chart Type Selector -->
@@ -5573,13 +6169,250 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
                 <span>Export Full Chat</span>
               </button>
+              <div style="height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0;"></div>
+              <button type="button" class="assistant-menu-item" onclick="downloadDeliverable('pptx'); closeAssistantMoreMenus();">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                <span>Export PowerPoint (.pptx)</span>
+              </button>
+              <button type="button" class="assistant-menu-item" onclick="downloadDeliverable('xlsx'); closeAssistantMoreMenus();">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>
+                <span>Export Excel (.xlsx)</span>
+              </button>
+              <button type="button" class="assistant-menu-item" onclick="downloadDeliverable('html'); closeAssistantMoreMenus();">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                <span>Open Executive Briefing</span>
+              </button>
             </div>
           </div>
         </div>
       `;
     }
 
-    function createExportBtn(table) {
+    function detectTableGranularity(table) {
+      if (!table) return { hasTime: false, gran: null };
+      const bubble = table.closest('.bubble') || table.closest('.message');
+
+      const ths = Array.from(table.querySelectorAll('thead th, tr:first-child th, tr:first-child td'));
+      const headerTexts = ths.map(th => th.textContent.trim().toLowerCase());
+      
+      const rows = Array.from(table.querySelectorAll('tbody tr, tr')).slice(1, 6);
+      const firstColCells = rows.map(r => (r.querySelector('td, th')?.textContent || '').trim());
+
+      const isDaily = headerTexts.some(h => /^(date|day|usage\s*date|timestamp)$/i.test(h)) ||
+                      headerTexts.some(h => /dod\s*change|daily|days?/i.test(h)) ||
+                      firstColCells.some(c => /^\d{4}-\d{2}-\d{2}$|^[a-z]{3}\s+\d{1,2}$/i.test(c)) ||
+                      (bubble?.dataset?.activeGran === 'daily');
+      if (isDaily && (!bubble?.dataset?.activeGran || bubble.dataset.activeGran === 'daily')) return { hasTime: true, gran: 'daily' };
+
+      const isWeekly = headerTexts.some(h => /^(week|wow|w\/w)$/i.test(h)) ||
+                       headerTexts.some(h => /wow\s*change|weeks?|weekly/i.test(h)) ||
+                       firstColCells.some(c => /^\d{4}-w\d{2}$|\bweek\s+\d+\b|\bwk\s*\d+\b|\bW\d{2}\b/i.test(c)) ||
+                       (bubble?.dataset?.activeGran === 'weekly');
+      if (isWeekly && (!bubble?.dataset?.activeGran || bubble.dataset.activeGran === 'weekly')) return { hasTime: true, gran: 'weekly' };
+
+      const isMonthly = headerTexts.some(h => /^(month|mom|m\/m)$/i.test(h)) ||
+                        headerTexts.some(h => /mom\s*change|months?|monthly/i.test(h)) ||
+                        headerTexts.some(h => /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*\d{2,4}$/i.test(h)) ||
+                        headerTexts.some(h => /^\d{4}-\d{2}$/.test(h)) ||
+                        firstColCells.some(c => /^\d{4}-\d{2}$|^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(c)) ||
+                        (bubble?.dataset?.activeGran === 'monthly');
+      if (isMonthly) return { hasTime: true, gran: 'monthly' };
+
+      if (bubble?.dataset?.activeGran || bubble?.dataset?.defaultGran || (bubble?._granularityCache && Object.keys(bubble._granularityCache).length > 0)) {
+        return { hasTime: true, gran: bubble.dataset.activeGran || bubble.dataset.defaultGran || 'monthly' };
+      }
+
+      return { hasTime: false, gran: null };
+    }
+
+    function updateBubbleContent(bubble, newMarkdown, activeGran) {
+      if (!bubble) return;
+      bubble.dataset.rawMarkdown = newMarkdown;
+      bubble.dataset.activeGran = activeGran;
+
+      // Extract existing bubble header and footer actions
+      const headerEl = bubble.querySelector('.bubble-header') || bubble.querySelector('.bubble-meta-row');
+      const headerHtml = headerEl ? headerEl.outerHTML : '';
+      const footerEl = bubble.querySelector('.bubble-footer-actions') || bubble.querySelector('.assistant-msg-actions');
+      const footerHtml = footerEl ? footerEl.outerHTML : '';
+
+      // Render new markdown in place
+      const renderedBody = renderMarkdown(newMarkdown);
+      bubble.innerHTML = (headerHtml ? headerHtml : '') + renderedBody + (footerHtml ? footerHtml : '');
+
+      // Re-render chart canvases
+      renderCharts(bubble);
+
+      // Re-attach CSV export & Table Top Bar with Granularity pills
+      bubble.querySelectorAll('table').forEach(tbl => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'table-container';
+        tbl.parentNode.insertBefore(wrapper, tbl);
+        wrapper.appendChild(tbl);
+
+        const exportBtn = createExportBtn(tbl);
+        wrapper.insertBefore(exportBtn, tbl);
+
+        // Sync pill buttons to activeGran
+        wrapper.querySelectorAll('.gran-pill-btn').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.gran === activeGran);
+        });
+      });
+    }
+
+    async function switchTableGranularity(table, targetGran) {
+      const bubble = table ? (table.closest('.bubble') || table.closest('.msg-content') || table.closest('.msg')) : null;
+      if (!bubble) return;
+
+      if (!bubble._granularityCache) {
+        bubble._granularityCache = {};
+      }
+
+      if (bubble.dataset.activeGran === targetGran) return;
+
+      const currentGran = bubble.dataset.activeGran || detectTableGranularity(table)?.gran || 'monthly';
+      if (!bubble.dataset.defaultGran) {
+        bubble.dataset.defaultGran = currentGran;
+      }
+      if (!bubble._granularityCache[currentGran] && bubble.dataset.rawMarkdown) {
+        bubble._granularityCache[currentGran] = bubble.dataset.rawMarkdown;
+      }
+
+      // 1. Instant in-place switch if target granularity is in cache!
+      if (bubble._granularityCache[targetGran]) {
+        updateBubbleContent(bubble, bubble._granularityCache[targetGran], targetGran);
+        const allBubbles = Array.from(document.querySelectorAll('#chat-stream .message.cleo .bubble'));
+        const mIdx = allBubbles.indexOf(bubble);
+        if (currentSessionId && mIdx >= 0) {
+          fetch('/api/chat/granularity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id: currentSessionId,
+              message_index: mIdx,
+              target_granularity: targetGran
+            })
+          }).catch(() => {});
+        }
+        return;
+      }
+
+      // 2. Not cached: fetch in-place from backend (no new user message / chat turn)
+      let monthRef = '';
+      const text = bubble.innerText || '';
+      const isMultiMonth = /last\s+\d+\s+months/i.test(text) || /mom\s+trend/i.test(text);
+      if (!isMultiMonth) {
+        const m = text.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(202\d)\b/i) ||
+                  text.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(202\d)\b/i) ||
+                  text.match(/\b(202\d)-(0[1-9]|1[0-2])\b/);
+        if (m) {
+          monthRef = ` for ${m[0]}`;
+        }
+      }
+
+      const prompt = `Show this spend with ${targetGran} granularity${monthRef}`;
+
+      // Show inline loader on table wrapper
+      const tableWrapper = table.closest('.table-container') || table;
+      const loader = document.createElement('div');
+      loader.className = 'gran-inline-loader';
+      loader.style.cssText = 'padding: 18px 24px; margin: 12px 0; display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(56, 189, 248, 0.05); border: 1px dashed rgba(56, 189, 248, 0.25); border-radius: 8px; color: var(--accent); font-family: "JetBrains Mono", monospace; font-size: 0.8rem;';
+      loader.innerHTML = `<span class="thinking-spinner"></span> Updating table & chart to ${targetGran} view in-place...`;
+      tableWrapper.parentNode.insertBefore(loader, tableWrapper);
+      tableWrapper.style.opacity = '0.4';
+      tableWrapper.style.pointerEvents = 'none';
+
+      try {
+        const allBubbles = Array.from(document.querySelectorAll('#chat-stream .message.cleo .bubble'));
+        const mIdx = allBubbles.indexOf(bubble);
+
+        const res = await fetch('/api/chat/granularity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: currentSessionId,
+            message_index: mIdx >= 0 ? mIdx : null,
+            target_granularity: targetGran,
+            month_ref: monthRef,
+            prompt: prompt,
+            include_insights: _insightsEnabled
+          })
+        });
+
+        loader.remove();
+        tableWrapper.style.opacity = '1';
+        tableWrapper.style.pointerEvents = 'auto';
+
+        if (!res.ok) {
+          showToast(`Could not load ${targetGran} granularity`, 'error');
+          return;
+        }
+
+        const data = await res.json();
+        if (data.markdown) {
+          bubble._granularityCache[targetGran] = data.markdown;
+          updateBubbleContent(bubble, data.markdown, targetGran);
+        }
+      } catch (err) {
+        loader.remove();
+        tableWrapper.style.opacity = '1';
+        tableWrapper.style.pointerEvents = 'auto';
+        console.error('switchTableGranularity error:', err);
+        showToast('Network error updating granularity', 'error');
+      }
+    }
+
+    function createTableTopBar(table) {
+      const bar = document.createElement('div');
+      bar.className = 'table-top-bar';
+
+      const bubble = table.closest('.bubble') || table.closest('.message');
+      const timeInfo = detectTableGranularity(table);
+
+      const bubbleHasGranularity = Boolean(
+        bubble?.dataset?.defaultGran ||
+        bubble?.dataset?.activeGran ||
+        (bubble?._granularityCache && Object.keys(bubble._granularityCache).length > 0)
+      );
+
+      const showGranularity = timeInfo.hasTime || bubbleHasGranularity;
+
+      if (showGranularity) {
+        const granGroup = document.createElement('div');
+        granGroup.className = 'table-gran-group';
+        
+        const label = document.createElement('span');
+        label.className = 'gran-title';
+        label.textContent = 'GRANULARITY:';
+        granGroup.appendChild(label);
+
+        const pills = document.createElement('div');
+        pills.className = 'gran-pills';
+
+        const activeGran = bubble?.dataset?.activeGran || timeInfo.gran || bubble?.dataset?.defaultGran || 'monthly';
+
+        ['monthly', 'weekly', 'daily'].forEach(g => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'gran-pill-btn' + (activeGran === g ? ' active' : '');
+          btn.dataset.gran = g;
+          btn.textContent = g.charAt(0).toUpperCase() + g.slice(1);
+          btn.title = `Switch to ${g} granularity in-place`;
+          btn.onclick = function(e) {
+            e.stopPropagation();
+            if (this.classList.contains('active')) return;
+            switchTableGranularity(table, g);
+          };
+          pills.appendChild(btn);
+        });
+
+        granGroup.appendChild(pills);
+        bar.appendChild(granGroup);
+      } else {
+        const spacer = document.createElement('div');
+        bar.appendChild(spacer);
+      }
+
       const exportBtn = document.createElement('button');
       exportBtn.className = 'export-csv-btn';
       exportBtn.type = 'button';
@@ -5591,8 +6424,14 @@
           <line x1="12" y1="15" x2="12" y2="3"></line>
         </svg>Export CSV
       `;
-      exportBtn.onclick = function() { exportTableToCSV(table, this); };
-      return exportBtn;
+      exportBtn.onclick = function(e) { e.stopPropagation(); exportTableToCSV(table, this); };
+      bar.appendChild(exportBtn);
+
+      return bar;
+    }
+
+    function createExportBtn(table) {
+      return createTableTopBar(table);
     }
 
     async function switchSession(sid, updateHistory = true) {
@@ -5643,6 +6482,15 @@
             const tokensPerSec = msg.tokens_per_sec != null ? msg.tokens_per_sec : null;
             let formatted = getBubbleHeaderHTML(msg.tool_calls || [], timeStr, durationSecs, msgIndex, tokens, tokensPerSec) + renderMarkdown(msg.content) + getBubbleFooterActionsHTML(msgIndex);
             bubble.innerHTML = formatted;
+            bubble.dataset.rawMarkdown = msg.content;
+            bubble.dataset.msgIndex = msgIndex;
+            bubble._granularityCache = msg.granularities ? { ...msg.granularities } : {};
+            const initialGran = detectTableGranularity(bubble.querySelector('table'))?.gran || 'monthly';
+            bubble.dataset.defaultGran = msg.default_granularity || initialGran;
+            bubble.dataset.activeGran = msg.active_granularity || initialGran;
+            if (!bubble._granularityCache[bubble.dataset.activeGran]) {
+              bubble._granularityCache[bubble.dataset.activeGran] = msg.content;
+            }
             renderCharts(bubble);
 
             // Attach CSV export
@@ -5670,13 +6518,14 @@
       return `
         <div class="welcome-hero">
           <div class="welcome-hero-header">
-            <svg width="28" height="28" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <polygon points="24,4 42,14 24,24 6,14" fill="#38bdf8" />
-              <polygon points="6,14 24,24 24,44 6,34" fill="#818cf8" />
+            <svg class="cleo-logo-svg" width="28" height="28" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <polygon class="cleo-logo-face top" points="24,4 42,14 24,24 6,14" fill="url(#chGradTop)" />
+              <polygon class="cleo-logo-face left" points="6,14 24,24 24,44 6,34" fill="url(#chGradLeft)" />
+              <polygon class="cleo-logo-face right" points="42,14 42,34 24,44 24,24" fill="url(#chGradRight)" />
               <!-- AI Nexus Core -->
-              <circle cx="24" cy="24" r="5.2" fill="#090d16" stroke="#38bdf8" stroke-width="0.75" stroke-opacity="0.6" />
-              <path d="M24 20 C24 22.2 22.2 24 20 24 C22.2 24 24 25.8 24 28 C24 25.8 25.8 24 28 24 C25.8 24 24 22.2 24 20 Z" fill="#ffffff" />
-              <circle cx="24" cy="24" r="1" fill="#38bdf8" />
+              <circle class="cleo-logo-core" cx="24" cy="24" r="5.2" />
+              <path class="cleo-logo-star" d="M24 20 C24 22.2 22.2 24 20 24 C22.2 24 24 25.8 24 28 C24 25.8 25.8 24 28 24 C25.8 24 24 22.2 24 20 Z" />
+              <circle class="cleo-logo-spark" cx="24" cy="24" r="1" />
             </svg>
             <div>
               <div class="welcome-hero-title">Cleo FinOps Command Center <span class="brand-beta" style="vertical-align: middle; margin-left: 6px;">BETA</span></div>
@@ -5787,7 +6636,7 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        const safeName = (title || 'cleo-conversation').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'cleo-conversation';
+        const safeName = (title || 'CloudHealth-conversation').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'CloudHealth-conversation';
         a.download = `${safeName}_${new Date().toISOString().slice(0, 10)}.md`;
         document.body.appendChild(a);
         a.click();
@@ -6225,7 +7074,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `cleo-turn-${Date.now()}.md`;
+      a.download = `CloudHealth-turn-${Date.now()}.md`;
       a.click();
       URL.revokeObjectURL(url);
       showToast('Exported Markdown with troubleshooting trace');
@@ -6263,10 +7112,21 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `cleo-conversation-${Date.now()}.md`;
+      a.download = `CloudHealth-conversation-${Date.now()}.md`;
       a.click();
       URL.revokeObjectURL(url);
       showToast('Conversation exported as Markdown (with troubleshooting trace)');
+    }
+
+    function downloadDeliverable(type) {
+      const sid = currentSessionId || '';
+      if (type === 'html') {
+        window.open(`/api/deliverables/download/html?session_id=${encodeURIComponent(sid)}&refresh=true`, '_blank');
+        showToast('Opening live FinOps executive briefing...', 'info');
+      } else {
+        window.location.href = `/api/deliverables/download/${type}?session_id=${encodeURIComponent(sid)}&refresh=true`;
+        showToast(`Generating and downloading ${type.toUpperCase()} deliverable...`, 'info');
+      }
     }
 
     async function togglePinSession(e, sid) {
@@ -7258,13 +8118,13 @@
           <circle cx="12" cy="7" r="4"></circle>
         </svg>
       ` : `
-        <svg width="20" height="20" viewBox="0 0 48 48" fill="none">
-          <polygon points="24,4 42,14 24,24 6,14" fill="#38bdf8" />
-          <polygon points="6,14 24,24 24,44 6,34" fill="#818cf8" />
-          <polygon points="42,14 42,34 24,44 24,24" fill="#34d399" />
-          <circle cx="24" cy="24" r="5.2" fill="#090d16" stroke="#38bdf8" stroke-width="0.75" stroke-opacity="0.6" />
-          <path d="M24 20 C24 22.2 22.2 24 20 24 C22.2 24 24 25.8 24 28 C24 25.8 25.8 24 28 24 C25.8 24 24 22.2 24 20 Z" fill="#ffffff" />
-          <circle cx="24" cy="24" r="1" fill="#38bdf8" />
+        <svg class="cleo-logo-svg" width="20" height="20" viewBox="0 0 48 48" fill="none">
+          <polygon class="cleo-logo-face top" points="24,4 42,14 24,24 6,14" fill="url(#chGradTop)" />
+          <polygon class="cleo-logo-face left" points="6,14 24,24 24,44 6,34" fill="url(#chGradLeft)" />
+          <polygon class="cleo-logo-face right" points="42,14 42,34 24,44 24,24" fill="url(#chGradRight)" />
+          <circle class="cleo-logo-core" cx="24" cy="24" r="5.2" />
+          <path class="cleo-logo-star" d="M24 20 C24 22.2 22.2 24 20 24 C22.2 24 24 25.8 24 28 C24 25.8 25.8 24 28 24 C25.8 24 24 22.2 24 20 Z" />
+          <circle class="cleo-logo-spark" cx="24" cy="24" r="1" />
         </svg>
       `;
 
@@ -7763,11 +8623,12 @@
     function _isCostMetricLabel(label) {
       return /cost|spend|\$/i.test(label || '');
     }
-    // Infer x-axis label from explicit spec or shape of the labels (month/quarter/day strings vs category names).
+    // Infer x-axis label from explicit spec or shape of the labels (month/quarter/day/week strings vs category names).
     function _inferXAxisLabel(labels) {
       const sample = String((labels && labels[0]) || '').trim();
       if (!sample) return '';
       if (/^Q[1-4]\b/i.test(sample)) return 'Quarter';
+      if (/^\d{4}-W\d{2}/i.test(sample) || /\bWk\s*\d+\b/i.test(sample) || /\bWeek\s+\d+\b/i.test(sample) || /\bW\d{2}\b/i.test(sample)) return 'Week';
       if (/^\d{4}-\d{2}-\d{2}/.test(sample)) return 'Day';
       if (/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}$/i.test(sample)) return 'Day';
       if (/^\d{4}-\d{2}\b/.test(sample) || /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(sample)) return 'Month';
@@ -7893,17 +8754,17 @@
       const isLight = document.documentElement.getAttribute('data-theme') === 'light';
       return {
         isLight,
-        gridColor: isLight ? 'rgba(45, 38, 30, 0.06)' : 'rgba(255, 255, 255, 0.05)',
-        tickColor: isLight ? '#524c44' : '#64748b',
-        legendColor: isLight ? '#1f1c19' : '#94a3b8',
-        tooltipBg: isLight ? '#fbf9f4' : '#1e293b',
-        tooltipBorder: isLight ? '#ded7c8' : 'rgba(255, 255, 255, 0.14)',
-        tooltipTitle: isLight ? '#1f1c19' : '#f1f5f9',
-        tooltipBody: isLight ? '#292524' : '#cbd5e1',
-        pieBorderColor: isLight ? '#fbf9f4' : '#0b0f17',
-        stackedBorderColor: isLight ? '#fbf9f4' : 'rgba(11, 15, 23, 0.4)',
-        pointBorderColor: isLight ? '#fbf9f4' : '#0c111d',
-        exportBgColor: isLight ? '#fbf9f4' : '#0c111d'
+        gridColor: isLight ? 'rgba(15, 23, 42, 0.06)' : 'rgba(255, 255, 255, 0.05)',
+        tickColor: isLight ? '#64748b' : '#64748b',
+        legendColor: isLight ? '#334155' : '#94a3b8',
+        tooltipBg: isLight ? '#ffffff' : '#1e293b',
+        tooltipBorder: isLight ? '#cbd5e1' : 'rgba(255, 255, 255, 0.14)',
+        tooltipTitle: isLight ? '#0f172a' : '#f1f5f9',
+        tooltipBody: isLight ? '#334155' : '#cbd5e1',
+        pieBorderColor: isLight ? '#ffffff' : '#0b0f17',
+        stackedBorderColor: isLight ? '#ffffff' : 'rgba(11, 15, 23, 0.4)',
+        pointBorderColor: isLight ? '#ffffff' : '#0c111d',
+        exportBgColor: isLight ? '#ffffff' : '#0c111d'
       };
     }
 
@@ -8006,6 +8867,45 @@
       } catch (_) {
         applyTheme('dark', false);
       }
+    }
+
+    // ── FinOps Insights Global Toggle State & Handlers ──
+    let _insightsEnabled = localStorage.getItem('cleo_insights_enabled') !== 'false';
+
+    function updateInsightsToggleUI() {
+      const headerBtn = document.getElementById('header-insights-btn');
+      const inputBtn = document.getElementById('input-insights-btn');
+      const headerStatus = document.getElementById('header-insights-status');
+
+      if (headerBtn) {
+        headerBtn.setAttribute('aria-checked', _insightsEnabled ? 'true' : 'false');
+        if (_insightsEnabled) {
+          headerBtn.classList.remove('off');
+          headerBtn.title = 'FinOps Insights: ON. Generates strategic recommendations. Click to disable (prompts with "with/without insights" override).';
+        } else {
+          headerBtn.classList.add('off');
+          headerBtn.title = 'FinOps Insights: OFF. Click to enable (prompts with "with/without insights" override).';
+        }
+      }
+      if (headerStatus) {
+        headerStatus.textContent = _insightsEnabled ? 'ON' : 'OFF';
+      }
+      if (inputBtn) {
+        inputBtn.setAttribute('aria-checked', _insightsEnabled ? 'true' : 'false');
+        if (_insightsEnabled) {
+          inputBtn.classList.remove('off');
+          inputBtn.title = 'FinOps Insights: ON. Click to disable.';
+        } else {
+          inputBtn.classList.add('off');
+          inputBtn.title = 'FinOps Insights: OFF. Click to enable.';
+        }
+      }
+    }
+
+    function toggleInsights() {
+      _insightsEnabled = !_insightsEnabled;
+      localStorage.setItem('cleo_insights_enabled', _insightsEnabled ? 'true' : 'false');
+      updateInsightsToggleUI();
     }
 
     const _CHART_DEFAULTS = {
@@ -8515,7 +9415,18 @@
       }
 
       // Discover table views from the source bubble or message
-      const bubble = config._bubble || (config._sourceWrap ? config._sourceWrap.closest('.bubble') : null) || document.querySelector('.chat-stream .message:last-child .bubble');
+      const bubble = config._bubble || (config._sourceWrap ? config._sourceWrap.closest('.bubble') : null) || document.querySelector('#chat-stream .message:last-child .bubble');
+      _modalState.sourceBubble = bubble;
+      if (bubble) {
+        if (!bubble._granularityCache) bubble._granularityCache = {};
+        const detected = bubble.dataset.activeGran || detectTableGranularity(bubble.querySelector('table'))?.gran || 'monthly';
+        if (!bubble.dataset.defaultGran) bubble.dataset.defaultGran = detected;
+        _modalState.defaultGranularity = bubble.dataset.defaultGran;
+        _modalState.activeGranularity = bubble.dataset.activeGran || detected;
+        if (!bubble._granularityCache[_modalState.activeGranularity] && bubble.dataset.rawMarkdown) {
+          bubble._granularityCache[_modalState.activeGranularity] = bubble.dataset.rawMarkdown;
+        }
+      }
       const discoveredViews = bubble ? _extractTableViewsFromBubble(bubble, config) : [];
 
       const allViews = [];
@@ -8550,8 +9461,11 @@
       }
       const catNameMatch = (config.title || '').match(/\bby\s+([^—–\(\)&]+?)(?:\s+(?:&|and)\s+[^—–\(\)]+)?(?:\s+[—–]|\s*\(|$)/i);
       const derivedCatDim = catNameMatch ? catNameMatch[1].trim() : 'AI Model';
-      const isDateFirstLabel = config.data?.labels?.[0] && /^\d{4}-\d{2}|^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(String(config.data.labels[0]));
-      const derivedXDim = config.rawSpec?.x_label || config.options?.scales?.x?.title?.text || (isDateFirstLabel ? 'Month' : 'Date');
+      const firstLbl = String(config.data?.labels?.[0] || '').trim();
+      const isWeekFirstLabel = /^\d{4}-W\d{2}/i.test(firstLbl) || /\bWk\s*\d+\b/i.test(firstLbl) || /\bWeek\s+\d+\b/i.test(firstLbl) || /\bW\d{2}\b/i.test(firstLbl);
+      const isDateFirstLabel = /^\d{4}-\d{2}|^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(firstLbl);
+      const inferredX = _inferXAxisLabel(config.data?.labels);
+      const derivedXDim = config.rawSpec?.x_label || (config.options?.scales?.x?.title?.text && config.options.scales.x.title.text !== 'Category' ? config.options.scales.x.title.text : null) || (isWeekFirstLabel ? 'Week' : (inferredX !== 'Category' ? inferredX : (isDateFirstLabel ? 'Month' : 'Date')));
       const chartAvDims = hasMultiDs ? [derivedXDim, derivedCatDim] : [derivedXDim];
 
       const chartDefaultView = {
@@ -8569,6 +9483,9 @@
       };
 
       if (discoveredViews.length === 0 || (hasMultiDs && !discoveredViews[0]?.isPivoted)) {
+        if (discoveredViews[0]) {
+          chartDefaultView.pairedTableView = discoveredViews[0];
+        }
         allViews.push(chartDefaultView);
         discoveredViews.forEach((v, idx) => {
           allViews.push({
@@ -8769,7 +9686,8 @@
       _modalState.activeMetricId = metricId;
       const currentView = _modalState.tableViews[_modalState.activeViewIndex];
       const activeMetric = (currentView?.availableMetrics || []).find(m => m.id === metricId);
-      const isMoM = metricId === 'mom_change' || metricId === 'dod_variance' || Boolean(activeMetric && (activeMetric.isMoM || /mom|dod|variance|change|delta/i.test(activeMetric.name)));
+      const isMoM = /(?:mom|dod|wow|variance|delta|change)/i.test(metricId) ||
+                    Boolean(activeMetric && (activeMetric.isMoM || /(?:mom|dod|wow|variance|delta|change)/i.test(activeMetric.name)));
       if (isMoM) {
         if (_modalState.activeType !== 'waterfall') {
           _modalState.prevNonWaterfallType = _modalState.activeType;
@@ -8777,6 +9695,7 @@
         }
         _modalState.activeType = 'waterfall';
         _modalState.isStacked = false;
+        _modalState.activeCatDim = 'None';
       } else if (_modalState.activeType === 'waterfall') {
         const restoredType = _modalState.prevNonWaterfallType || _modalState.initialActiveType || (_modalState.originalConfig?.type === 'line' ? 'line' : 'stacked_bar');
         _modalState.activeType = restoredType;
@@ -8786,8 +9705,8 @@
           _modalState.isStacked = ['stacked_bar', 'area', 'horizontal_bar'].includes(restoredType);
         }
       }
-      // If user selected an individual category column (e.g. Claude Opus 5.5), automatically isolate it (Category = None)
-      if (activeMetric && activeMetric.colIdx !== undefined && activeMetric.colIdx !== currentView?.totalCol?.colIdx && !isMoM) {
+      // If user selected an individual category column (e.g. Claude Opus 5.5) or a variance metric, isolate it (Category = None)
+      if (isMoM || (activeMetric && activeMetric.colIdx !== undefined && activeMetric.colIdx !== currentView?.totalCol?.colIdx)) {
         _modalState.activeCatDim = 'None';
       }
       applyActiveViewAndMetric();
@@ -8831,7 +9750,7 @@
         _modalState.isStacked = false;
         _modalState.isHorizontal = false;
         if (!_modalState.activeCatDim || _modalState.activeCatDim === 'None') {
-          _modalState.activeCatDim = currentView?.isPivoted ? currentView.categoryDimName : (currentView?.dimCols?.[0]?.header || avDims[0] || 'Category');
+          _modalState.activeCatDim = currentView?.categoryDimName || currentView?.dimCols?.[0]?.header || avDims[1] || avDims[0] || 'Category';
         }
       } else if (newVal === 'waterfall') {
         _modalState.isStacked = false;
@@ -8844,6 +9763,10 @@
 
     function resetModalChartToDefault() {
       if (!_modalState.originalConfig) return;
+      if (_modalState.defaultGranularity && _modalState.sourceBubble?._granularityCache?.[_modalState.defaultGranularity] && _modalState.activeGranularity !== _modalState.defaultGranularity) {
+        _applyGranularityToModal(_modalState.sourceBubble._granularityCache[_modalState.defaultGranularity], _modalState.defaultGranularity, _modalState.sourceBubble);
+        return;
+      }
       _modalState.activeViewIndex = _modalState.initialViewIndex || 0;
       const currentView = _modalState.tableViews[_modalState.activeViewIndex];
 
@@ -8943,6 +9866,148 @@
       return { labels: newLabels, datasets: newDatasets };
     }
 
+    async function onModalGranularityChange(targetGran) {
+      if (!targetGran) return;
+      _modalState.activeGranularity = targetGran;
+      document.querySelectorAll('#modal-gran-pills .gran-pill-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.gran === targetGran);
+      });
+
+      const sourceBubble = _modalState.sourceBubble || (_modalState.originalConfig?._bubble) || (document.querySelector('#chat-stream .message.cleo:last-child .bubble'));
+      if (!sourceBubble) return;
+
+      if (!sourceBubble._granularityCache) {
+        sourceBubble._granularityCache = {};
+      }
+
+      const activeMetric = (_modalState.tableViews?.[_modalState.activeViewIndex]?.availableMetrics || []).find(m => m.id === _modalState.activeMetricId);
+      const wasVariance = _modalState.activeMetricId === 'mom_change' ||
+                          _modalState.activeMetricId === 'dod_variance' ||
+                          _modalState.activeMetricId === 'wow_change' ||
+                          Boolean(activeMetric && (activeMetric.isMoM || /mom|dod|wow|variance|change|delta/i.test(activeMetric.name)));
+      const prevType = _modalState.activeType;
+
+      // 1. If targetGran is CACHED: instant in-place switch in modal!
+      if (sourceBubble._granularityCache[targetGran]) {
+        _applyGranularityToModal(sourceBubble._granularityCache[targetGran], targetGran, sourceBubble, wasVariance, prevType);
+        return;
+      }
+
+      // 2. Not cached: fetch in-place without closing modal
+      const modalBox = document.querySelector('#chart-modal .modal-box') || document.getElementById('chart-modal');
+      const loader = document.createElement('div');
+      loader.className = 'modal-gran-loader';
+      loader.style.cssText = 'position:absolute; inset:0; background:rgba(15,23,42,0.72); display:flex; align-items:center; justify-content:center; gap:12px; color:#38bdf8; font-family:"JetBrains Mono",monospace; font-size:0.85rem; z-index:100; backdrop-filter:blur(4px); border-radius:12px;';
+      loader.innerHTML = `<span class="thinking-spinner"></span> Fetching ${targetGran} granularity data...`;
+      if (modalBox) {
+        modalBox.style.position = 'relative';
+        modalBox.appendChild(loader);
+      }
+
+      try {
+        const allBubbles = Array.from(document.querySelectorAll('#chat-stream .message.cleo .bubble'));
+        const mIdx = allBubbles.indexOf(sourceBubble);
+
+        let monthRef = '';
+        const text = sourceBubble.innerText || '';
+        const isMultiMonth = /last\s+\d+\s+months/i.test(text) || /mom\s+trend/i.test(text);
+        if (!isMultiMonth) {
+          const m = text.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(202\d)\b/i) ||
+                    text.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(202\d)\b/i) ||
+                    text.match(/\b(202\d)-(0[1-9]|1[0-2])\b/);
+          if (m) monthRef = ` for ${m[0]}`;
+        }
+
+        const res = await fetch('/api/chat/granularity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: currentSessionId,
+            message_index: mIdx >= 0 ? mIdx : null,
+            target_granularity: targetGran,
+            month_ref: monthRef,
+            prompt: `Show this spend with ${targetGran} granularity${monthRef}`,
+            include_insights: _insightsEnabled
+          })
+        });
+
+        loader.remove();
+
+        if (!res.ok) {
+          showToast(`Could not load ${targetGran} granularity`, 'error');
+          return;
+        }
+
+        const data = await res.json();
+        if (data.markdown) {
+          sourceBubble._granularityCache[targetGran] = data.markdown;
+          _applyGranularityToModal(data.markdown, targetGran, sourceBubble, wasVariance, prevType);
+        }
+      } catch (err) {
+        loader.remove();
+        console.error('Modal granularity error:', err);
+        showToast('Network error loading granularity', 'error');
+      }
+    }
+
+    function _applyGranularityToModal(markdown, targetGran, sourceBubble, wasVariance = false, prevType = null) {
+      if (!sourceBubble) return;
+      _modalState.activeGranularity = targetGran;
+      sourceBubble.dataset.activeGran = targetGran;
+      // Update background bubble in-place
+      updateBubbleContent(sourceBubble, markdown, targetGran);
+
+      // Extract new chart configuration from newly rendered bubble
+      const newChartWrap = sourceBubble.querySelector('.cleo-chart-wrap');
+      let chartInst = null;
+      if (newChartWrap) {
+        const canvas = newChartWrap.querySelector('canvas');
+        chartInst = canvas ? Chart.getChart(canvas) : null;
+      }
+
+      if (chartInst) {
+        const cfg = {
+          type: chartInst.config.type,
+          data: chartInst.config.data,
+          options: chartInst.config.options,
+          title: chartInst.config.options?.plugins?.title?.text || `${targetGran.toUpperCase()} Spend View`,
+          _bubble: sourceBubble,
+          _sourceWrap: newChartWrap
+        };
+        openChartModal(cfg);
+      } else {
+        const discovered = _extractTableViewsFromBubble(sourceBubble);
+        if (discovered.length > 0) {
+          const cfg = {
+            type: 'bar',
+            data: { labels: [], datasets: [] },
+            options: {},
+            title: discovered[0].title || `${targetGran.toUpperCase()} Spend View`,
+            _bubble: sourceBubble
+          };
+          openChartModal(cfg);
+        }
+      }
+
+      _modalState.activeGranularity = targetGran;
+
+      if (wasVariance) {
+        const currentView = _modalState.tableViews[_modalState.activeViewIndex];
+        const vMetric = (currentView?.availableMetrics || []).find(m => m.isMoM || /mom|dod|wow|variance|change|delta/i.test(m.id) || /mom|dod|wow|variance|change|delta/i.test(m.name));
+        if (vMetric) {
+          _modalState.activeMetricId = vMetric.id;
+        }
+        _modalState.activeCatDim = 'None';
+        if (prevType) _modalState.activeType = prevType;
+        applyActiveViewAndMetric();
+      }
+
+      document.querySelectorAll('#modal-gran-pills .gran-pill-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.gran === targetGran);
+      });
+      renderModalChart();
+    }
+
     function syncModalToolbarUI() {
       const typeSelect = document.getElementById('chart-modal-type-select');
       if (typeSelect) {
@@ -9007,6 +10072,35 @@
         }
       }
 
+      // Dynamic Granularity Selector (Monthly ↔ Weekly ↔ Daily)
+      const granControl = document.getElementById('chart-modal-granularity-control');
+      if (granControl) {
+        const labels = _modalState.originalConfig?.data?.labels || [];
+        const isTimeChart = (currentView?.monthCols && currentView.monthCols.length > 0) ||
+                            (currentView?.dateCol) ||
+                            (['month', 'date', 'day', 'week'].includes((_modalState.activeXDim || '').toLowerCase())) ||
+                            Boolean(_modalState.activeGranularity) ||
+                            Boolean(_modalState.defaultGranularity) ||
+                            Boolean(_modalState.sourceBubble?.dataset?.defaultGran) ||
+                            Boolean(_modalState.sourceBubble?.dataset?.activeGran) ||
+                            (labels.length > 0 && /^\d{4}-\d{2}|^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|\bwk\s*\d+|\bweek\s+\d+|\bw\d{2}\b/i.test(String(labels[0])));
+        if (isTimeChart) {
+          granControl.style.display = 'flex';
+          let detectedGran = 'monthly';
+          if (labels.length > 0 && (/^\d{4}-\d{2}-\d{2}$|^[a-z]{3}\s+\d{1,2}$/i.test(String(labels[0])))) {
+            detectedGran = 'daily';
+          } else if (labels.length > 0 && (/^\d{4}-W\d{2}$|\bW\d{2}\b|\bWk\s*\d+\b|\bWeek\s+\d+\b/i.test(String(labels[0])))) {
+            detectedGran = 'weekly';
+          }
+          const activeGran = _modalState.activeGranularity || _modalState.sourceBubble?.dataset?.activeGran || detectedGran;
+          document.querySelectorAll('#modal-gran-pills .gran-pill-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.gran === activeGran);
+          });
+        } else {
+          granControl.style.display = 'none';
+        }
+      }
+
       const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
 
 
@@ -9030,8 +10124,8 @@
             opt.textContent = d.toUpperCase();
             catSelect.appendChild(opt);
           });
-          if (!_modalState.activeCatDim || _modalState.activeCatDim === 'None' || !avDims.includes(_modalState.activeCatDim)) {
-            _modalState.activeCatDim = currentView?.dimCols?.[0]?.header || avDims[0] || 'Category';
+          if (!_modalState.activeCatDim || !avDims.includes(_modalState.activeCatDim)) {
+            _modalState.activeCatDim = currentView?.categoryDimName || currentView?.dimCols?.[0]?.header || avDims[1] || avDims[0] || 'Category';
           }
           catSelect.value = _modalState.activeCatDim;
         }
@@ -9144,8 +10238,32 @@
         labels = t.labels;
         datasets = t.datasets;
       }
+      const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
+      const derivedXDim = _modalState.originalConfig?.rawSpec?.x_label || _modalState.originalConfig?.options?.scales?.x?.title?.text || 'Month';
+      const isDateOrNone = _modalState.activeCatDim === 'None' ||
+                           _modalState.activeCatDim === derivedXDim ||
+                           _modalState.activeCatDim?.toLowerCase() === 'month' ||
+                           _modalState.activeCatDim?.toLowerCase() === 'date';
+
+      if (isPie && isDateOrNone && datasets.length > 1) {
+        return labels.map((lbl, i) => {
+          const sum = datasets.reduce((acc, ds) => {
+            const v = Array.isArray(ds.data) ? ds.data[i] : 0;
+            return acc + (Number(v) || 0);
+          }, 0);
+          const color = _CHART_PALETTE[i % _CHART_PALETTE.length];
+          return {
+            id: String(lbl),
+            name: String(lbl),
+            color: color,
+            total: Math.round(sum * 100) / 100,
+            avg: Math.round(sum * 100) / 100
+          };
+        });
+      }
+
       if (datasets.length > 1) {
-        return datasets.map((ds, i) => {
+        const items = datasets.map((ds, i) => {
           const sum = (ds.data || []).reduce((acc, v) => acc + (Number(v) || 0), 0);
           const color = _resolveDatasetThemeColor(ds, i);
           const count = (ds.data || []).filter(v => v !== null && v !== undefined).length || 1;
@@ -9158,6 +10276,10 @@
             avg: Math.round(avg * 100) / 100
           };
         });
+        if (isPie) {
+          items.sort((a, b) => b.total - a.total);
+        }
+        return items;
       } else if (datasets.length === 1) {
         const ds = datasets[0];
         return labels.map((lbl, i) => {
@@ -9479,9 +10601,10 @@
       // usePreviewChart is cleared and we switch to table-derived aggregation.
       // If the user is viewing a single metric with Category=None, preview chart (which has multiple series)
       // should NOT override the user-selected single metric.
+      const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
       const isMultiSeriesPreview = (_modalState.originalConfig?.data?.datasets?.length || 0) > 1;
       const wantsSingleSeries = _modalState.activeCatDim === 'None' || (_modalState.activeMetricId && _modalState.activeMetricId !== 'total_spend' && _modalState.activeMetricId !== 'default_metric');
-      if (!wantsSingleSeries && _modalState.usePreviewChart && _modalState.originalConfig?.data?.labels?.length) {
+      if (!isPie && !wantsSingleSeries && _modalState.usePreviewChart && _modalState.originalConfig?.data?.labels?.length) {
         const cfg = _modalState.originalConfig;
         return {
           labels: [...(cfg.data?.labels || [])],
@@ -9502,15 +10625,144 @@
         };
       }
 
+      // Dynamic Granularity Re-aggregation for Daily Charts:
+      // If user toggled to weekly or monthly, re-group daily labels & data points in real-time
+      const origLabels = _modalState.originalConfig?.data?.labels || [];
+      const isDailyLabels = origLabels.length > 0 && /^\d{4}-\d{2}-\d{2}$|^[a-z]{3}\s+\d{1,2}$/i.test(String(origLabels[0]));
+      if (isDailyLabels && (_modalState.activeGranularity === 'weekly' || _modalState.activeGranularity === 'monthly')) {
+        const targetGran = _modalState.activeGranularity;
+        const groupKeyFn = (lbl) => {
+          if (targetGran === 'monthly') {
+            if (/^\d{4}-\d{2}/.test(lbl)) return lbl.slice(0, 7);
+            return lbl;
+          }
+          // weekly: ISO week YYYY-Www
+          if (/^\d{4}-\d{2}-\d{2}$/.test(lbl)) {
+            const d = new Date(lbl + 'T00:00:00Z');
+            const dNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+            const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+            return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+          }
+          return lbl;
+        };
+
+        const groupedLabels = [];
+        const labelIndexMap = {};
+        origLabels.forEach((lbl, idx) => {
+          const k = groupKeyFn(lbl);
+          if (!labelIndexMap[k]) {
+            labelIndexMap[k] = [];
+            groupedLabels.push(k);
+          }
+          labelIndexMap[k].push(idx);
+        });
+
+        const newDatasets = (_modalState.originalConfig.data?.datasets || []).map(ds => {
+          const origData = Array.isArray(ds.data) ? ds.data : [];
+          const aggregatedData = groupedLabels.map(k => {
+            const indices = labelIndexMap[k] || [];
+            const sumVal = indices.reduce((acc, i) => acc + (Number(origData[i]) || 0), 0);
+            return Math.round(sumVal * 100) / 100;
+          });
+          return {
+            ...ds,
+            data: aggregatedData
+          };
+        });
+
+        return {
+          labels: groupedLabels,
+          datasets: newDatasets,
+          value_label: _modalState.originalConfig.rawSpec?.value_label || 'Cost ($)',
+          x_label: targetGran === 'weekly' ? 'Week' : 'Month',
+          isCost: _modalState.originalConfig.rawSpec?.isCost !== false,
+          isPercent: false,
+          isWaterfall: _modalState.activeType === 'waterfall'
+        };
+      }
+
       if (!currentView || (!currentView.rawRows?.length)) {
         const origDatasets = _modalState.originalConfig?.data?.datasets || [];
         const origLabels = _modalState.originalConfig?.data?.labels || [];
         const valLabel = _modalState.originalConfig?.rawSpec?.value_label || _modalState.originalConfig?.options?.scales?.y?.title?.text || 'Cost';
 
-        if (_modalState.activeCatDim === 'None' && origDatasets.length > 1) {
+        if (isPie) {
+          const derivedXDim = _modalState.originalConfig?.rawSpec?.x_label || _modalState.originalConfig?.options?.scales?.x?.title?.text || 'Month';
+          const isDateOrNone = _modalState.activeCatDim === 'None' ||
+                               _modalState.activeCatDim === derivedXDim ||
+                               _modalState.activeCatDim?.toLowerCase() === 'month' ||
+                               _modalState.activeCatDim?.toLowerCase() === 'date';
+
+          if (origDatasets.length > 1 && !isDateOrNone) {
+            // Slice by Series/Category (e.g. AI Model)
+            const items = origDatasets.map((ds, i) => ({
+              label: String(ds.label || `Series ${i+1}`),
+              value: Math.round(((Array.isArray(ds.data) ? ds.data : []).reduce((acc, v) => acc + (Number(v) || 0), 0)) * 100) / 100,
+              color: _resolveDatasetThemeColor(ds, i)
+            }));
+            items.sort((a, b) => b.value - a.value);
+            const labels = items.map(it => it.label);
+            const sliceValues = items.map(it => it.value);
+            const colors = items.map(it => it.color);
+            return {
+              labels,
+              datasets: [{
+                label: valLabel,
+                data: sliceValues,
+                backgroundColor: colors,
+                borderColor: _getChartThemeConfig().pieBorderColor,
+                borderWidth: 2
+              }],
+              value_label: valLabel,
+              x_label: _modalState.activeCatDim || 'Category',
+              isCost: _modalState.originalConfig?.rawSpec?.isCost !== false,
+              isPercent: Boolean(_modalState.originalConfig?.rawSpec?.isPercent),
+              isWaterfall: false
+            };
+          } else {
+            // Slice by X-Axis (e.g. Month)
+            let sliceValues = [];
+            if (origDatasets.length > 1) {
+              sliceValues = origLabels.map((_, i) => {
+                const sum = origDatasets.reduce((acc, ds) => {
+                  const v = Array.isArray(ds.data) ? ds.data[i] : 0;
+                  return acc + (Number(v) || 0);
+                }, 0);
+                return Math.round(sum * 100) / 100;
+              });
+            } else if (origDatasets.length === 1) {
+              const ds = origDatasets[0];
+              sliceValues = (Array.isArray(ds.data) ? ds.data : []).map(v => Math.round((Number(v) || 0) * 100) / 100);
+            }
+            const colors = origLabels.map((_, i) => _CHART_PALETTE[i % _CHART_PALETTE.length]);
+            return {
+              labels: [...origLabels],
+              datasets: [{
+                label: 'Total Spend',
+                data: sliceValues,
+                backgroundColor: colors,
+                borderColor: _getChartThemeConfig().pieBorderColor,
+                borderWidth: 2
+              }],
+              value_label: valLabel,
+              x_label: _modalState.activeXDim || 'Month',
+              isCost: _modalState.originalConfig?.rawSpec?.isCost !== false,
+              isPercent: Boolean(_modalState.originalConfig?.rawSpec?.isPercent),
+              isWaterfall: false
+            };
+          }
+        }
+
+        const activeMetric = (currentView?.availableMetrics || []).find(m => m.id === _modalState.activeMetricId);
+        const isVarianceMetric = /(?:mom|dod|wow|variance|delta|change)/i.test(_modalState.activeMetricId || '') ||
+                                 Boolean(activeMetric && (activeMetric.isMoM || /(?:mom|dod|wow|variance|delta|change)/i.test(activeMetric.name)));
+
+        if ((_modalState.activeCatDim === 'None' || isVarianceMetric) && origDatasets.length > 1) {
           // If user selected an individual series name (e.g. Claude Opus 5.5) as the metric
           let targetDataset = null;
-          if (_modalState.activeMetricId) {
+          if (_modalState.activeMetricId && !isVarianceMetric) {
             targetDataset = origDatasets.find(ds => ds.label === _modalState.activeMetricId || ds.id === _modalState.activeMetricId);
             if (!targetDataset && currentView?.availableMetrics) {
               const mObj = currentView.availableMetrics.find(m => m.id === _modalState.activeMetricId);
@@ -9542,6 +10794,117 @@
               return sum + (Number(v) || 0);
             }, 0);
           }).map(v => Math.round(v * 100) / 100);
+
+          if (isVarianceMetric) {
+            const paired = currentView?.pairedTableView || (_modalState.tableViews || []).find(v => v.rawRows?.length && !v.isDefault);
+            let pairedDeltas = null;
+            if (paired && paired.rawRows?.length) {
+              const pVarCol = paired.varianceCol?.colIdx ?? (paired.metricCols?.find(m => m.isMoM)?.colIdx ?? -1);
+              if (pVarCol !== -1) {
+                const pRows = [...paired.rawRows];
+                const isPChron = /^\d{4}/.test((pRows[0]?.[0] || '').trim()) && /^\d{4}/.test((pRows[pRows.length - 1]?.[0] || '').trim()) &&
+                                 String(pRows[0]?.[0]).localeCompare(String(pRows[pRows.length - 1]?.[0])) < 0;
+                if (!isPChron) pRows.reverse();
+                pairedDeltas = pRows.map(r => _parseMoMValue(r[pVarCol]));
+              }
+            }
+
+            if (_modalState.activeType === 'waterfall') {
+              const items = [];
+              const baseSpend = totalData[0] || 0;
+              items.push({ label: `${origLabels[0]} (Base)`, value: baseSpend, isBase: true });
+
+              for (let i = 1; i < origLabels.length; i++) {
+                let delta = 0;
+                if (pairedDeltas && pairedDeltas[i] !== undefined && pairedDeltas[i] !== 0) {
+                  delta = pairedDeltas[i];
+                } else {
+                  delta = Math.round((totalData[i] - totalData[i - 1]) * 100) / 100;
+                }
+                items.push({ label: `${origLabels[i]} ${activeMetric?.name || 'MoM'}`, value: delta });
+              }
+
+              if (origLabels.length > 1) {
+                const endSpend = totalData[totalData.length - 1] || 0;
+                items.push({ label: `${origLabels[origLabels.length - 1]} Total`, value: endSpend, isTotal: true });
+              }
+
+              const floatingData = [];
+              const bgColors = [];
+              const borderColors = [];
+              let running = 0;
+              items.forEach((it, idx) => {
+                const num = it.value;
+                if (it.isBase) {
+                  floatingData.push([0, num]);
+                  running = num;
+                  bgColors.push('#0284c7');
+                  borderColors.push('#0369a1');
+                } else if (it.isTotal) {
+                  const finalVal = it.isBase ? num : (idx === items.length - 1 && items[0].isBase ? num : running);
+                  floatingData.push([0, finalVal]);
+                  bgColors.push('#818cf8');
+                  borderColors.push('#6366f1');
+                } else {
+                  const start = running;
+                  const end = running + num;
+                  floatingData.push([Math.min(start, end), Math.max(start, end)]);
+                  running = end;
+                  if (num >= 0) {
+                    bgColors.push('#f87171');
+                    borderColors.push('#ef4444');
+                  } else {
+                    bgColors.push('#4ade80');
+                    borderColors.push('#22c55e');
+                  }
+                }
+              });
+
+              return {
+                labels: items.map(it => it.label),
+                rawItems: items,
+                datasets: [{
+                  label: activeMetric?.name || 'MoM Change',
+                  data: floatingData,
+                  backgroundColor: bgColors,
+                  borderColor: borderColors,
+                  borderWidth: 1,
+                  borderRadius: 3
+                }],
+                value_label: activeMetric?.name || 'MoM Change',
+                x_label: _modalState.activeXDim || 'Month',
+                isCost: true,
+                isPercent: false,
+                isWaterfall: true,
+                isVariance: true
+              };
+            } else {
+              const varianceData = origLabels.map((lbl, i) => {
+                if (i === 0) return 0;
+                if (pairedDeltas && pairedDeltas[i] !== undefined && pairedDeltas[i] !== 0) {
+                  return pairedDeltas[i];
+                }
+                return Math.round((totalData[i] - totalData[i - 1]) * 100) / 100;
+              });
+              const bgColors = varianceData.map(v => v < 0 ? '#4ade80' : '#f87171');
+              return {
+                labels: [...origLabels],
+                datasets: [{
+                  label: activeMetric?.name || 'MoM Change',
+                  data: varianceData,
+                  backgroundColor: bgColors,
+                  borderColor: bgColors,
+                  borderWidth: 1
+                }],
+                value_label: activeMetric?.name || 'MoM Change',
+                x_label: _modalState.activeXDim || 'Month',
+                isCost: true,
+                isPercent: false,
+                isWaterfall: false,
+                isVariance: true
+              };
+            }
+          }
 
           return {
             labels: [...origLabels],
@@ -9599,6 +10962,32 @@
 
         // PIE / DOUGHNUT
         if (isPie) {
+          if (activeCat === 'None' || activeCat === dateCol?.header) {
+            const labels = filteredRows.map(r => _formatDateLabel(r[dateCol.colIdx]));
+            const sliceValues = filteredRows.map(r => {
+              if (activeCatCols.length < catCols.length) {
+                const sum = activeCatCols.reduce((acc, c) => acc + _parseNumericValue(r[c.colIdx]), 0);
+                return Math.round(sum * 100) / 100;
+              }
+              return totalCol ? _parseNumericValue(r[totalCol.colIdx]) : 0;
+            });
+            const colors = labels.map((_, i) => _CHART_PALETTE[i % _CHART_PALETTE.length]);
+            return {
+              labels,
+              datasets: [{
+                label: activeMetric.name,
+                data: sliceValues,
+                backgroundColor: colors,
+                borderColor: _getChartThemeConfig().pieBorderColor,
+                borderWidth: 2
+              }],
+              value_label: activeMetric.name,
+              x_label: dateCol?.header || 'Date',
+              isCost: activeMetric.isCost,
+              isPercent: false,
+              isWaterfall: false
+            };
+          }
           const labels = activeCatCols.map(c => c.header);
           const sliceValues = activeCatCols.map(c => {
             const sum = filteredRows.reduce((acc, r) => acc + _parseNumericValue(r[c.colIdx]), 0);
@@ -9625,10 +11014,32 @@
         // WATERFALL
         if (isWaterfall) {
           let items = [];
-          if (activeMetric.isMoM && varianceCol) {
-            filteredRows.forEach(r => {
-              items.push({ label: _formatDateLabel(r[dateCol.colIdx]), value: _parseMoMValue(r[varianceCol.colIdx]) });
+          if (activeMetric.isMoM) {
+            const baseSpend = totalCol ? _parseNumericValue(filteredRows[0]?.[totalCol.colIdx]) : 0;
+            items.push({
+              label: `${_formatDateLabel(filteredRows[0]?.[dateCol.colIdx])} (Base)`,
+              value: baseSpend,
+              isBase: true
             });
+            for (let i = 1; i < filteredRows.length; i++) {
+              const r = filteredRows[i];
+              const prevR = filteredRows[i - 1];
+              let val = varianceCol ? _parseMoMValue(r[varianceCol.colIdx]) : 0;
+              if (val === 0 && totalCol) {
+                const curTot = _parseNumericValue(r[totalCol.colIdx]);
+                const prevTot = _parseNumericValue(prevR[totalCol.colIdx]);
+                val = Math.round((curTot - prevTot) * 100) / 100;
+              }
+              items.push({ label: _formatDateLabel(r[dateCol.colIdx]), value: val });
+            }
+            if (filteredRows.length > 1 && totalCol) {
+              const endSpend = _parseNumericValue(filteredRows[filteredRows.length - 1][totalCol.colIdx]);
+              items.push({
+                label: `${_formatDateLabel(filteredRows[filteredRows.length - 1][dateCol.colIdx])} Ending`,
+                value: endSpend,
+                isTotal: true
+              });
+            }
           } else {
             activeCatCols.forEach(c => {
               const sum = filteredRows.reduce((acc, r) => acc + _parseNumericValue(r[c.colIdx]), 0);
@@ -9681,7 +11092,8 @@
             x_label: activeX,
             isCost: true,
             isPercent: false,
-            isWaterfall: true
+            isWaterfall: true,
+            isVariance: Boolean(activeMetric.isMoM)
           };
         }
 
@@ -9706,9 +11118,15 @@
                 };
               }
             }
-            const data = filteredRows.map(r => {
-              if (activeMetric.isMoM && varianceCol) {
-                return _parseMoMValue(r[varianceCol.colIdx]);
+            const data = filteredRows.map((r, i) => {
+              if (activeMetric.isMoM) {
+                let v = varianceCol ? _parseMoMValue(r[varianceCol.colIdx]) : 0;
+                if (v === 0 && totalCol && i > 0) {
+                  const curTot = _parseNumericValue(r[totalCol.colIdx]);
+                  const prevTot = _parseNumericValue(filteredRows[i - 1][totalCol.colIdx]);
+                  v = Math.round((curTot - prevTot) * 100) / 100;
+                }
+                return v;
               }
               if (activeMetric.colIdx !== undefined && activeMetric.colIdx !== -1 && activeMetric.colIdx !== totalCol?.colIdx) {
                 return _parseNumericValue(r[activeMetric.colIdx]);
@@ -9719,14 +11137,20 @@
               }
               return totalCol ? _parseNumericValue(r[totalCol.colIdx]) : 0;
             });
+            const bgColors = activeMetric.isMoM ? data.map(v => v < 0 ? '#4ade80' : '#f87171') : undefined;
             return {
               labels,
-              datasets: [{ label: activeMetric.name, data }],
+              datasets: [{
+                label: activeMetric.name,
+                data,
+                ...(bgColors ? { backgroundColor: bgColors, borderColor: bgColors } : {})
+              }],
               value_label: activeMetric.name,
               x_label: dateCol.header,
               isCost: activeMetric.isCost,
               isPercent: false,
-              isWaterfall: false
+              isWaterfall: false,
+              isVariance: Boolean(activeMetric.isMoM)
             };
           } else {
             // Stacked / multi-line by Category
@@ -9776,7 +11200,6 @@
       const activeCat = _modalState.activeCatDim || 'None';
       const activeMetricId = _modalState.activeMetricId || avMetrics[0]?.id || 'total_spend';
       const isWaterfall = _modalState.activeType === 'waterfall';
-      const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
 
       const activeMetric = avMetrics.find(m => m.id === activeMetricId) || avMetrics[0] || {
         id: 'total_spend', name: 'Total Spend', isCost: true, isPercent: false, colIdx: -1
@@ -9896,6 +11319,51 @@
           if (monthTotals.length > 1) {
             const lastMonth = monthTotals[monthTotals.length - 1];
             items.push({ label: `${lastMonth.month} Total`, value: lastMonth.spend, isTotal: true });
+          }
+        } else if (/month|date|day|week|period|timestamp/i.test(activeX) || /month|date|day|week|period/i.test(dimCols[0]?.header || '')) {
+          const xDim = dimCols.find(d => d.header === activeX) || dimCols[0];
+          const xColIdx = xDim ? xDim.colIdx : 0;
+          const chronRows = [...filteredRows].sort((a, b) => {
+            const sa = String(a[xColIdx] || '').replace(/[^\d-]/g, '').trim();
+            const sb = String(b[xColIdx] || '').replace(/[^\d-]/g, '').trim();
+            return sa.localeCompare(sb);
+          });
+
+          const totCol = currentView.totalCol?.colIdx ?? (currentView.metricCols?.[0]?.colIdx ?? 1);
+          const varCol = currentView.varianceCol?.colIdx ?? (activeMetric.isMoM ? activeMetric.colIdx : -1);
+
+          const baseSpend = _parseNumericValue(chronRows[0]?.[totCol]);
+          items.push({
+            label: `${chronRows[0]?.[xColIdx]} (Base)`,
+            value: baseSpend,
+            isBase: true
+          });
+
+          for (let i = 1; i < chronRows.length; i++) {
+            const r = chronRows[i];
+            const prevR = chronRows[i - 1];
+            let delta = 0;
+            if (varCol !== -1 && activeMetric.isMoM) {
+              delta = _parseMoMValue(r[varCol]);
+            }
+            if (delta === 0) {
+              const curTot = _parseNumericValue(r[totCol]);
+              const prevTot = _parseNumericValue(prevR[totCol]);
+              delta = Math.round((curTot - prevTot) * 100) / 100;
+            }
+            items.push({
+              label: `${r[xColIdx]} ${activeMetric.name || 'Change'}`,
+              value: delta
+            });
+          }
+
+          if (chronRows.length > 1) {
+            const endSpend = _parseNumericValue(chronRows[chronRows.length - 1][totCol]);
+            items.push({
+              label: `${chronRows[chronRows.length - 1][xColIdx]} Total`,
+              value: endSpend,
+              isTotal: true
+            });
           }
         } else {
           const xDim = dimCols.find(d => d.header === activeX) || dimCols[0];
@@ -10059,38 +11527,47 @@
           isWaterfall: false
         };
       } else {
-        const labels = xVals;
-        const map = new Map();
-        filteredRows.forEach(r => {
-          const key = (r[xColIdx] || '').trim() || 'Unknown';
-          const val = getMetricValue(r, null);
-          map.set(key, (map.get(key) || 0) + val);
-        });
-        const isTimeX = /date|day|month|time|period/i.test(activeX);
+        const isTimeX = /date|day|month|time|period/i.test(activeX) || /date|day|month|time|period/i.test(dimCols[0]?.header || '');
         let sorted;
         if (isTimeX) {
-          sorted = labels.map(lbl => ({
-            lbl,
-            val: Math.round((map.get(lbl) || 0) * 100) / 100
+          const sortedRows = [...filteredRows].sort((a, b) => {
+            const sa = String(a[xColIdx] || '').replace(/[^\d-]/g, '').trim();
+            const sb = String(b[xColIdx] || '').replace(/[^\d-]/g, '').trim();
+            return sa.localeCompare(sb);
+          });
+          sorted = sortedRows.map(r => ({
+            lbl: (r[xColIdx] || '').trim(),
+            val: getMetricValue(r, null)
           }));
         } else {
+          const labels = xVals;
+          const map = new Map();
+          filteredRows.forEach(r => {
+            const key = (r[xColIdx] || '').trim() || 'Unknown';
+            const val = getMetricValue(r, null);
+            map.set(key, (map.get(key) || 0) + val);
+          });
           sorted = labels.map(lbl => ({
             lbl,
             val: Math.round((map.get(lbl) || 0) * 100) / 100
           })).sort((a, b) => b.val - a.val);
         }
 
+        const bgColors = activeMetric.isMoM ? sorted.map(s => s.val < 0 ? '#4ade80' : '#f87171') : undefined;
+
         return {
           labels: sorted.map(s => s.lbl),
           datasets: [{
             label: activeMetric.name,
-            data: sorted.map(s => s.val)
+            data: sorted.map(s => s.val),
+            ...(bgColors ? { backgroundColor: bgColors, borderColor: bgColors } : {})
           }],
           value_label: activeMetric.name,
           x_label: activeX,
           isCost: activeMetric.isCost,
           isPercent: activeMetric.isPercent,
-          isWaterfall: false
+          isWaterfall: false,
+          isVariance: Boolean(activeMetric.isMoM)
         };
       }
     }
@@ -10107,7 +11584,15 @@
         data: Array.isArray(ds.data) ? [...ds.data] : ds.data
       }));
 
-      if (_modalState.isTransposed && !built.isWaterfall) {
+      const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
+      const isLine = ['line', 'area'].includes(_modalState.activeType);
+      const isArea = _modalState.activeType === 'area';
+      const isWaterfall = built.isWaterfall;
+      const isHorizontal = _modalState.isHorizontal;
+      const chartType = isPie ? _modalState.activeType : (isLine ? 'line' : 'bar');
+      const themeCfg = _getChartThemeConfig();
+
+      if (_modalState.isTransposed && !built.isWaterfall && !isPie) {
         const t = transposeChartMatrix(labels, datasets);
         labels = t.labels;
         datasets = t.datasets;
@@ -10136,14 +11621,6 @@
           datasets[0].backgroundColor = bgColors;
         }
       }
-
-      const isPie = ['pie', 'doughnut'].includes(_modalState.activeType);
-      const isLine = ['line', 'area'].includes(_modalState.activeType);
-      const isArea = _modalState.activeType === 'area';
-      const isWaterfall = built.isWaterfall;
-      const isHorizontal = _modalState.isHorizontal;
-      const chartType = isPie ? _modalState.activeType : (isLine ? 'line' : 'bar');
-      const themeCfg = _getChartThemeConfig();
 
       const canvasWrap = canvas.parentElement;
       if (canvasWrap) {
@@ -10255,7 +11732,8 @@
                     if (it.isBase) return ` Base Spend: ${formatted}`;
                     if (it.isTotal) return ` Ending Spend: ${val < 0 ? '-' : ''}${formatted}`;
                     const sign = val > 0 ? '+' : (val < 0 ? '-' : '');
-                    return ` MoM Change: ${sign}${formatted}`;
+                    const metricTitle = built.value_label || 'Change';
+                    return ` ${metricTitle}: ${sign}${formatted}`;
                   }
                 }
                 const isH = ctx.chart?.options?.indexAxis === 'y';
@@ -10286,7 +11764,9 @@
                 if (axisIsPercent) {
                   formatted = `${(Math.round(v * 10) / 10).toFixed(1)}%`;
                 } else if (axisIsCost) {
-                  formatted = `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                  const isVar = built.isVariance || /mom|dod|wow|variance|change|delta/i.test(built.value_label || '') || /mom|dod|wow|variance|change|delta/i.test(_modalState.activeMetricId || '');
+                  const sign = (isVar && v > 0) ? '+' : '';
+                  formatted = `${sign}$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                 } else {
                   formatted = v.toLocaleString('en-US', { maximumFractionDigits: 2 });
                 }
@@ -10395,14 +11875,16 @@
         _expandedChartInstance.destroy();
         _expandedChartInstance = null;
       }
+      const existingInst = Chart.getChart(canvas);
+      if (existingInst) {
+        existingInst.destroy();
+      }
 
-      setTimeout(() => {
-        _expandedChartInstance = new Chart(canvas, {
-          type: chartType,
-          data: { labels, datasets },
-          options: modalOpts
-        });
-      }, 20);
+      _expandedChartInstance = new Chart(canvas, {
+        type: chartType,
+        data: { labels, datasets },
+        options: modalOpts
+      });
     }
 
     function toggleModalChartCurve() {
@@ -10463,10 +11945,10 @@
       ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
       ctx.drawImage(canvas, 0, 0);
 
-      const rawTitle = document.getElementById('chart-modal-title')?.textContent || 'cleo-chart';
+      const rawTitle = document.getElementById('chart-modal-title')?.textContent || 'CloudHealth-chart';
       const safeTitle = rawTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
       const link = document.createElement('a');
-      link.download = `${safeTitle || 'cleo-chart'}.png`;
+      link.download = `${safeTitle || 'CloudHealth-chart'}.png`;
       link.href = tempCanvas.toDataURL('image/png');
       link.click();
     }
@@ -11042,7 +12524,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `cleo_finops_export_${new Date().toISOString().slice(0,10)}.csv`;
+      a.download = `CloudHealth_finops_export_${new Date().toISOString().slice(0,10)}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -11063,13 +12545,59 @@
       }
     }
 
-    function generateFollowUpChips(respText, userPrompt) {
+    function generateFollowUpChips(respText, userPrompt, serverChips) {
+      if (Array.isArray(serverChips) && serverChips.length > 0) {
+        return serverChips.slice(0, 3);
+      }
       const rlow = (respText || '').toLowerCase();
       const plow = (userPrompt || '').toLowerCase();
       const chips = [];
-      // This MCP connection may not expose list_channel_customers at all (e.g. a direct-customer
-      // token) — suggesting "Top channel customers by spend" in that case is a dead-end prompt
-      // that will always fail, same issue as the main chips-row (see renderTools()).
+
+      // Parse markdown table to find top entities (cluster, model, anomaly, service)
+      const lines = (respText || '').split('\n');
+      let tableHeaders = null;
+      let firstRowCells = null;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.startsWith('|') && line.endsWith('|')) {
+          const parts = line.split('|').slice(1, -1).map(s => s.trim());
+          if (!parts.length) continue;
+          const isSep = parts.every(p => /^[:\-]+$/.test(p));
+          if (!tableHeaders && !isSep) {
+            tableHeaders = parts.map(p => p.toLowerCase());
+          } else if (tableHeaders && isSep) {
+            continue;
+          } else if (tableHeaders && !firstRowCells) {
+            firstRowCells = parts;
+            break;
+          }
+        }
+      }
+
+      if (tableHeaders && firstRowCells) {
+        for (let idx = 0; idx < tableHeaders.length; idx++) {
+          if (idx < firstRowCells.length) {
+            const h = tableHeaders[idx];
+            const val = firstRowCells[idx].replace(/[`\*]/g, '').trim();
+            if (!val || ['total', 'all', 'unknown', '—', '-'].includes(val.toLowerCase())) continue;
+
+            if (h.includes('cluster')) {
+              return [`🔍 Drill into ${val} by namespace`, `📊 Workload breakdown for ${val}`, '📉 3-Month K8s Cost Trend'];
+            } else if (h.includes('ai model') || h.includes('model')) {
+              return [`🤖 Drill into ${val} token volume`, `⚡ Compare ${val} vs Claude 3.5 Sonnet`, '💡 Model routing & caching levers'];
+            } else if (h.includes('anomaly') || h.includes('spike') || (h.includes('variance') && h.includes('service'))) {
+              return [`🚨 Triage ${val} Spike`, '📉 60-Day Anomaly History', '💰 Impacted Accounts & Owners'];
+            } else if (h.includes('from location') || h.includes('egress')) {
+              return ['🌐 NAT Gateway vs S3 VPC Endpoint savings', '📍 Egress cost by destination region', '💡 Inter-AZ chatterbox triage'];
+            } else if (h.includes('commitment plan') || h.includes('lease type') || h.includes('pricing category') || h.includes('commitment coverage')) {
+              return ['⏳ 30-60-90 Day Expiration Cliffs', '📉 Unused Commitment Waste', '🎯 Target 80% Coverage Plan'];
+            } else if (h.includes('service') && !h.includes('provider')) {
+              return [`🔍 Drill into ${val} by usage type`, `📉 Show monthly trend for ${val}`, `💡 Rightsizing levers for ${val}`];
+            }
+          }
+        }
+      }
+
       const channelCustomersAvailable = !!window.hasChannelCustomersTool;
       const channelCustomersFallbackChip = channelCustomersAvailable ? 'Top channel customers by spend' : 'Show AWS spend';
 
@@ -11104,6 +12632,12 @@
         } else {
           chips.push(`Show Azure spend for ${custName}`, `Show EC2 spend for ${custName}`, `Compare with previous month`);
         }
+      } else if (rlow.includes('kubernetes') || plow.includes('kubernetes') || plow.includes('k8s')) {
+        chips.push('Show Kubernetes cost breakdown by cluster and namespace', 'Show Kubernetes top namespaces', 'Show 3-Month K8s Trend');
+      } else if (rlow.includes('anomaly') || plow.includes('anomaly') || plow.includes('spike')) {
+        chips.push('Show active cost anomalies across my clouds', 'Show resolved anomalies', 'Show cost spikes above $5,000');
+      } else if (rlow.includes('ai spend') || plow.includes('ai') || plow.includes('model')) {
+        chips.push('Show AI spend by foundation model across all clouds', 'Show token usage by model', 'Show AI cost by cloud provider');
       } else if (rlow.includes('channel customer') || rlow.includes('customer name')) {
         const sampleCust = (window.channelCustomers && window.channelCustomers.length > 0) ? window.channelCustomers[0].name : null;
         if (sampleCust) {
@@ -11246,7 +12780,7 @@
         const res = await fetch('/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream, application/json' },
-          body: JSON.stringify({ message: text, session_id: payloadSessionId, stream: true }),
+          body: JSON.stringify({ message: text, session_id: payloadSessionId, stream: true, include_insights: _insightsEnabled }),
           signal: currentAbortController.signal
         });
 
@@ -11374,6 +12908,13 @@
         }
         const bubble = thinkingEl.querySelector('.bubble');
         bubble.innerHTML = formattedOutput;
+        bubble.dataset.rawMarkdown = data.response;
+        bubble.dataset.msgIndex = msgIndex;
+        bubble._granularityCache = {};
+        const initGran = detectTableGranularity(bubble.querySelector('table'))?.gran || 'monthly';
+        bubble.dataset.defaultGran = initGran;
+        bubble.dataset.activeGran = initGran;
+        bubble._granularityCache[initGran] = data.response;
         renderCharts(bubble);   // convert chart code-blocks → Chart.js canvases
 
         // Wrap tables with container and add Export CSV button
@@ -11388,7 +12929,7 @@
         });
 
         // Add suggested follow-up chips
-        const chips = generateFollowUpChips(data.response, text);
+        const chips = generateFollowUpChips(data.response, text, data.suggested_chips);
         if (chips.length > 0) {
           const chipsEl = document.createElement('div');
           chipsEl.className = 'followup-chips';
@@ -11532,15 +13073,44 @@
       }
     }
 
-    // ── Chip Auto-Scroll ──
-    // Scrolls the container when right-side chips expand to prevent them from clipping.
+    // ── Chip Auto-Scroll & Slow Marquee Ticker ──
+    // Scrolls the container when right-side chips expand and triggers slow marquee on overflowing descriptive text.
     document.querySelectorAll('.chips-row .chip').forEach(chip => {
+      // Ensure detail wrapper and inner markup exists
+      if (!chip.querySelector('.chip-detail') && chip.dataset.detail) {
+        const detail = document.createElement('span');
+        detail.className = 'chip-detail';
+        const inner = document.createElement('span');
+        inner.className = 'chip-detail-inner';
+        inner.textContent = chip.dataset.detail;
+        detail.appendChild(inner);
+        chip.appendChild(detail);
+      }
+
       chip.addEventListener('mouseenter', () => {
         const row = chip.closest('.chips-row');
         if (!row || !chip.dataset.detail) return;
         
+        const detail = chip.querySelector('.chip-detail');
+        const inner = chip.querySelector('.chip-detail-inner');
+        if (detail && inner) {
+          const maxVisible = 380;
+          const textWidth = inner.scrollWidth;
+          if (textWidth > maxVisible) {
+            const overflowDist = Math.round(textWidth - maxVisible + 28);
+            // Slow reading pace: ~35px/s + pauses at start & end
+            const scrollTime = overflowDist / 35;
+            const totalDuration = Math.max(7.5, scrollTime + 4.5);
+            chip.style.setProperty('--marquee-dist', `-${overflowDist}px`);
+            chip.style.setProperty('--marquee-duration', `${totalDuration.toFixed(1)}s`);
+            detail.classList.add('is-overflowing');
+          } else {
+            detail.classList.remove('is-overflowing');
+          }
+        }
+
         // Estimate the expanded text width (roughly 7px per char + padding)
-        const estimatedExpansion = Math.min(420, chip.dataset.detail.length * 7 + 24);
+        const estimatedExpansion = Math.min(380, chip.dataset.detail.length * 7 + 24);
         const rect = chip.getBoundingClientRect();
         const rowRect = row.getBoundingClientRect();
         
@@ -11557,6 +13127,10 @@
       });
       
       chip.addEventListener('mouseleave', () => {
+        const detail = chip.querySelector('.chip-detail');
+        if (detail) {
+          detail.classList.remove('is-overflowing');
+        }
         const row = chip.closest('.chips-row');
         if (row) {
           // Restore CSS transition and remove inline padding, causing the scroll space
@@ -11569,6 +13143,7 @@
 
     // ── Initialize ──
     initTheme();
+    updateInsightsToggleUI();
     updateInputHeight();
     checkHealth();
     loadEngines();
