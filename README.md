@@ -14,7 +14,7 @@ Run Cleo immediately on your machine without manual configuration:
 
 ```bash
 # 1. Clone the repository
-git clone https://gitlab.com/digitalsuni/cleo.git
+git clone https://github.com/digitalsuni-cloud/cleo.git
 cd cleo
 
 # 2. Start using the one-click launcher for your platform:
@@ -236,7 +236,7 @@ The **Cleo Desktop App** or standard launcher (`./run.sh` / `run.bat`) is the re
 ### Start with Docker
 
 ```bash
-git clone https://gitlab.com/digitalsuni/cleo.git
+git clone https://github.com/digitalsuni-cloud/cleo.git
 cd cleo
 docker compose up
 ```
@@ -258,7 +258,7 @@ docker compose down
 
 ## 🔄 Auto-Updates
 
-Cleo checks GitLab for newer commits and shows an update banner in the Web UI. Updates are **never applied automatically** unless you opt in: the code comes from a remote branch without signature verification, so applying it unattended would turn a compromise of that repo into code execution on every launch.
+Cleo checks GitHub for newer commits and shows an update banner in the Web UI. Updates are **never applied automatically** unless you opt in: the code comes from a remote branch without signature verification, so applying it unattended would turn a compromise of that repo into code execution on every launch.
 
 To opt in to applying updates at startup, set `CLEO_AUTO_UPDATE=1`.
 
@@ -277,7 +277,7 @@ To skip the update check entirely, use `--no-update` or set `CLEO_NO_UPDATE=1`.
 To manually update from the terminal at any time using `curl`:
 ```bash
 # In your Cleo root directory:
-curl -sL https://gitlab.com/digitalsuni/cleo/-/archive/main/cleo-main.tar.gz | tar -xz --strip-components=1
+curl -sL https://github.com/digitalsuni-cloud/cleo/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1
 ```
 
 To manually check for updates via the API:

@@ -5,11 +5,11 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
-# 1. Auto-pull latest updates from GitLab (skip if CLEO_NO_UPDATE=1 or --no-update)
+# 1. Auto-pull latest updates from GitHub (skip if CLEO_NO_UPDATE=1 or --no-update)
 if ($env:CLEO_NO_UPDATE -ne "1" -and $args -notcontains "--no-update") {
     $gitCmd = Get-Command git -ErrorAction SilentlyContinue
     if ($gitCmd -and (Test-Path "$ScriptDir\.git")) {
-        Write-Host "[Cleo] Checking for updates from GitLab..." -ForegroundColor Cyan
+        Write-Host "[Cleo] Checking for updates from GitHub..." -ForegroundColor Cyan
         & git fetch --tags --force origin
         if ($LASTEXITCODE -eq 0) {
             $currentBranch = (& git symbolic-ref --short -q HEAD 2>$null)
@@ -36,7 +36,7 @@ if ($env:CLEO_NO_UPDATE -ne "1" -and $args -notcontains "--no-update") {
             }
             Write-Host "[Cleo] Up to date." -ForegroundColor Green
         } else {
-            Write-Host "[Cleo] Could not reach GitLab; continuing with local version." -ForegroundColor Yellow
+            Write-Host "[Cleo] Could not reach GitHub; continuing with local version." -ForegroundColor Yellow
         }
         Write-Host ""
     }

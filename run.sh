@@ -8,10 +8,10 @@ set -e
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
-# Auto-pull latest updates from GitLab (skip if CLEO_NO_UPDATE=1 or --no-update)
+# Auto-pull latest updates from GitHub (skip if CLEO_NO_UPDATE=1 or --no-update)
 if [ "${CLEO_NO_UPDATE:-0}" != "1" ] && [ "${1:-}" != "--no-update" ]; then
     if [ -d "$ROOT_DIR/.git" ] && command -v git > /dev/null 2>&1; then
-        echo "🔄 Checking for Cleo updates from GitLab..."
+        echo "🔄 Checking for Cleo updates from GitHub..."
         if git fetch --tags --force origin; then
             CURRENT_BRANCH=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
             if [ -n "$CURRENT_BRANCH" ]; then
@@ -32,7 +32,7 @@ if [ "${CLEO_NO_UPDATE:-0}" != "1" ] && [ "${1:-}" != "--no-update" ]; then
             fi
             echo "✓ Cleo is up to date."
         else
-            echo "⚠️  Could not reach GitLab; continuing with local version."
+            echo "⚠️  Could not reach GitHub; continuing with local version."
         fi
         echo ""
     fi

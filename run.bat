@@ -6,14 +6,14 @@ setlocal EnableDelayedExpansion
 
 cd /d "%~dp0"
 
-rem Auto-pull latest updates from GitLab (skip if CLEO_NO_UPDATE=1 or --no-update)
+rem Auto-pull latest updates from GitHub (skip if CLEO_NO_UPDATE=1 or --no-update)
 if not "%CLEO_NO_UPDATE%"=="1" if not "%1"=="--no-update" (
     where git >nul 2>nul
     if not errorlevel 1 if exist ".git" (
-        echo [Cleo] Checking for updates from GitLab...
+        echo [Cleo] Checking for updates from GitHub...
         git fetch --tags --force origin
         if errorlevel 1 (
-            echo [Cleo] Could not reach GitLab; continuing with local version.
+            echo [Cleo] Could not reach GitHub; continuing with local version.
         ) else (
             for /f "tokens=*" %%B in ('git symbolic-ref --short -q HEAD 2^>nul') do (
                 git pull --ff-only origin %%B

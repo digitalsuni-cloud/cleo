@@ -372,19 +372,17 @@ def _download_ota_tarball(src_dir: str, repo_slug: str, branch: str):
             except Exception:
                 pass
 
-        import urllib.parse
-        proj_enc = urllib.parse.quote(repo_slug, safe="")
-        api_url = f"https://gitlab.com/api/v4/projects/{proj_enc}/repository/commits/{branch}"
-        req = urllib.request.Request(api_url, headers={"User-Agent": "Cleo-FinOps/2.1"})
+        api_url = f"https://api.github.com/repos/{repo_slug}/commits/{branch}"
+        req = urllib.request.Request(api_url, headers={"Accept": "application/vnd.github+json", "User-Agent": "Cleo-FinOps/2.1"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode())
-            remote_sha = data.get("id", "").strip()
+            remote_sha = data.get("sha", "").strip()
 
         has_py_files = os.path.isdir(src_dir) and any(f.endswith(".py") for f in os.listdir(src_dir))
         if remote_sha and remote_sha == local_sha and has_py_files:
             return
 
-        tar_url = f"https://gitlab.com/{repo_slug}/-/archive/{branch}/cleo-{branch}.tar.gz"
+        tar_url = f"https://github.com/{repo_slug}/archive/refs/heads/{branch}.tar.gz"
         req_tar = urllib.request.Request(tar_url, headers={"User-Agent": "Cleo-FinOps/2.1"})
         with urllib.request.urlopen(req_tar, timeout=25) as resp:
             tar_bytes = io.BytesIO(resp.read())
@@ -409,12 +407,12 @@ def _download_ota_tarball(src_dir: str, repo_slug: str, branch: str):
 
 def _sync_ota_repository(src_dir: str):
     """
-    Syncs latest Cleo code from GitLab into src_dir (~/.cleo/src).
-    Uses shallow git clone/pull if git is available, otherwise falls back to GitLab archive download.
+    Syncs latest Cleo code from GitHub into src_dir (~/.cleo/src).
+    Uses shallow git clone/pull if git is available, otherwise falls back to GitHub archive download.
     Guaranteed not to crash or hang startup if offline.
     """
-    repo_slug = os.environ.get("CLEO_GITLAB_REPO", os.environ.get("CLEO_GITHUB_REPO", "digitalsuni/cleo"))
-    branch = os.environ.get("CLEO_GITLAB_BRANCH", os.environ.get("CLEO_GITHUB_BRANCH", "main"))
+    repo_slug = os.environ.get("CLEO_GITHUB_REPO", os.environ.get("CLEO_GITLAB_REPO", "digitalsuni-cloud/cleo"))
+    branch = os.environ.get("CLEO_GITHUB_BRANCH", os.environ.get("CLEO_GITLAB_BRANCH", "main"))
 
     if not re.match(r'^[a-zA-Z0-9_\-\.]+/[a-zA-Z0-9_\-\.]+$', repo_slug):
         return
@@ -427,7 +425,7 @@ def _sync_ota_repository(src_dir: str):
         if os.path.isdir(git_dir):
             try:
                 ls_res = subprocess.run(
-                    ["git", "ls-remote", f"https://gitlab.com/{repo_slug}.git", f"refs/heads/{branch}"],
+                    ["git", "ls-remote", f"https://github.com/{repo_slug}.git", f"refs/heads/{branch}"],
                     capture_output=True, text=True, timeout=5
                 )
                 if ls_res.returncode == 0 and ls_res.stdout.strip():
@@ -438,7 +436,7 @@ def _sync_ota_repository(src_dir: str):
                     )
                     local_sha = rev_res.stdout.strip() if rev_res.returncode == 0 else ""
                     if remote_sha and remote_sha != local_sha:
-                        print(f"🔄 [OTA Sync] Updating Cleo code from GitLab ({local_sha[:7]} -> {remote_sha[:7]})...")
+                        print(f"🔄 [OTA Sync] Updating Cleo code from GitHub ({local_sha[:7]} -> {remote_sha[:7]})...")
                         subprocess.run(
                             ["git", "fetch", "--depth", "1", "origin", branch],
                             cwd=src_dir, capture_output=True, timeout=15
@@ -454,11 +452,11 @@ def _sync_ota_repository(src_dir: str):
                 print(f"ℹ️  [OTA Sync] Network check skipped ({e}). Using cached code in {src_dir}.")
         else:
             try:
-                print(f"📥 [OTA Sync] Initializing Cleo live code in {src_dir} from GitLab...")
+                print(f"📥 [OTA Sync] Initializing Cleo live code in {src_dir} from GitHub...")
                 if os.path.exists(src_dir) and not os.path.isdir(git_dir):
                     shutil.rmtree(src_dir, ignore_errors=True)
                 res = subprocess.run(
-                    ["git", "clone", "--depth", "1", "-b", branch, f"https://gitlab.com/{repo_slug}.git", src_dir],
+                    ["git", "clone", "--depth", "1", "-b", branch, f"https://github.com/{repo_slug}.git", src_dir],
                     capture_output=True, text=True, timeout=25
                 )
                 if res.returncode == 0:
@@ -3583,7 +3581,8 @@ def download_deliverable(file_type: str, session_id: Optional[str] = None, refre
 # ponytail: git verify-tag requires gpg on PATH; if absent the update is blocked
 #           with a clear error — no silent trust downgrade.
 
-CLEO_GITLAB_REPO = os.environ.get("CLEO_GITLAB_REPO", os.environ.get("CLEO_GITHUB_REPO", "digitalsuni/cleo"))
+CLEO_GITHUB_REPO = os.environ.get("CLEO_GITHUB_REPO", os.environ.get("CLEO_GITLAB_REPO", "digitalsuni-cloud/cleo"))
+CLEO_GITLAB_REPO = CLEO_GITHUB_REPO  # backward compatibility alias
 _CLEO_ROOT       = os.path.dirname(os.path.abspath(__file__))
 CLEO_VERSION     = "2.0.0"
 try:
@@ -3643,32 +3642,25 @@ def _git_sha() -> str:
     return f"v{CLEO_VERSION}"
 
 def _get_latest_release_tag() -> tuple[str, str]:
-    """Return (tag_name, commit_sha) of the latest GitLab release, or ("", "") on failure."""
-    if not _REPO_SLUG_RE.match(CLEO_GITLAB_REPO):
+    """Return (tag_name, commit_sha) of the latest GitHub release, or ("", "") on failure."""
+    if not _REPO_SLUG_RE.match(CLEO_GITHUB_REPO):
         return "", ""
     try:
-        import urllib.parse
-        proj_enc = urllib.parse.quote(CLEO_GITLAB_REPO, safe="")
-        api_url = f"https://gitlab.com/api/v4/projects/{proj_enc}/releases"
+        api_url = f"https://api.github.com/repos/{CLEO_GITHUB_REPO}/releases/latest"
         req = urllib.request.Request(
             api_url,
-            headers={"User-Agent": "Cleo-FinOps/2.1"},
+            headers={"Accept": "application/vnd.github+json", "User-Agent": "Cleo-FinOps/2.1"},
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode())
-        if not data or not isinstance(data, list):
+        if not data or not isinstance(data, dict):
             return "", ""
-        latest = data[0]
-        tag = latest.get("tag_name", "")
-        commit_info = latest.get("commit", {})
-        sha = commit_info.get("id", "") if isinstance(commit_info, dict) else ""
-        if tag and sha:
-            return tag, sha
+        tag = data.get("tag_name", "")
         if not tag:
             return "", ""
         try:
             res = subprocess.run(
-                ["git", "ls-remote", f"https://gitlab.com/{CLEO_GITLAB_REPO}.git",
+                ["git", "ls-remote", f"https://github.com/{CLEO_GITHUB_REPO}.git",
                  f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}"],
                 capture_output=True, text=True, timeout=10,
             )
@@ -3686,11 +3678,11 @@ def _get_latest_release_tag() -> tuple[str, str]:
 def _apply_curl_update(tag: str) -> tuple[bool, str]:
     """Download the release archive for *tag* and extract into _CLEO_ROOT."""
     import io, tarfile
-    if not _REPO_SLUG_RE.match(CLEO_GITLAB_REPO):
-        return False, f"Refusing update: invalid CLEO_GITLAB_REPO {CLEO_GITLAB_REPO!r}"
+    if not _REPO_SLUG_RE.match(CLEO_GITHUB_REPO):
+        return False, f"Refusing update: invalid CLEO_GITHUB_REPO {CLEO_GITHUB_REPO!r}"
     if not hasattr(tarfile, "data_filter"):
         return False, "Refusing update: this Python lacks tarfile extraction filters (upgrade Python)."
-    tarball_url = f"https://gitlab.com/{CLEO_GITLAB_REPO}/-/archive/{tag}/cleo-{tag}.tar.gz"
+    tarball_url = f"https://github.com/{CLEO_GITHUB_REPO}/archive/refs/tags/{tag}.tar.gz"
     try:
         req = urllib.request.Request(tarball_url, headers={"User-Agent": "Cleo-FinOps/2.1"})
         with urllib.request.urlopen(req, timeout=90) as resp:
@@ -3706,7 +3698,7 @@ def _apply_curl_update(tag: str) -> tuple[bool, str]:
         return False, f"Archive update failed: {e}"
 
 def _check_update_bg():
-    """Background: compare local version to the latest GitLab release."""
+    """Background: compare local version to the latest GitHub release."""
     global _update_state
     try:
         current = _git_sha()
@@ -3741,7 +3733,7 @@ def _check_update_bg():
             "latest_sha": latest_sha[:7] if latest_sha else tag,
             "update_available": update_available,
             "is_frozen": is_frozen,
-            "download_url": f"https://gitlab.com/{CLEO_GITLAB_REPO}/-/releases",
+            "download_url": f"https://github.com/{CLEO_GITHUB_REPO}/releases",
             "message": msg,
         }
         logger.debug(
@@ -3757,7 +3749,7 @@ def _check_update_bg():
 
 @app.get("/api/update/check")
 def check_update(request: Request):
-    """Check GitLab for a newer release of Cleo."""
+    """Check GitHub for a newer release of Cleo."""
     _limit_expensive(request, "update-check")
     _check_update_bg()
     return _update_state
@@ -3770,7 +3762,7 @@ def apply_update(request: Request):
     tag, latest_sha = _get_latest_release_tag()
 
     if not tag:
-        raise HTTPException(status_code=503, detail="Could not determine latest release tag from GitLab.")
+        raise HTTPException(status_code=503, detail="Could not determine latest release tag from GitHub.")
 
     is_frozen = getattr(sys, "frozen", False)
     if is_frozen:
@@ -3785,7 +3777,7 @@ def apply_update(request: Request):
             except Exception as e:
                 logger.warning(f"[Update] OTA sync error: {e}")
         import webbrowser
-        release_url = f"https://gitlab.com/{CLEO_GITLAB_REPO}/-/releases"
+        release_url = f"https://github.com/{CLEO_GITHUB_REPO}/releases"
         try:
             webbrowser.open(release_url)
         except Exception:
@@ -3794,7 +3786,7 @@ def apply_update(request: Request):
             "status": "browser_opened",
             "method": "browser",
             "url": release_url,
-            "message": f"Opened GitLab Releases page. Download the new {tag} release for your platform.",
+            "message": f"Opened GitHub Releases page. Download the new {tag} release for your platform.",
         }
 
     logger.info(f"[Update] Applying update to {tag}...")
